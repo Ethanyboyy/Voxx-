@@ -37,8 +37,25 @@ export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 export const decisionStatusSchema = z.enum(["PENDING", "DECIDED", "REVISITED"]);
 export const ideaStatusSchema = z.enum(["CAPTURED", "EXPLORING", "IN_EXPERIMENT", "EXECUTED", "ABANDONED"]);
 export const experimentStatusSchema = z.enum(["PLANNED", "RUNNING", "COMPLETED", "ABANDONED"]);
-export const knowledgeNodeTypeSchema = z.enum(["ENTITY", "TOPIC", "PROJECT", "GOAL", "CONCEPT", "OTHER"]);
+export const knowledgeNodeTypeSchema = z.enum([
+  "ENTITY",
+  "TOPIC",
+  "PROJECT",
+  "GOAL",
+  "CONCEPT",
+  "PERSON",
+  "ORGANIZATION",
+  "OTHER",
+]);
 export const hypothesisStatusSchema = z.enum(["OPEN", "SUPPORTED", "REJECTED"]);
+export const memoryRelationTypeSchema = z.enum([
+  "RELATES_TO",
+  "SUPERSEDES",
+  "CONTRADICTS",
+  "DERIVED_FROM",
+  "SUPPORTS",
+]);
+export const proposalStatusSchema = z.enum(["PROPOSED", "APPROVED", "DENIED", "EXPIRED", "EXECUTED", "FAILED"]);
 
 export const registerSchema = z.object({
   email: z.string().email(),
@@ -63,6 +80,22 @@ export const updateMemorySchema = z.object({
   category: memoryCategorySchema.optional(),
   confidence: confidenceSchema.optional(),
   provenance: z.string().max(2000).optional(),
+});
+
+export const createMemoryRelationSchema = z.object({
+  toMemoryId: z.string().min(1),
+  type: memoryRelationTypeSchema,
+  note: z.string().max(2000).optional(),
+  confidence: confidenceSchema.optional(),
+});
+
+export const semanticSearchSchema = z.object({
+  query: z.string().min(1).max(2000),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+export const denyProposalSchema = z.object({
+  reason: z.string().max(2000).optional(),
 });
 
 export const createConversationSchema = z.object({
@@ -174,6 +207,24 @@ export const createKnowledgeConnectionSchema = z.object({
   fromNodeId: z.string().min(1),
   toNodeId: z.string().min(1),
   relation: z.string().min(1).max(100),
+});
+
+export const linkableEntityTypeSchema = z.enum([
+  "MEMORY",
+  "PROJECT",
+  "GOAL",
+  "TASK",
+  "DECISION",
+  "IDEA",
+  "EXPERIMENT",
+  "RESEARCH_ITEM",
+]);
+
+export const linkEntitySchema = z.object({
+  entityType: linkableEntityTypeSchema,
+  entityId: z.string().min(1),
+  label: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
 });
 
 export const grantPermissionSchema = z.object({

@@ -32,6 +32,7 @@ export async function runResearch(userId: string, query: string) {
   await recordEvent({
     userId,
     type: "research.performed",
+    subjectType: "ResearchQuery",
     payload: { query, provider: provider.id, resultCount: rows.length },
   });
 

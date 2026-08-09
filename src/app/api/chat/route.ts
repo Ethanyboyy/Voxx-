@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
 
   await addMessage(conversation.id, "USER", body.message);
 
-  const [system, full] = await Promise.all([
-    buildSystemPrompt(user.id),
+  const [{ prompt: system, trace }, full] = await Promise.all([
+    buildSystemPrompt(user.id, body.message),
     getConversation(user.id, conversation.id),
   ]);
   const providerMessages = toProviderMessages(full?.messages ?? []);
@@ -65,8 +65,9 @@ export async function POST(request: NextRequest) {
               model: event.model,
               inputTokens: event.usage.inputTokens,
               outputTokens: event.usage.outputTokens,
+              meta: { context: trace },
             });
-            send({ type: "message_stop", messageId: saved.id, usage: event.usage, model: event.model });
+            send({ type: "message_stop", messageId: saved.id, usage: event.usage, model: event.model, context: trace });
           } else if (event.type === "error") {
             logger.error("chat.stream.provider_error", { conversationId: conversation.id, message: event.message });
             send({ type: "error", message: "The model provider returned an error. Please try again." });

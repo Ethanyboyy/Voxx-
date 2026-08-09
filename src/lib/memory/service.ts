@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { decryptField, encryptField } from "@/lib/security/crypto";
 import { recordEvent } from "@/lib/observability/events";
+import { ensureMemoryEmbeddingSafe, rankBySimilarity, recomputeMemoryEmbeddingSafe } from "@/lib/memory/embeddings";
 import type { Confidence, MemoryCategory, MemorySourceType } from "@/generated/prisma/enums";
 import type { Memory, MemorySource } from "@/generated/prisma/client";
 
@@ -11,6 +12,7 @@ export interface MemoryDTO {
   category: MemoryCategory;
   confidence: Confidence;
   provenance: string | null;
+  supersededAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   source: MemorySourceDTO | null;
@@ -31,6 +33,7 @@ function toDTO(row: Memory & { source: MemorySource | null }): MemoryDTO {
     category: row.category,
     confidence: row.confidence,
     provenance: row.provenance,
+    supersededAt: row.supersededAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     source: row.source
@@ -83,8 +86,12 @@ export async function createMemory(input: CreateMemoryInput): Promise<MemoryDTO>
   await recordEvent({
     userId: input.userId,
     type: "memory.created",
+    subjectType: "Memory",
+    subjectId: row.id,
     payload: { memoryId: row.id, category: row.category, confidence: row.confidence },
   });
+
+  await ensureMemoryEmbeddingSafe(row.id, input.content);
 
   return toDTO(row);
 }
@@ -93,6 +100,8 @@ export interface ListMemoriesFilter {
   category?: MemoryCategory;
   confidence?: Confidence;
   search?: string;
+  /** Superseded memories are excluded by default — still inspectable/exportable via this flag. */
+  includeSuperseded?: boolean;
 }
 
 export async function listMemories(userId: string, filter: ListMemoriesFilter = {}): Promise<MemoryDTO[]> {
@@ -101,6 +110,7 @@ export async function listMemories(userId: string, filter: ListMemoriesFilter = 
       userId,
       category: filter.category,
       confidence: filter.confidence,
+      supersededAt: filter.includeSuperseded ? undefined : null,
     },
     include: { source: true },
     orderBy: { createdAt: "desc" },
@@ -111,6 +121,31 @@ export async function listMemories(userId: string, filter: ListMemoriesFilter = 
 
   const needle = filter.search.toLowerCase();
   return dtos.filter((m) => m.content.toLowerCase().includes(needle));
+}
+
+/**
+ * Ranks active memories by semantic similarity to queryText (see
+ * src/lib/embeddings/ and src/lib/memory/embeddings.ts). This is what chat
+ * context assembly uses instead of recency-only ordering.
+ */
+export async function getSemanticMemories(
+  userId: string,
+  queryText: string,
+  limit = 8
+): Promise<(MemoryDTO & { similarity: number })[]> {
+  const memories = await listMemories(userId);
+  if (memories.length === 0) return [];
+
+  const ranked = await rankBySimilarity(
+    queryText,
+    memories.map((m) => ({ id: m.id, content: m.content }))
+  );
+  const similarityById = new Map(ranked.map((r) => [r.id, r.similarity]));
+
+  return memories
+    .map((m) => ({ ...m, similarity: similarityById.get(m.id) ?? 0 }))
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
 }
 
 export async function getMemory(userId: string, id: string): Promise<MemoryDTO | null> {
@@ -147,8 +182,14 @@ export async function updateMemory(
   await recordEvent({
     userId,
     type: "memory.updated",
+    subjectType: "Memory",
+    subjectId: id,
     payload: { memoryId: id, fields: Object.keys(updates) },
   });
+
+  if (updates.content !== undefined) {
+    await recomputeMemoryEmbeddingSafe(id, updates.content);
+  }
 
   return toDTO(row);
 }
@@ -162,9 +203,9 @@ export async function deleteMemory(userId: string, id: string): Promise<boolean>
   return true;
 }
 
-/** Full plaintext export for the user's own data-portability request. */
+/** Full plaintext export for the user's own data-portability request — includes superseded memories. */
 export async function exportMemories(userId: string): Promise<MemoryDTO[]> {
-  const memories = await listMemories(userId);
+  const memories = await listMemories(userId, { includeSuperseded: true });
   await recordEvent({ userId, type: "memory.exported", payload: { count: memories.length } });
   return memories;
 }

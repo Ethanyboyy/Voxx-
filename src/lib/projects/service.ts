@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { recordEvent } from "@/lib/observability/events";
 import type {
   DecisionStatus,
   ExperimentStatus,
@@ -54,7 +55,19 @@ export interface UpdateProjectInput {
 export async function updateProject(userId: string, id: string, updates: UpdateProjectInput) {
   const existing = await db.project.findFirst({ where: { id, userId } });
   if (!existing) return null;
-  return db.project.update({ where: { id }, data: updates });
+  const project = await db.project.update({ where: { id }, data: updates });
+
+  if (updates.status && updates.status !== existing.status) {
+    await recordEvent({
+      userId,
+      type: updates.status === "COMPLETED" ? "project.milestone" : "project.status_changed",
+      subjectType: "Project",
+      subjectId: id,
+      payload: { from: existing.status, to: updates.status },
+    });
+  }
+
+  return project;
 }
 
 export async function deleteProject(userId: string, id: string) {
@@ -101,7 +114,19 @@ export async function updateGoal(
 ) {
   const existing = await db.goal.findFirst({ where: { id, userId } });
   if (!existing) return null;
-  return db.goal.update({ where: { id }, data: updates });
+  const goal = await db.goal.update({ where: { id }, data: updates });
+
+  if (updates.status && updates.status !== existing.status) {
+    await recordEvent({
+      userId,
+      type: "goal.status_changed",
+      subjectType: "Goal",
+      subjectId: id,
+      payload: { from: existing.status, to: updates.status },
+    });
+  }
+
+  return goal;
 }
 
 export async function deleteGoal(userId: string, id: string) {
@@ -157,13 +182,25 @@ export interface UpdateTaskInput {
 export async function updateTask(userId: string, id: string, updates: UpdateTaskInput) {
   const existing = await db.task.findFirst({ where: { id, userId } });
   if (!existing) return null;
-  return db.task.update({
+  const task = await db.task.update({
     where: { id },
     data: {
       ...updates,
       completedAt: updates.status === "DONE" ? new Date() : updates.status ? null : undefined,
     },
   });
+
+  if (updates.status === "DONE" && existing.status !== "DONE") {
+    await recordEvent({
+      userId,
+      type: "task.completed",
+      subjectType: "Task",
+      subjectId: id,
+      payload: { title: task.title },
+    });
+  }
+
+  return task;
 }
 
 export async function deleteTask(userId: string, id: string) {
@@ -213,13 +250,25 @@ export async function updateDecision(
 ) {
   const existing = await db.decision.findFirst({ where: { id, userId } });
   if (!existing) return null;
-  return db.decision.update({
+  const decision = await db.decision.update({
     where: { id },
     data: {
       ...updates,
       decidedAt: updates.status === "DECIDED" ? new Date() : undefined,
     },
   });
+
+  if (updates.status && updates.status !== existing.status) {
+    await recordEvent({
+      userId,
+      type: updates.status === "DECIDED" ? "decision.made" : "decision.status_changed",
+      subjectType: "Decision",
+      subjectId: id,
+      payload: { from: existing.status, to: updates.status, chosenOption: updates.chosenOption },
+    });
+  }
+
+  return decision;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +371,7 @@ export interface AddExperimentResultInput {
 export async function addExperimentResult(userId: string, input: AddExperimentResultInput) {
   const experiment = await db.experiment.findFirst({ where: { id: input.experimentId, userId } });
   if (!experiment) return null;
-  return db.experimentResult.create({
+  const result = await db.experimentResult.create({
     data: {
       experimentId: input.experimentId,
       outcome: input.outcome,
@@ -330,4 +379,14 @@ export async function addExperimentResult(userId: string, input: AddExperimentRe
       confidence: input.confidence ?? "MEDIUM",
     },
   });
+
+  await recordEvent({
+    userId,
+    type: "experiment.result_recorded",
+    subjectType: "Experiment",
+    subjectId: input.experimentId,
+    payload: { outcome: input.outcome, confidence: result.confidence },
+  });
+
+  return result;
 }

@@ -46,24 +46,26 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions          Session[]
-  conversations     Conversation[]
-  memories          Memory[]
-  observations      Observation[]
-  hypotheses        Hypothesis[]
-  patterns          Pattern[]
-  goals             Goal[]
-  projects          Project[]
-  tasks             Task[]
-  decisions         Decision[]
-  ideas             Idea[]
-  experiments       Experiment[]
-  researchItems     ResearchItem[]
-  knowledgeNodes    KnowledgeNode[]
-  knowledgeEdges    KnowledgeConnection[]
-  permissions       Permission[]
-  integrations      Integration[]
-  events            Event[]
+  sessions        Session[]
+  conversations   Conversation[]
+  memories        Memory[]
+  memoryRelations MemoryRelation[]
+  observations    Observation[]
+  hypotheses      Hypothesis[]
+  patterns        Pattern[]
+  goals           Goal[]
+  projects        Project[]
+  tasks           Task[]
+  decisions       Decision[]
+  ideas           Idea[]
+  experiments     Experiment[]
+  researchItems   ResearchItem[]
+  knowledgeNodes  KnowledgeNode[]
+  knowledgeEdges  KnowledgeConnection[]
+  permissions     Permission[]
+  integrations    Integration[]
+  events          Event[]
+  proposals       Proposal[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -136,18 +138,66 @@ enum MemoryCategory {
 }
 
 model Memory {
-  id         String         @id @default(uuid())
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
-  content    String
-  category   MemoryCategory
-  confidence Confidence     @default(MEDIUM)
+  id           String         @id @default(uuid())
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  content      String
+  category     MemoryCategory
+  confidence   Confidence     @default(MEDIUM)
   /// Free-text provenance note in addition to the structured MemorySource row.
-  provenance String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  provenance   String?
+  /// Set when another Memory supersedes this one (see MemoryRelation). Superseded
+  /// memories stay inspectable/exportable but drop out of default retrieval.
+  supersededAt DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  source MemorySource?
+  source            MemorySource?
+  embedding         MemoryEmbedding?
+  knowledgeNode     KnowledgeNode?
+  outgoingRelations MemoryRelation[] @relation("FromMemory")
+  incomingRelations MemoryRelation[] @relation("ToMemory")
+}
+
+/// Vector representation of a Memory's (decrypted, in-process) content, used for
+/// semantic retrieval. A satellite table so re-embedding with a different
+/// provider never touches the encrypted Memory row. Vectors are NOT encrypted —
+/// see SECURITY.md for why, and what that trades away.
+model MemoryEmbedding {
+  id         String   @id @default(uuid())
+  memory     Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  memoryId   String   @unique
+  /// e.g. "local-hashed-256", "voyage-3".
+  provider   String
+  dimensions Int
+  /// JSON-encoded float array.
+  vector     String
+  createdAt  DateTime @default(now())
+}
+
+enum MemoryRelationType {
+  RELATES_TO
+  SUPERSEDES
+  CONTRADICTS
+  DERIVED_FROM
+  SUPPORTS
+}
+
+/// Explicit, always-human-or-detector-created relationships between memories.
+/// Never written silently — contradiction detection proposes these via the
+/// Proposal system rather than writing them directly.
+model MemoryRelation {
+  id           String             @id @default(uuid())
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  fromMemory   Memory             @relation("FromMemory", fields: [fromMemoryId], references: [id], onDelete: Cascade)
+  fromMemoryId String
+  toMemory     Memory             @relation("ToMemory", fields: [toMemoryId], references: [id], onDelete: Cascade)
+  toMemoryId   String
+  type         MemoryRelationType
+  note         String?
+  confidence   Confidence         @default(LOW)
+  createdAt    DateTime           @default(now())
 }
 
 enum MemorySourceType {
@@ -192,14 +242,14 @@ enum CognitiveDimension {
 }
 
 model Observation {
-  id        String             @id @default(uuid())
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  dimension CognitiveDimension
-  content   String
-  evidence  String?
-  confidence Confidence        @default(LOW)
-  createdAt DateTime           @default(now())
+  id         String             @id @default(uuid())
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  dimension  CognitiveDimension
+  content    String
+  evidence   String?
+  confidence Confidence         @default(LOW)
+  createdAt  DateTime           @default(now())
 }
 
 enum HypothesisStatus {
@@ -209,15 +259,15 @@ enum HypothesisStatus {
 }
 
 model Hypothesis {
-  id         String            @id @default(uuid())
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String              @id @default(uuid())
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
   dimension  CognitiveDimension?
   statement  String
-  confidence Confidence        @default(LOW)
-  status     HypothesisStatus  @default(OPEN)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  confidence Confidence          @default(LOW)
+  status     HypothesisStatus    @default(OPEN)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 }
 
 enum PatternType {
@@ -240,18 +290,18 @@ enum PatternStatus {
 /// "Thought-loop" / recurring-pattern detection. Always phrased as a
 /// hypothesis ("pattern detected", "possible loop") — never a diagnosis.
 model Pattern {
-  id               String        @id @default(uuid())
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId           String
-  type             PatternType
-  description      String
-  confidence       Confidence    @default(LOW)
-  status           PatternStatus @default(ACTIVE)
-  occurrenceCount  Int           @default(1)
-  firstDetectedAt  DateTime      @default(now())
-  lastDetectedAt   DateTime      @default(now())
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  type            PatternType
+  description     String
+  confidence      Confidence    @default(LOW)
+  status          PatternStatus @default(ACTIVE)
+  occurrenceCount Int           @default(1)
+  firstDetectedAt DateTime      @default(now())
+  lastDetectedAt  DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +331,7 @@ model Project {
   ideas         Idea[]
   experiments   Experiment[]
   conversations Conversation[]
+  knowledgeNode KnowledgeNode?
 }
 
 enum GoalStatus {
@@ -302,6 +353,8 @@ model Goal {
   targetDate  DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  knowledgeNode KnowledgeNode?
 }
 
 enum TaskStatus {
@@ -331,6 +384,8 @@ model Task {
   completedAt DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  knowledgeNode KnowledgeNode?
 }
 
 enum DecisionStatus {
@@ -354,6 +409,8 @@ model Decision {
   decidedAt    DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+
+  knowledgeNode KnowledgeNode?
 }
 
 enum IdeaStatus {
@@ -376,7 +433,8 @@ model Idea {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  experiments Experiment[]
+  experiments   Experiment[]
+  knowledgeNode KnowledgeNode?
 }
 
 // ---------------------------------------------------------------------------
@@ -391,22 +449,23 @@ enum ExperimentStatus {
 }
 
 model Experiment {
-  id         String            @id @default(uuid())
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String           @id @default(uuid())
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
-  project    Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project    Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   projectId  String?
-  idea       Idea?             @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  idea       Idea?            @relation(fields: [ideaId], references: [id], onDelete: SetNull)
   ideaId     String?
   hypothesis String
   method     String?
-  status     ExperimentStatus  @default(PLANNED)
+  status     ExperimentStatus @default(PLANNED)
   startedAt  DateTime?
   endedAt    DateTime?
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
-  results ExperimentResult[]
+  results       ExperimentResult[]
+  knowledgeNode KnowledgeNode?
 }
 
 model ExperimentResult {
@@ -438,6 +497,7 @@ model ResearchItem {
   createdAt   DateTime   @default(now())
 
   memorySources MemorySource[]
+  knowledgeNode KnowledgeNode?
 }
 
 // ---------------------------------------------------------------------------
@@ -450,9 +510,17 @@ enum KnowledgeNodeType {
   PROJECT
   GOAL
   CONCEPT
+  PERSON
+  ORGANIZATION
   OTHER
 }
 
+/// A node either mirrors a first-class VOX record (exactly one of the link
+/// columns below is set — real FK, real cascade-delete) or is a free-floating
+/// entity the record model doesn't cover (Person/Organization/Concept/Topic —
+/// all link columns null). Prisma has no native polymorphic association, and
+/// a string-typed entityId would give up referential integrity, so this is
+/// explicit columns rather than a generic entityType/entityId pair.
 model KnowledgeNode {
   id          String            @id @default(uuid())
   user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -462,6 +530,23 @@ model KnowledgeNode {
   description String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  memoryId       String?       @unique
+  memory         Memory?       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  projectId      String?       @unique
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  goalId         String?       @unique
+  goal           Goal?         @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  taskId         String?       @unique
+  task           Task?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  decisionId     String?       @unique
+  decision       Decision?     @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  ideaId         String?       @unique
+  idea           Idea?         @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  experimentId   String?       @unique
+  experiment     Experiment?   @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  researchItemId String?       @unique
+  researchItem   ResearchItem? @relation(fields: [researchItemId], references: [id], onDelete: Cascade)
 
   outgoing KnowledgeConnection[] @relation("FromNode")
   incoming KnowledgeConnection[] @relation("ToNode")
@@ -515,8 +600,13 @@ model Integration {
   @@unique([userId, name])
 }
 
-/// Append-only audit log. Every consequential (RECOMMEND/ASK/ACT-level)
-/// action must be recorded here.
+/// Append-only audit log AND durable domain timeline: every consequential
+/// (RECOMMEND/ASK/ACT-level) action is recorded here, as is every notable
+/// domain state change (task completed, goal changed, research discovered,
+/// memory updated/superseded, decision made, experiment result, project
+/// milestone). `subjectId` is intentionally NOT a foreign key — an event
+/// describing a deleted record must still be readable after that record is
+/// gone.
 model Event {
   id            String   @id @default(uuid())
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -524,6 +614,53 @@ model Event {
   type          String
   /// JSON payload with event-specific details.
   payload       String?
+  /// Descriptive-only, e.g. "Task" / "Goal" / "Memory" — not a foreign key.
+  subjectType   String?
+  subjectId     String?
   consequential Boolean  @default(false)
   createdAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Cognition proposal engine
+// ---------------------------------------------------------------------------
+
+enum ProposalStatus {
+  PROPOSED
+  APPROVED
+  DENIED
+  EXPIRED
+  EXECUTED
+  FAILED
+}
+
+/// "Observed X. Connected it with Y. Possible implication: Z. Suggested
+/// action: A. Permission required." A Proposal is always PROPOSED first;
+/// nothing here executes without approveProposal() succeeding a real
+/// enforceCapability() check (src/lib/permissions/service.ts) — see
+/// PHASE_2_ARCHITECTURE.md §5.
+model Proposal {
+  id              String          @id @default(uuid())
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  observation     String
+  connection      String?
+  implication     String?
+  suggestedAction String
+  /// Machine key into the fixed, internal-only action registry, e.g.
+  /// "memory.create_relation", "task.create".
+  actionType      String
+  /// JSON — concrete params passed to the action handler if approved.
+  actionPayload   String
+  /// Permission capability key checked before executing.
+  capability      String
+  requiredLevel   CapabilityLevel @default(RECOMMEND)
+  confidence      Confidence      @default(LOW)
+  /// JSON: { memoryIds, researchItemIds, observationIds, eventIds }
+  evidence        String?
+  status          ProposalStatus  @default(PROPOSED)
+  /// Outcome text once executed, or the denial reason.
+  result          String?
+  createdAt       DateTime        @default(now())
+  resolvedAt      DateTime?
 }

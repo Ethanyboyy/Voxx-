@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { createObservation, listObservations, createHypothesis, updateHypothesisStatus } from "@/lib/cognition/service";
 import { getCognitiveProfile } from "@/lib/cognition/profile";
 import { detectPatterns, listPatterns } from "@/lib/cognition/patterns";
+import { listProposals } from "@/lib/cognition/proposals";
 import { createTestUser } from "./helpers";
 
 describe("cognitive observations", () => {
@@ -79,5 +80,29 @@ describe("cognitive observations", () => {
     const user = await createTestUser();
     const detected = await detectPatterns(user.id);
     expect(detected).toHaveLength(0);
+  });
+
+  it("a newly-detected unresolved-decision pattern creates a Proposal (observe -> insight -> proposal loop)", async () => {
+    const user = await createTestUser();
+    const oldDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    for (let i = 0; i < 2; i++) {
+      const decision = await db.decision.create({ data: { userId: user.id, title: `Pending decision ${i}`, status: "PENDING" } });
+      await db.decision.update({ where: { id: decision.id }, data: { createdAt: oldDate } });
+    }
+
+    await detectPatterns(user.id);
+    const proposals = await listProposals(user.id);
+    const proposal = proposals.find((p) => p.actionType === "task.create" && p.capability === "cognition.proposal.unresolved_decision");
+    expect(proposal).toBeDefined();
+    expect(proposal?.status).toBe("PROPOSED");
+    expect(proposal?.observation).toContain("pending");
+
+    // Re-running the scan bumps the existing Pattern but must not spam a second proposal.
+    await detectPatterns(user.id);
+    const proposalsAfterRescan = await listProposals(user.id);
+    const matching = proposalsAfterRescan.filter(
+      (p) => p.actionType === "task.create" && p.capability === "cognition.proposal.unresolved_decision"
+    );
+    expect(matching).toHaveLength(1);
   });
 });

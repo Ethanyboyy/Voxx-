@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { runResearch, listResearchItems } from "@/lib/research/service";
-import { getResearchProvider } from "@/lib/research";
+import { getResearchProvider, _resetResearchProviderCache } from "@/lib/research";
+import { AnthropicWebSearchProvider } from "@/lib/research/anthropic";
 import { createTestUser } from "./helpers";
 
 describe("research engine", () => {
@@ -42,5 +43,30 @@ describe("research engine", () => {
     const items = await listResearchItems(userId);
     expect(items.every((i) => i.query !== "unrelated query")).toBe(true);
     expect(items[0].query).toBe("second query");
+  });
+});
+
+describe("research provider factory", () => {
+  afterEach(() => {
+    _resetResearchProviderCache();
+    delete process.env.VOX_RESEARCH_PROVIDER;
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("defaults to mock (the test-wide env setting)", () => {
+    expect(getResearchProvider().id).toBe("mock");
+  });
+
+  it("stays on mock if VOX_RESEARCH_PROVIDER=anthropic is set without an API key", () => {
+    process.env.VOX_RESEARCH_PROVIDER = "anthropic";
+    expect(getResearchProvider().id).toBe("mock");
+  });
+
+  it("switches to the real Anthropic provider once both are set", () => {
+    process.env.VOX_RESEARCH_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-test-not-a-real-key";
+    const provider = getResearchProvider();
+    expect(provider).toBeInstanceOf(AnthropicWebSearchProvider);
+    expect(provider.id).toBe("anthropic");
   });
 });
