@@ -1,0 +1,211 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Field";
+import { cn } from "@/lib/utils/cn";
+
+interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  model?: string | null;
+  pending?: boolean;
+}
+
+export function ChatClient({ initialConversations }: { initialConversations: ConversationSummary[] }) {
+  const [conversations, setConversations] = useState(initialConversations);
+  const [activeId, setActiveId] = useState<string | null>(initialConversations[0]?.id ?? null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    fetch(`/api/conversations/${activeId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setMessages(data.conversation?.messages ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  async function ensureConversation(): Promise<string> {
+    if (activeId) return activeId;
+    const res = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await res.json();
+    const conversation = data.conversation as ConversationSummary;
+    setConversations((prev) => [conversation, ...prev]);
+    setActiveId(conversation.id);
+    return conversation.id;
+  }
+
+  async function handleNewConversation() {
+    const res = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const data = await res.json();
+    const conversation = data.conversation as ConversationSummary;
+    setConversations((prev) => [conversation, ...prev]);
+    setActiveId(conversation.id);
+    setMessages([]);
+  }
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || streaming) return;
+    setError(null);
+    setInput("");
+
+    const conversationId = await ensureConversation();
+    const userMessage: ChatMessage = { id: `local-${Date.now()}`, role: "USER", content: text };
+    const assistantMessage: ChatMessage = { id: `pending-${Date.now()}`, role: "ASSISTANT", content: "", pending: true };
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setStreaming(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, message: text }),
+      });
+
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => ({ error: "Chat request failed." }));
+        setError(body.error ?? "Chat request failed.");
+        setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+          if (event.type === "text_delta") {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: m.content + event.text } : m))
+            );
+          } else if (event.type === "message_stop") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessage.id ? { ...m, id: event.messageId, model: event.model, pending: false } : m
+              )
+            );
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
+        }
+      }
+    } finally {
+      setStreaming(false);
+      setMessages((prev) => prev.map((m) => (m.pending ? { ...m, pending: false } : m)));
+    }
+  }
+
+  function exportConversation() {
+    const text = messages.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+    navigator.clipboard.writeText(text);
+  }
+
+  return (
+    <div className="flex h-full w-full">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-border p-3 md:flex">
+        <Button size="sm" variant="secondary" onClick={handleNewConversation} className="mb-3">
+          New conversation
+        </Button>
+        <div className="flex flex-col gap-1 overflow-y-auto scrollbar-thin">
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveId(c.id)}
+              className={cn(
+                "truncate rounded-lg px-3 py-2 text-left text-sm",
+                c.id === activeId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover"
+              )}
+            >
+              {c.title}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-border px-6 py-3">
+          <h1 className="text-sm font-semibold text-foreground">Chat</h1>
+          <Button size="sm" variant="ghost" onClick={exportConversation} disabled={messages.length === 0}>
+            Copy conversation
+          </Button>
+        </div>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+          {messages.length === 0 ? (
+            <p className="mt-10 text-center text-sm text-muted">
+              Say something to start. VOX remembers context across this conversation and your saved memories.
+            </p>
+          ) : (
+            <div className="mx-auto flex max-w-2xl flex-col gap-4">
+              {messages.map((m) => (
+                <div key={m.id} className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
+                  <div
+                    className={cn(
+                      "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
+                      m.role === "USER" ? "bg-accent text-accent-foreground" : "bg-surface-hover text-foreground"
+                    )}
+                  >
+                    {m.content || (m.pending ? "…" : "")}
+                  </div>
+                  {m.model ? <span className="mt-1 text-xs text-muted">{m.model}</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+          {error ? <p className="mx-auto mt-4 max-w-2xl text-sm text-danger">{error}</p> : null}
+        </div>
+
+        <div className="border-t border-border p-4">
+          <div className="mx-auto flex max-w-2xl items-end gap-2">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Message VOX..."
+              rows={2}
+              className="flex-1"
+            />
+            <Button onClick={handleSend} disabled={streaming || !input.trim()}>
+              {streaming ? "Sending..." : "Send"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

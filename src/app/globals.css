@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-hover: #f0f0f2;
+  --border: #e4e4e7;
+  --foreground: #18181b;
+  --muted: #6b7280;
+  --muted-foreground: #71717a;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --accent-muted: #eef2ff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --danger-muted: #fef2f2;
+  --focus-ring: #6366f1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0b0b0e;
+    --surface: #16161a;
+    --surface-hover: #1e1e23;
+    --border: #2a2a30;
+    --foreground: #f4f4f5;
+    --muted: #9ca3af;
+    --muted-foreground: #a1a1aa;
+    --accent: #818cf8;
+    --accent-foreground: #0b0b0e;
+    --accent-muted: #1e1e3f;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --danger-muted: #2a1618;
+    --focus-ring: #818cf8;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0b0b0e;
+  --surface: #16161a;
+  --surface-hover: #1e1e23;
+  --border: #2a2a30;
+  --foreground: #f4f4f5;
+  --muted: #9ca3af;
+  --muted-foreground: #a1a1aa;
+  --accent: #818cf8;
+  --accent-foreground: #0b0b0e;
+  --accent-muted: #1e1e3f;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --danger-muted: #2a1618;
+  --focus-ring: #818cf8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-muted: var(--accent-muted);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-muted: var(--danger-muted);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
