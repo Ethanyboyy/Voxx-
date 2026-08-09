@@ -6,6 +6,7 @@ import { getCognitiveProfile } from "@/lib/cognition/profile";
 import { listMemories } from "@/lib/memory/service";
 import { listIdeas } from "@/lib/projects/service";
 import { listResearchItems } from "@/lib/research/service";
+import { listProposals } from "@/lib/cognition/proposals";
 import { getAIProvider } from "@/lib/ai";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [activeProjects, openTasks, observations, profile, memories, ideas, research] = await Promise.all([
+  const [activeProjects, openTasks, observations, profile, memories, ideas, research, pendingProposals] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
     listObservations(user.id, undefined, 5),
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     listMemories(user.id),
     listIdeas(user.id),
     listResearchItems(user.id, 5),
+    listProposals(user.id, "PROPOSED"),
   ]);
 
   const currentProject = activeProjects[0] ?? null;
@@ -85,6 +87,28 @@ export default async function DashboardPage() {
             ) : (
               <EmptyState title="No open tasks" description="Nothing is currently queued up." />
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Proposed actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pendingProposals.length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {pendingProposals.slice(0, 5).map((p) => (
+                  <li key={p.id} className="text-sm text-foreground">
+                    {p.suggestedAction}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="Nothing proposed right now" />
+            )}
+            <Link href="/proposals" className="mt-3 inline-block text-sm font-medium text-accent">
+              Review proposals →
+            </Link>
           </CardContent>
         </Card>
 

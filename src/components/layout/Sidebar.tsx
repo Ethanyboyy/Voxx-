@@ -9,13 +9,15 @@ const NAV_ITEMS = [
   { href: "/chat", label: "Chat" },
   { href: "/memory", label: "Memory" },
   { href: "/cognition", label: "Cognition" },
+  { href: "/graph", label: "Graph" },
+  { href: "/proposals", label: "Proposals" },
   { href: "/projects", label: "Projects" },
   { href: "/experiments", label: "Experiments" },
   { href: "/research", label: "Research" },
   { href: "/settings", label: "Settings" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ pendingProposalCount = 0 }: { pendingProposalCount?: number }) {
   const pathname = usePathname();
 
   return (
@@ -31,12 +33,17 @@ export function Sidebar() {
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               active ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
             )}
             aria-current={active ? "page" : undefined}
           >
             {item.label}
+            {item.href === "/proposals" && pendingProposalCount > 0 ? (
+              <span className="rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">
+                {pendingProposalCount}
+              </span>
+            ) : null}
           </Link>
         );
       })}

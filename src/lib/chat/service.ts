@@ -85,8 +85,12 @@ Ground rules:
  * why. See PHASE_2_ARCHITECTURE.md §6.
  */
 export interface ContextTrace {
-  memoriesUsed: { id: string; confidence: Confidence; similarity: number }[];
+  memoriesUsed: { id: string; content: string; confidence: Confidence; similarity: number }[];
   assumptions: string[];
+}
+
+function snippet(text: string, max = 140): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 export interface SystemPromptResult {
@@ -123,7 +127,12 @@ export async function buildSystemPrompt(userId: string, query: string): Promise<
   return {
     prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context about the user:\n${lines.join("\n")}`,
     trace: {
-      memoriesUsed: selected.map((m) => ({ id: m.id, confidence: m.confidence, similarity: m.similarity })),
+      memoriesUsed: selected.map((m) => ({
+        id: m.id,
+        content: snippet(m.content),
+        confidence: m.confidence,
+        similarity: m.similarity,
+      })),
       assumptions: [],
     },
   };

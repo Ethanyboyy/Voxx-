@@ -58,6 +58,38 @@ VOX does not implement any autonomous destructive action in Phase 1 (no auto-sen
 auto-delete, auto-purchase, etc.) — the permission system exists ahead of those
 features specifically so they can be added later without retrofitting a security model.
 
+## Semantic memory and the cognition proposal engine (Phase 2)
+
+- **Embeddings are local by default, third-party only if you opt in**:
+  `LocalEmbeddingProvider` (`src/lib/embeddings/local.ts`) computes a hashed
+  lexical vector entirely in-process — memory content never leaves the
+  device. Setting `VOYAGE_API_KEY` switches to real neural embeddings via
+  Voyage AI (`src/lib/embeddings/voyage.ts`), which **does** send memory
+  content to a third party for embedding. This is strictly opt-in, matching
+  rule 14 from the build spec ("do not send personal data to third-party
+  services unless explicitly authorized") — never enabled by default, and
+  called out here explicitly rather than buried in a config comment.
+- **Embedding vectors are not encrypted**: cosine similarity has to run in
+  JS over stored numbers, so encrypting the vector would mean decrypting
+  every memory on every search — defeating `Memory.content` encryption's
+  purpose. The vector is a lossy, hashed bag-of-words representation, not
+  the plaintext, but it is a disclosed side channel: someone with database
+  access could infer approximate term overlap between memories from the
+  stored vectors, even though the underlying content stays encrypted.
+- **Real research sends your query (not memory content) to Anthropic**:
+  `AnthropicWebSearchProvider` (`src/lib/research/anthropic.ts`) uses
+  Claude's native web_search tool over the same `ANTHROPIC_API_KEY` chat
+  already requires — no new third party, and only active when
+  `VOX_RESEARCH_PROVIDER=anthropic` is set (default `mock`, zero network).
+- **The proposal engine cannot bypass the permission system**:
+  `approveProposal()` (`src/lib/cognition/proposals.ts`) calls the same
+  `enforceCapability()` used everywhere else — there is no separate,
+  weaker gate for proposal-triggered actions. The action registry it
+  dispatches to is a closed, hardcoded set of internal-only handlers (create
+  a memory relation, create a task, link two graph nodes); nothing in it
+  reaches outside VOX, so there is currently no proposal that *could*
+  perform an external side effect even if approved.
+
 ## User data rights
 
 - **Inspect**: every Memory is visible and readable in the Memory page — nothing is

@@ -5,31 +5,52 @@ holds your conversations, structured memory, projects, and an evolving (evidence
 never-fabricated) model of how you work — with chat, research, and reasoning built on
 top of it.
 
-This is **Phase 1**: a stable foundation, not the full future system. See
-[ARCHITECTURE.md](./ARCHITECTURE.md) for what's here and what's intentionally deferred.
+Phase 1 built the foundation; Phase 2 connected it into one working cognitive loop:
+retrieve relevant memory by meaning, ground reasoning in real external research, connect
+what's learned in a real graph, and — when something's worth acting on — propose it and
+wait for permission, never act silently. See [ARCHITECTURE.md](./ARCHITECTURE.md) and
+[PHASE_2_ARCHITECTURE.md](./PHASE_2_ARCHITECTURE.md) for the full design.
 
 ## What's included
 
-- **Chat** — streaming conversations with an AI provider, aware of your saved memories.
+- **Chat** — streaming conversations, grounded in memories retrieved by semantic
+  relevance (not just recency). Every response carries a **Context Inspector** you can
+  expand to see exactly which memories fed it, at what confidence and match strength.
 - **Memory** — explicit facts, preferences, goals, experiences, ideas, observations,
   hypotheses, and inferences, each with confidence, provenance, and source metadata.
-  Inspect, edit, delete, or export everything.
+  Semantic retrieval, explicit relationships (relates-to/supersedes/contradicts/
+  derived-from/supports), supersession, and on-demand contradiction detection — which
+  proposes a fix rather than silently rewriting anything. Inspect, edit, delete, or
+  export everything.
+- **Research** — real web research via Claude's native web_search tool (or a
+  zero-network mock, the default and always used in tests), with every result keeping
+  its source, retrieval time, relevance, and confidence — and grounded (cited) claims
+  kept structurally distinct from VOX's own uncited synthesis.
+- **Knowledge graph** — nodes with real foreign-key links to memories, projects, goals,
+  tasks, decisions, ideas, experiments, and research sources, plus freestanding people/
+  organization/concept nodes — queryable by the reasoning layer and explorable in the UI.
 - **Projects** — goals, tasks, decisions, ideas, and experiments (with recorded results).
-- **Cognition** — behavioral observations rolled up into a per-dimension profile
-  (focus, task switching, planning, etc.), plus neutral recurring-pattern detection
-  ("possible loop", never a diagnosis).
-- **Research** — a provider-agnostic research abstraction (mock provider in Phase 1;
-  every result keeps its source, retrieval time, relevance, and confidence).
-- **Knowledge graph** — minimal node/connection graph linking entities, goals, and topics.
+- **Cognition** — a per-dimension behavioral profile (focus, task switching, planning,
+  etc.), neutral recurring-pattern detection ("possible loop", never a diagnosis), and a
+  durable event timeline (task completed, goal changed, decision made, research
+  discovered, ...) that pattern detection reads from.
+- **Proposals** — VOX's "Observed X → connected it with Y → possible implication Z →
+  suggested action A → permission required" loop. Nothing executes until you approve it
+  in the Proposals inbox, approval runs a real permission check, and every outcome
+  (executed, denied, failed) is recorded.
 - **Permissions** — explicit capability levels (OBSERVE, ANALYZE, RECOMMEND, ASK, ACT).
-  VOX defaults to OBSERVE/ANALYZE; anything more consequential requires an explicit grant.
-- **Privacy** — local-first SQLite storage, encrypted sensitive fields, full data export,
-  full account/data deletion, and an audit log of consequential actions.
+  VOX defaults to OBSERVE/ANALYZE; anything more consequential — including every
+  proposal — requires an explicit grant.
+- **Privacy** — local-first SQLite storage, encrypted sensitive fields, a zero-network
+  local embedding provider by default (memory content never leaves the device unless
+  you opt into a real neural embedding provider), full data export, full account/data
+  deletion, and an audit log of consequential actions.
 
 ## Stack
 
 Next.js 16 (App Router, TypeScript) · Prisma 7 + SQLite · Tailwind CSS v4 · Vitest ·
-Anthropic SDK (behind a provider-agnostic abstraction).
+Anthropic SDK (behind a provider-agnostic abstraction, also used for real web research)
+· local hashed-embedding provider with an opt-in Voyage AI neural embedding provider.
 
 ## Getting started
 
@@ -52,7 +73,8 @@ See [.env.example](./.env.example) for the full list with descriptions. At minim
 | `DATABASE_URL` | SQLite file, e.g. `file:./prisma/dev.db` |
 | `VOX_ENCRYPTION_KEY` | 32-byte key (base64) encrypting memory/message content at rest — `openssl rand -base64 32` |
 | `VOX_SESSION_SECRET` | Signs session tokens — `openssl rand -base64 32` |
-| `ANTHROPIC_API_KEY` | Optional. Without it, VOX runs on a deterministic mock AI provider so the app is fully usable without a key. |
+| `ANTHROPIC_API_KEY` | Optional. Without it, VOX runs on a deterministic mock AI provider so the app is fully usable without a key. Also enables real research (`VOX_RESEARCH_PROVIDER=anthropic`). |
+| `VOYAGE_API_KEY` | Optional. Switches semantic memory from the local (zero-network) embedding provider to real neural embeddings — sends memory content to Voyage AI. See SECURITY.md. |
 
 ## Commands
 
@@ -70,18 +92,26 @@ See [DEVELOPMENT.md](./DEVELOPMENT.md) for the full workflow.
 
 ## Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — system design, domain model, extension points
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Phase 1 system design, domain model, extension points
+- [PHASE_2_ARCHITECTURE.md](./PHASE_2_ARCHITECTURE.md) — semantic memory, real research,
+  the knowledge graph, the event timeline, and the cognition proposal engine
 - [SECURITY.md](./SECURITY.md) — privacy architecture, permission model, threat model
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — environment setup, testing, workflow
 - [CLAUDE.md](./CLAUDE.md) — permanent rules for AI-assisted development on this repo
 
-## Known limitations (Phase 1)
+## Known limitations
 
 - Single local user account; no multi-tenant auth.
-- Research provider is a transparent mock — no live web search is wired up yet.
-- Cognitive observations and pattern detection are triggered on demand, not by a
-  background scheduler.
-- No vector/semantic memory retrieval yet — memory context injected into chat is
-  recency-ordered.
+- The default embedding provider is lexical/statistical (hashed term-frequency cosine
+  similarity), not a trained neural model — real semantic (synonym-aware) embeddings
+  are available opt-in via Voyage AI (`VOYAGE_API_KEY`).
+- The proposal engine's action registry only contains safe, internal VOX operations
+  (create a memory relation, create a task, link graph nodes) — no external integration
+  exists yet for it to gate, since Phase 2 intentionally does not add autonomous
+  consequential external actions.
+- Cognitive observations, pattern detection, and contradiction checks are triggered on
+  demand, not by a background scheduler.
+- The graph explorer is a list/detail view, not a force-directed visual canvas.
 
-See ARCHITECTURE.md → "Extension points" for how each of these is meant to be extended.
+See ARCHITECTURE.md → "Extension points" and PHASE_2_ARCHITECTURE.md for how each of
+these is meant to be extended.

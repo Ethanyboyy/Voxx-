@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
+import { ContextPanel, type ContextTrace } from "@/components/chat/ContextPanel";
 
 interface ConversationSummary {
   id: string;
@@ -17,6 +18,28 @@ interface ChatMessage {
   content: string;
   model?: string | null;
   pending?: boolean;
+  context?: ContextTrace;
+}
+
+interface RawMessage {
+  id: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  model: string | null;
+  meta: string | null;
+}
+
+function fromRawMessage(raw: RawMessage): ChatMessage {
+  let context: ContextTrace | undefined;
+  if (raw.meta) {
+    try {
+      const parsed = JSON.parse(raw.meta);
+      if (parsed?.context) context = parsed.context;
+    } catch {
+      // ignore malformed meta — context panel just won't show for this message
+    }
+  }
+  return { id: raw.id, role: raw.role, content: raw.content, model: raw.model, context };
 }
 
 export function ChatClient({ initialConversations }: { initialConversations: ConversationSummary[] }) {
@@ -34,7 +57,8 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
     fetch(`/api/conversations/${activeId}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setMessages(data.conversation?.messages ?? []);
+        const raw: RawMessage[] = data.conversation?.messages ?? [];
+        if (!cancelled) setMessages(raw.map(fromRawMessage));
       });
     return () => {
       cancelled = true;
@@ -111,7 +135,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           } else if (event.type === "message_stop") {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantMessage.id ? { ...m, id: event.messageId, model: event.model, pending: false } : m
+                m.id === assistantMessage.id
+                  ? { ...m, id: event.messageId, model: event.model, context: event.context, pending: false }
+                  : m
               )
             );
           } else if (event.type === "error") {
@@ -178,6 +204,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                     {m.content || (m.pending ? "…" : "")}
                   </div>
                   {m.model ? <span className="mt-1 text-xs text-muted">{m.model}</span> : null}
+                  {m.role === "ASSISTANT" && m.context ? <ContextPanel trace={m.context} /> : null}
                 </div>
               ))}
             </div>

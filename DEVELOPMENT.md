@@ -78,18 +78,30 @@ since they're testing that exact constraint.
 
 Coverage by area (`tests/*.test.ts`): memory (create/list/edit/delete/confidence/
 encryption), permissions (default policy, grant/revoke, audit events), AI provider
-abstraction (mock generate/stream, cost estimation), research (mock provider,
-persistence), projects/goals/tasks/decisions/ideas/experiments, cognitive observations
-(profile computation, pattern detection), auth (password hashing, sessions, single-user
-boundary, login), and API error handling (the shared `apiErrorResponse`/validation
-layer every route handler uses).
+abstraction (mock generate/stream, cost estimation), research (mock provider + the real
+Anthropic web-search provider's response parsing, tested against hand-built fixtures
+matching the SDK's real types — no live network needed), embeddings (local provider
+determinism/similarity ranking), semantic memory (retrieval ranking, relations,
+supersession, contradiction detection via an injected fake AI provider), knowledge
+graph (FK-linking, cascade delete, bounded BFS traversal), the durable event timeline
+(subject filtering, domain state-transition events), the cognition proposal engine
+(propose → permission-gated approve → execute → result, including the denied-permission
+path), chat context assembly (semantic ranking, the Context Inspector trace),
+projects/goals/tasks/decisions/ideas/experiments, cognitive observations (profile
+computation, pattern detection), auth (password hashing, sessions, single-user
+boundary, login), API error handling (the shared `apiErrorResponse`/validation layer
+every route handler uses), and one end-to-end integration test
+(`tests/integration-full-loop.test.ts`) exercising the complete observe → memory →
+research → graph → pattern → proposal → permission → result loop across real
+subsystems.
 
 Route handlers that call `cookies()` (`next/headers`) can't be invoked directly outside
 a real Next.js request context, so the full HTTP path (auth boundary, status codes) for
-those routes is verified by running the dev server and exercising it directly (`curl`),
-not by an automated integration-test harness — Phase 1 doesn't add one to keep the
-dependency surface small. Adding one (e.g. hitting a `next start` server in CI) is a
-reasonable next-phase addition if the API surface grows.
+those routes is verified by running the dev server and exercising it directly (`curl`
+plus a Playwright-driven click-through of the actual UI — approve/deny buttons,
+permission-denied states, graph node creation), not by an automated integration-test
+harness — kept out to keep the dependency surface small. Adding one (e.g. hitting a
+`next start` server in CI) is a reasonable next-phase addition if the API surface grows.
 
 ## Code style / structure
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Select, Textarea } from "@/components/ui/Field";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -38,6 +39,8 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [conflictStatus, setConflictStatus] = useState<Record<string, string>>({});
 
   async function handleCreate() {
     if (!content.trim()) return;
@@ -79,6 +82,19 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
       setMemories((prev) => prev.map((m) => (m.id === id ? { ...m, content: data.memory.content } : m)));
     }
     setEditingId(null);
+  }
+
+  async function checkContradictions(id: string) {
+    setCheckingId(id);
+    const res = await fetch(`/api/memories/${id}/check-contradictions`, { method: "POST" });
+    setCheckingId(null);
+    if (!res.ok) return;
+    const data = await res.json();
+    const count = data.proposals?.length ?? 0;
+    setConflictStatus((prev) => ({
+      ...prev,
+      [id]: count > 0 ? `${count} possible contradiction${count === 1 ? "" : "s"} proposed for review` : "No contradictions found",
+    }));
   }
 
   function handleExport() {
@@ -158,6 +174,9 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
                         <ConfidenceBadge confidence={m.confidence} />
                         <span className="text-xs text-muted">{new Date(m.createdAt).toLocaleDateString()}</span>
                         <div className="ml-auto flex gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => checkContradictions(m.id)} disabled={checkingId === m.id}>
+                            {checkingId === m.id ? "Checking..." : "Check for conflicts"}
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => startEdit(m)}>
                             Edit
                           </Button>
@@ -166,6 +185,19 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
                           </Button>
                         </div>
                       </div>
+                      {conflictStatus[m.id] ? (
+                        <p className="text-xs text-muted">
+                          {conflictStatus[m.id]}
+                          {conflictStatus[m.id].includes("proposed") ? (
+                            <>
+                              {" — "}
+                              <Link href="/proposals" className="text-accent underline">
+                                review in Proposals
+                              </Link>
+                            </>
+                          ) : null}
+                        </p>
+                      ) : null}
                     </>
                   )}
                 </CardContent>
