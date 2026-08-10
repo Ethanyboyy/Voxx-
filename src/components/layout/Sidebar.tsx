@@ -18,11 +18,23 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings" },
 ];
 
-export function Sidebar({ pendingProposalCount = 0 }: { pendingProposalCount?: number }) {
+export function Sidebar({
+  pendingProposalCount = 0,
+  onNavigate,
+  className,
+}: {
+  pendingProposalCount?: number;
+  /** Called after a nav link is clicked — used by the mobile drawer to close itself. */
+  onNavigate?: () => void;
+  className?: string;
+}) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex h-full w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3" aria-label="Primary">
+    <nav
+      className={cn("flex h-full w-64 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 sm:w-56", className)}
+      aria-label="Primary"
+    >
       <div className="mb-4 px-2 pt-1">
         <span className="text-sm font-semibold tracking-tight text-foreground">VOX</span>
         <p className="text-xs text-muted">Cognitive Operating System</p>
@@ -33,8 +45,9 @@ export function Sidebar({ pendingProposalCount = 0 }: { pendingProposalCount?: n
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={cn(
-              "flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:py-2",
               active ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
             )}
             aria-current={active ? "page" : undefined}

@@ -49,6 +49,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -156,31 +157,70 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
     navigator.clipboard.writeText(text);
   }
 
+  const conversationList = (
+    <>
+      <Button size="sm" variant="secondary" onClick={handleNewConversation} className="mb-3">
+        New conversation
+      </Button>
+      <div className="flex flex-col gap-1 overflow-y-auto scrollbar-thin">
+        {conversations.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => {
+              setActiveId(c.id);
+              setListOpen(false);
+            }}
+            className={cn(
+              "truncate rounded-lg px-3 py-2.5 text-left text-sm sm:py-2",
+              c.id === activeId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover"
+            )}
+          >
+            {c.title}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-full w-full">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border p-3 md:flex">
-        <Button size="sm" variant="secondary" onClick={handleNewConversation} className="mb-3">
-          New conversation
-        </Button>
-        <div className="flex flex-col gap-1 overflow-y-auto scrollbar-thin">
-          {conversations.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setActiveId(c.id)}
-              className={cn(
-                "truncate rounded-lg px-3 py-2 text-left text-sm",
-                c.id === activeId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover"
-              )}
-            >
-              {c.title}
-            </button>
-          ))}
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-border p-3 md:flex">{conversationList}</aside>
+
+      {/* Mobile: conversation list lives in a drawer — the desktop <aside> above
+          is hidden below md, so this is the only way to start/switch conversations
+          on a phone. */}
+      {listOpen ? (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close conversation list"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setListOpen(false)}
+          />
+          <div
+            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-surface p-3 shadow-xl"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
+            {conversationList}
+          </div>
         </div>
-      </aside>
+      ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-border px-6 py-3">
-          <h1 className="text-sm font-semibold text-foreground">Chat</h1>
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Conversations"
+              className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-foreground md:hidden"
+              onClick={() => setListOpen(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M3 5h14M3 10h10M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <h1 className="text-sm font-semibold text-foreground">Chat</h1>
+          </div>
           <Button size="sm" variant="ghost" onClick={exportConversation} disabled={messages.length === 0}>
             Copy conversation
           </Button>
@@ -212,7 +252,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           {error ? <p className="mx-auto mt-4 max-w-2xl text-sm text-danger">{error}</p> : null}
         </div>
 
-        <div className="border-t border-border p-4">
+        <div className="border-t border-border p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <Textarea
               value={input}

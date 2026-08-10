@@ -110,6 +110,14 @@ enforcement, encryption). In short: UI in `src/components/`, routes in `src/app/
 all business logic in `src/lib/*` services — pages and route handlers should stay thin
 and call into a service function rather than embedding Prisma calls directly.
 
+## Deployment
+
+VOX is meant to run as a persistent, always-on cloud instance, not only on localhost —
+see [DEPLOYMENT.md](./DEPLOYMENT.md) for the Fly.io runbook, `Dockerfile` /
+`docker-entrypoint.sh` for the production container, and `SECURITY.md` → "Remote access
+hardening" for what changes when VOX is internet-reachable (CSRF/Origin checks on
+mutating requests, login rate limiting, security headers, SQLite WAL mode).
+
 ## Upgrading Next.js
 
 This project pins to whatever `create-next-app` generated at the time (Next.js 16),

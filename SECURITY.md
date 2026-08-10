@@ -33,6 +33,36 @@ OAuth, or external identity provider — this is intentional, not a stopgap:
 - Every API route handler calls `requireUser()` (`src/lib/api/helpers.ts`) first — this
   is the single auth boundary for the entire API surface. There is no route that skips
   it except `/api/auth/*` itself.
+- The one-time registration is race-proof, not just first-request-wins: `registerFirstUser()`
+  (`src/lib/auth/service.ts`) wraps the "does a user already exist" check and the
+  `User` creation in a single database transaction, so two simultaneous first-registration
+  requests can't both observe zero users and both succeed.
+
+## Remote access hardening (cloud deployment)
+
+VOX is designed to run as a single always-on instance reachable from the internet (see
+`DEPLOYMENT.md`) rather than only on localhost. These protections exist specifically
+because of that:
+
+- **CSRF / cross-origin defense in depth**: `src/proxy.ts` runs before every `/api/*`
+  request and rejects any state-changing request (`POST`/`PUT`/`PATCH`/`DELETE`) whose
+  `Origin` (or `Referer`, as a fallback) header doesn't match the request's own `Host`.
+  The `sameSite=lax` session cookie already blocks the classic cross-site form-post
+  attack; this is an explicit second layer rather than relying on cookie behavior alone.
+- **Brute-force protection**: `src/proxy.ts` rate-limits `POST /api/auth/login` and
+  `POST /api/auth/register` per source IP (`src/lib/security/rate-limit.ts`, in-memory —
+  intentional at this scale, see that file's comment) — 10 attempts per 5 minutes.
+- **Security headers**: `next.config.ts` sets `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy` denying camera/microphone/geolocation (VOX uses none of them),
+  and `Strict-Transport-Security` on every response.
+- **Health check leaks nothing**: `GET /api/health` is intentionally unauthenticated
+  (deployment platforms need to probe it without credentials) but returns only
+  `{ status: "ok" | "unavailable" }` — no version string, no environment details.
+- **WAL mode**: `src/lib/db.ts` enables SQLite's WAL journal mode on startup so readers
+  aren't blocked by a writer — relevant once phone and laptop can both have requests in
+  flight against the same instance, not just a theoretical concern once VOX isn't tied
+  to one local process anymore.
 
 ## Agency / permission model
 

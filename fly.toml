@@ -1,0 +1,38 @@
+# Fly.io app config for VOX. Written by hand (this sandbox cannot reach
+# fly.io to validate it against a live `fly launch`) — see DEPLOYMENT.md
+# before your first deploy: if `fly launch` offers to regenerate this file,
+# decline and keep this version so the volume mount / always-on / health
+# check settings below aren't lost.
+#
+# app name must be globally unique on Fly — change it before first deploy.
+app = "vox-personal"
+primary_region = "iad" # pick the Fly region closest to you; see `fly platform regions`
+
+[build]
+
+[env]
+  # SQLite file lives on the mounted volume below, not in the image.
+  DATABASE_URL = "file:/data/prod.db"
+  NODE_ENV = "production"
+
+[[mounts]]
+  source = "vox_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false   # always-on: never scale to zero on idle
+  auto_start_machines = true
+  min_machines_running = 1     # always at least one instance up
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

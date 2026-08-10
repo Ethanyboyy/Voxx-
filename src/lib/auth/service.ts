@@ -11,17 +11,27 @@ export async function hasAnyUser(): Promise<boolean> {
   return count > 0;
 }
 
+/**
+ * The count-then-create is wrapped in one transaction rather than two
+ * separate awaited calls — SQLite serializes writers, so two concurrent
+ * registration requests can no longer both observe "no user yet" and both
+ * create an account. The plain hasAnyUser() check above remains fine for
+ * read-only "is setup needed" UI decisions.
+ */
 export async function registerFirstUser(email: string, password: string, name?: string) {
-  if (await hasAnyUser()) {
-    throw new AuthError("An account already exists. VOX is single-user in Phase 1.");
-  }
   if (password.length < 10) {
     throw new AuthError("Password must be at least 10 characters.");
   }
 
   const passwordHash = await hashPassword(password);
-  const user = await db.user.create({
-    data: { email: email.toLowerCase().trim(), passwordHash, name },
+  const user = await db.$transaction(async (tx) => {
+    const existing = await tx.user.count();
+    if (existing > 0) {
+      throw new AuthError("An account already exists. VOX is single-user in Phase 1.");
+    }
+    return tx.user.create({
+      data: { email: email.toLowerCase().trim(), passwordHash, name },
+    });
   });
   await recordEvent({ userId: user.id, type: "auth.user_registered" });
   return user;

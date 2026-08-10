@@ -50,6 +50,15 @@ wait for permission, never act silently. See [ARCHITECTURE.md](./ARCHITECTURE.md
   local embedding provider by default (memory content never leaves the device unless
   you opt into a real neural embedding provider), full data export, full account/data
   deletion, and an audit log of consequential actions.
+- **Mobile-first, installable** — a responsive nav drawer, mobile-usable chat
+  conversation switcher, 44pt touch targets on touch devices, iOS safe-area support, and
+  a web manifest + Apple touch icon so VOX can be added to an iPhone home screen and
+  launched full-screen like an app.
+- **Cloud-deployable** — designed to run as a single always-on instance (see
+  [DEPLOYMENT.md](./DEPLOYMENT.md)), with the hardening that implies: CSRF/Origin
+  checks and login rate limiting in `src/proxy.ts`, security headers, and an
+  unauthenticated `/api/health` check for the platform's health probes. See
+  `SECURITY.md` → "Remote access hardening".
 
 ## Stack
 

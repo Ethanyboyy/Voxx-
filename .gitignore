@@ -44,8 +44,12 @@ next-env.d.ts
 # prisma
 /prisma/dev.db
 /prisma/dev.db-journal
+/prisma/dev.db-shm
+/prisma/dev.db-wal
 /prisma/test.db
 /prisma/test.db-journal
+/prisma/test.db-shm
+/prisma/test.db-wal
 /src/generated/
 
 # vox local data

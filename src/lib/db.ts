@@ -34,8 +34,20 @@ declare global {
 
 // Reuse the client across hot reloads in dev so we don't exhaust SQLite
 // connections; a fresh client per process in production/test.
+const isNewClient = !globalThis.__voxPrisma;
 export const db = globalThis.__voxPrisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.__voxPrisma = db;
+}
+
+// WAL mode lets readers proceed concurrently with a writer instead of
+// blocking on SQLite's default rollback-journal exclusive lock — matters
+// once phone and laptop can both have requests in flight against the same
+// always-on instance. Safe to set unconditionally: WAL is a durable,
+// persistent setting written into the database file itself.
+if (isNewClient) {
+  db.$executeRawUnsafe("PRAGMA journal_mode=WAL;").catch((error) => {
+    console.error("Failed to enable SQLite WAL mode:", error);
+  });
 }

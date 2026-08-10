@@ -1,8 +1,10 @@
 import { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef } from "react";
 import { cn } from "@/lib/utils/cn";
 
+// text-base (16px), not text-sm (14px): iOS Safari auto-zooms the viewport
+// on focus for any form field under 16px computed font size.
 const fieldClasses =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring sm:text-sm";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...props },
