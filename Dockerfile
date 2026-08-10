@@ -4,12 +4,18 @@
 # doesn't matter, so correctness wins over a smaller image.
 #
 # node:22-slim (Debian, glibc) rather than an Alpine base: better-sqlite3
-# ships prebuilt glibc binaries, so this avoids needing a C++ toolchain in
-# the image at all. Matches the Node version this app is developed against
-# (see DEVELOPMENT.md).
+# ships prebuilt glibc binaries for most platforms, so this usually avoids
+# needing a C++ toolchain at all. But the deps stage still installs one as a
+# fallback — if the builder's exact platform has no matching prebuild, npm
+# falls back to compiling from source via node-gyp, which needs python3/make/
+# g++ and silently fails without them. Only affects this build stage's image,
+# not the final runtime image (the compiled node_modules are copied forward,
+# the compiler isn't).
 
 FROM node:22-slim AS deps
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 
