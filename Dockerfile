@@ -14,13 +14,19 @@
 
 FROM node:22-slim AS deps
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ openssl \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: this stage only has package.json/package-lock.json, not
+# prisma/schema.prisma, so the "postinstall": "prisma generate" script would
+# fail here with "Could not find Prisma Schema" — it runs explicitly below in
+# the builder stage instead, once the full source is actually present.
+RUN npm ci --ignore-scripts
 
 FROM node:22-slim AS builder
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # DATABASE_URL only needs to be well-formed for `next build` (no queries run
@@ -34,6 +40,8 @@ FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system vox && useradd --system --gid vox --home /app vox
 
 COPY --from=builder /app/node_modules ./node_modules
