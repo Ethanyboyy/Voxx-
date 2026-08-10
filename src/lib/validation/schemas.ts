@@ -235,3 +235,30 @@ export const grantPermissionSchema = z.object({
 export const revokePermissionSchema = z.object({
   capability: z.string().min(1).max(200),
 });
+
+export const connectionServiceSchema = z.enum([
+  "GOOGLE_CALENDAR",
+  "GOOGLE_GMAIL",
+  "NOTION",
+  "TODOIST",
+  "CRAFT",
+  "QUICKBOOKS",
+  "PLAID",
+  "APPLE_HEALTH",
+  "GOOGLE_FIT",
+  "GOOGLE_MAPS",
+  "AMAZON_ORDERS",
+  "ETSY",
+  "PRINTFUL",
+  "PRINTIFY",
+]);
+
+export const suggestConnectionSchema = z.object({
+  service: connectionServiceSchema,
+  reason: z.string().max(2000).optional(),
+});
+
+export const grantConnectionAccessSchema = z.object({
+  read: z.boolean().optional(),
+  write: z.boolean().optional(),
+});

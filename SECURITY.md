@@ -11,8 +11,10 @@ architectural requirement, not an add-on.
   decrypted only by the service layer that returns them to an authenticated request.
   The encryption key (`VOX_ENCRYPTION_KEY`) lives only in the environment — never in
   the database or source control.
-- **No secrets in the schema**: `Integration.config` is documented as non-secret JSON
+- **No secrets in the schema**: `Connection.config` is documented as non-secret JSON
   only; API keys belong in environment variables (see `.env.example`), never in the DB.
+  Real integration credentials live encrypted in `ConnectionCredential.encryptedPayload`
+  — see "Connections Hub" below.
 
 ## Authentication
 
@@ -90,6 +92,54 @@ features specifically so they can be added later without retrofitting a security
   reaches outside VOX, so there is currently no proposal that *could*
   perform an external side effect even if approved.
 
+## Connections Hub — external integrations
+
+VOX's "Connections Hub" (`/connections`, `src/lib/connections/service.ts`,
+`src/lib/integrations/`) is the trust/control layer every external
+integration must pass through, not a settings page. Nothing described here
+can currently reach a real external account:
+
+- **Provider layer is stubbed by construction, not just by policy.** Every
+  service (Google Calendar, Gmail, Notion, Todoist, Craft, QuickBooks,
+  Plaid, Apple Health, Google Fit, Google Maps, Amazon order history, Etsy,
+  Printful, Printify — see `src/lib/integrations/catalog.ts`) resolves to
+  `StubConnectionProvider` (`src/lib/integrations/stub.ts`), which reports
+  `isConfigured: false` unless every vendor env var the catalog lists is
+  present, and throws on any authorization/exchange attempt regardless. No
+  real vendor OAuth client is registered anywhere in this codebase.
+- **Lifecycle**: `NOT_CONNECTED → PROPOSED → AWAITING_APPROVAL → CONNECTING
+  → CONNECTED → PAUSED / REVOKED` (plus `ERROR`). A connection can only
+  reach `CONNECTED` via a real provider's `exchangeCode()` succeeding —
+  today that call always throws, so every "connect" attempt ends at
+  `ERROR` with a "not configured" reason.
+- **Suggested connections are Proposals.** VOX recommending a connection
+  reuses the existing proposal engine (`connection.propose` in
+  `src/lib/cognition/proposals.ts`'s `ACTION_HANDLERS`) rather than a
+  parallel suggestion system. Approving that proposal is permission-gated
+  by the same `enforceCapability()` as everything else and only moves the
+  connection to `AWAITING_APPROVAL` — it never grants access by itself.
+- **Read/write access is a separate, explicit grant.** `grantAccess()`
+  requires **read at `RECOMMEND` and write at `ACT`** — both capability
+  levels sit above the default-allow band (`ANALYZE`), so an integration
+  capability is never silently available; every service's exact capability
+  keys are defined once in the catalog rather than constructed ad hoc at a
+  call site. Sensitive categories (financial, health, location) default to
+  read-only (no write grant offered, or off by default where a write mode
+  exists) per `writeEnabledByDefault: false` in the catalog.
+- **Credentials and cached data are encrypted at rest** the same way as
+  `Memory.content` (`encryptField`/`decryptField`, AES-256-GCM) —
+  `ConnectionCredential.encryptedPayload` and
+  `ConnectionCachedItem.payload`. Non-secret configuration only ever lives
+  in `Connection.config`, mirroring the old `Integration.config` rule.
+- **Revocation actually destroys the secret.** `revokeConnection()` deletes
+  the `ConnectionCredential` row outright (not a status flag) and revokes
+  both permission grants; cached data is untouched by that call — deleting
+  history is the separate, explicit `deleteCachedData()`.
+- Every lifecycle transition (proposed, approved, access granted, connect
+  failed, paused, resumed, revoked, cache deleted) writes an `Event` via
+  `src/lib/observability/events.ts`, so the audit log covers this subsystem
+  exactly like every other consequential action in VOX.
+
 ## User data rights
 
 - **Inspect**: every Memory is visible and readable in the Memory page — nothing is
@@ -106,8 +156,8 @@ features specifically so they can be added later without retrofitting a security
 
 Per the build spec, VOX does not automatically collect microphone, camera, browser
 activity, location, raw keystrokes, or health information. No integration is enabled
-by default; the `Integration` + `Permission` models exist so future integrations are
-opt-in and scoped, not blanket.
+by default; the Connections Hub (`Connection` + `Permission` models — see above) exists
+so future integrations are opt-in and scoped, not blanket.
 
 ## Observability without over-collection
 

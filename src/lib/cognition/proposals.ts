@@ -4,7 +4,8 @@ import { recordEvent } from "@/lib/observability/events";
 import { createMemoryRelation } from "@/lib/memory/relations";
 import { createTask } from "@/lib/projects/service";
 import { createConnection } from "@/lib/knowledge/service";
-import type { CapabilityLevel, Confidence } from "@/generated/prisma/enums";
+import { approveConnection } from "@/lib/connections/service";
+import type { CapabilityLevel, Confidence, ConnectionService } from "@/generated/prisma/enums";
 
 export interface CreateProposalInput {
   userId: string;
@@ -108,6 +109,14 @@ const ACTION_HANDLERS: Record<string, ActionHandler> = {
     });
     if (!connection) throw new Error("One or both knowledge nodes were not found.");
     return `Linked two knowledge graph nodes ("${payload.relation}").`;
+  },
+  // Moves a Connections Hub row from PROPOSED to AWAITING_APPROVAL — never
+  // grants access itself (that's grantAccess in src/lib/connections/service.ts,
+  // a separate explicit step). Safe, internal-only: this handler cannot reach
+  // an external service or CONNECTED status.
+  "connection.propose": async (userId, payload) => {
+    const connection = await approveConnection(userId, payload.service as ConnectionService);
+    return `"${connection.displayName}" is now awaiting your approval in the Connections Hub.`;
   },
 };
 

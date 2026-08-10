@@ -63,7 +63,7 @@ model User {
   knowledgeNodes  KnowledgeNode[]
   knowledgeEdges  KnowledgeConnection[]
   permissions     Permission[]
-  integrations    Integration[]
+  connections     Connection[]
   events          Event[]
   proposals       Proposal[]
 }
@@ -585,19 +585,118 @@ model Permission {
   @@unique([userId, capability])
 }
 
-model Integration {
-  id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  /// e.g. "anthropic", "research-mock".
-  name      String
-  enabled   Boolean  @default(false)
-  /// Non-secret JSON configuration only — never store API keys here.
-  config    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ---------------------------------------------------------------------------
+// Connections Hub — external-integration trust/control layer (Phase 2.5)
+// ---------------------------------------------------------------------------
+//
+// Every future external capability (email, calendar, financial data, tasks,
+// health, location, shopping, print-on-demand, ...) is represented here as a
+// Connection, gated by the same Permission/enforceCapability() system used
+// everywhere else. Connections start at NOT_CONNECTED and can only reach
+// CONNECTED through explicit user approval — see SECURITY.md. No provider in
+// this codebase can complete that transition until real vendor credentials
+// are supplied via environment variables; see src/lib/integrations/.
 
-  @@unique([userId, name])
+enum ConnectionCategory {
+  EMAIL_CALENDAR
+  FINANCIAL
+  TASKS_NOTES
+  HEALTH_FITNESS
+  LOCATION_MAPS
+  SHOPPING
+  ETSY
+  PRINT_ON_DEMAND
+}
+
+enum ConnectionService {
+  GOOGLE_CALENDAR
+  GOOGLE_GMAIL
+  NOTION
+  TODOIST
+  CRAFT
+  QUICKBOOKS
+  PLAID
+  APPLE_HEALTH
+  GOOGLE_FIT
+  GOOGLE_MAPS
+  AMAZON_ORDERS
+  ETSY
+  PRINTFUL
+  PRINTIFY
+}
+
+/// NOT_CONNECTED -> PROPOSED -> AWAITING_APPROVAL -> CONNECTING -> CONNECTED
+/// -> PAUSED / REVOKED. ERROR can follow a failed CONNECTING attempt. Nothing
+/// in this codebase can currently drive a connection past AWAITING_APPROVAL —
+/// see src/lib/integrations/stub.ts.
+enum ConnectionStatus {
+  NOT_CONNECTED
+  PROPOSED
+  AWAITING_APPROVAL
+  CONNECTING
+  CONNECTED
+  PAUSED
+  REVOKED
+  ERROR
+}
+
+model Connection {
+  id              String             @id @default(uuid())
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  category        ConnectionCategory
+  service         ConnectionService
+  displayName     String
+  status          ConnectionStatus   @default(NOT_CONNECTED)
+  /// Permission capability key for read access, e.g. "integration.google_calendar.read".
+  readCapability  String
+  /// Permission capability key for write access, or null if this service has no write mode.
+  writeCapability String?
+  /// Denormalized mirror of the read Permission grant, kept in sync by src/lib/connections/service.ts.
+  readEnabled     Boolean            @default(false)
+  writeEnabled    Boolean            @default(false)
+  /// Why this was suggested, or the last connect/error message.
+  statusReason    String?
+  lastSyncedAt    DateTime?
+  /// Non-secret JSON configuration only — never store API keys/tokens here.
+  config          String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  credential  ConnectionCredential?
+  cachedItems ConnectionCachedItem[]
+
+  @@unique([userId, service])
+}
+
+/// Encrypted OAuth/API credentials for a Connection. Deleted outright (not
+/// flagged) by revokeConnection() — see SECURITY.md.
+model ConnectionCredential {
+  id               String     @id @default(uuid())
+  connection       Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connectionId     String     @unique
+  /// encryptField()-encoded JSON: access/refresh token, scope, etc.
+  encryptedPayload String
+  expiresAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+/// Cached external data fetched through a Connection — same sensitivity as
+/// Memory.content, so it's encrypted the same way. Deletable independently of
+/// revoking the connection itself via deleteCachedData().
+model ConnectionCachedItem {
+  id           String     @id @default(uuid())
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connectionId String
+  externalId   String
+  /// e.g. "event", "email", "task", "transaction", "order".
+  kind         String
+  /// encryptField()-encoded external content.
+  payload      String
+  fetchedAt    DateTime   @default(now())
+
+  @@unique([connectionId, externalId])
 }
 
 /// Append-only audit log AND durable domain timeline: every consequential

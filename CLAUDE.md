@@ -12,9 +12,10 @@ before making structural changes. These rules apply to every change, not just Ph
    `node_modules/<pkg>` types/docs or run `npm view <pkg> version` before
    assuming an API shape, especially for Next.js, Prisma, and the Anthropic SDK.
 2. Keep AI-provider code behind `src/lib/ai/`, research-provider code behind
-   `src/lib/research/`, and embedding-provider code behind `src/lib/embeddings/`
-   — never call `@anthropic-ai/sdk`, `voyageai`, or any future provider SDK
-   outside its dedicated abstraction module.
+   `src/lib/research/`, embedding-provider code behind `src/lib/embeddings/`,
+   and external-integration provider code behind `src/lib/integrations/` —
+   never call `@anthropic-ai/sdk`, `voyageai`, a vendor OAuth/API client, or
+   any future provider SDK outside its dedicated abstraction module.
 3. Memory confidence is never silently upgraded. An inference stays an
    inference (`MemoryCategory.INFERENCE` / low `Confidence`) until a human
    or a corroborating explicit fact promotes it. The same posture applies to
@@ -45,6 +46,15 @@ before making structural changes. These rules apply to every change, not just Ph
 9. New domain features need: a Prisma model/field (if needed), a service
    function in `src/lib/`, a route handler in `src/app/api/`, a test in
    `tests/`, and a UI surface if user-facing.
+10. Every external integration (Connections Hub — `src/lib/connections/`,
+    `src/lib/integrations/`) is defined once in
+    `src/lib/integrations/catalog.ts`: read access requires `RECOMMEND`,
+    write requires `ACT`, both granted only via `grantAccess()` (which
+    itself calls the real `grantPermission()` — never a bypass). A service
+    can only report `isConfigured: true` when its real vendor env vars are
+    present; do not add a `ConnectionProvider` that fakes a successful
+    connect. `revokeConnection()` must keep deleting the
+    `ConnectionCredential` row outright, not just flag it.
 
 ## Commands
 
@@ -69,6 +79,9 @@ before making structural changes. These rules apply to every change, not just Ph
 - `src/lib/cognition/` — observations, hypotheses, pattern detection, cognitive
   profile, and the proposal engine (`proposals.ts`)
 - `src/lib/knowledge/`, `src/lib/permissions/`, `src/lib/observability/` — domain services
+- `src/lib/integrations/` — provider-agnostic external-integration abstraction (catalog +
+  stub provider); `src/lib/connections/` — the Connections Hub service layer (lifecycle,
+  access grants, revocation) built on top of it
 - `src/lib/auth/` — password hashing + session cookies
 - `src/components/` — UI
 - `prisma/schema.prisma` — domain model (see `ARCHITECTURE.md` and

@@ -45,7 +45,7 @@ Core Concepts from the spec and where they live:
 | Experiment / ExperimentResult | `Experiment`, `ExperimentResult` |
 | ResearchItem | `ResearchItem` |
 | KnowledgeNode / KnowledgeConnection | `KnowledgeNode`, `KnowledgeConnection` |
-| Permission / Integration / Event | `Permission`, `Integration`, `Event` |
+| Permission / Connection / Event | `Permission`, `Connection`, `ConnectionCredential`, `ConnectionCachedItem`, `Event` |
 
 Every model that holds anything resembling a "confidence" (Memory, Observation,
 Hypothesis, Pattern, ExperimentResult, ResearchItem) uses the shared `Confidence` enum
@@ -128,6 +128,8 @@ the database — see SECURITY.md.
   only touches that one function.
 - **Background cognition jobs**: `detectPatterns()` is a plain async function with no
   scheduler dependency — wiring it to a cron/queue is additive.
-- **New Integration types**: the `Integration` + `Permission` models already support
-  arbitrary capability keys; a new integration is a new capability string plus whatever
-  service code calls `enforceCapability()` before acting.
+- **New external integrations**: the Connections Hub (`Connection` +
+  `Permission` models, `src/lib/connections/service.ts`,
+  `src/lib/integrations/`) already supports arbitrary services — a new
+  integration is a new catalog entry plus a real `ConnectionProvider`
+  implementation; see SECURITY.md for the trust model.

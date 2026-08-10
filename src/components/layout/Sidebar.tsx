@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/cognition", label: "Cognition" },
   { href: "/graph", label: "Graph" },
   { href: "/proposals", label: "Proposals" },
+  { href: "/connections", label: "Connections" },
   { href: "/projects", label: "Projects" },
   { href: "/experiments", label: "Experiments" },
   { href: "/research", label: "Research" },

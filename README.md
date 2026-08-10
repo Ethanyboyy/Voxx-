@@ -41,6 +41,11 @@ wait for permission, never act silently. See [ARCHITECTURE.md](./ARCHITECTURE.md
 - **Permissions** — explicit capability levels (OBSERVE, ANALYZE, RECOMMEND, ASK, ACT).
   VOX defaults to OBSERVE/ANALYZE; anything more consequential — including every
   proposal — requires an explicit grant.
+- **Connections Hub** — the trust/control layer for future external integrations (email/
+  calendar, financial, tasks/notes, health/fitness, location, shopping, Etsy, print-on-
+  demand): propose → approve → grant read/write → connect → pause/revoke → delete cached
+  data, all permission-gated and audited. Every provider is a stub today — nothing can
+  actually authorize a real account yet (see "Known limitations").
 - **Privacy** — local-first SQLite storage, encrypted sensitive fields, a zero-network
   local embedding provider by default (memory content never leaves the device unless
   you opt into a real neural embedding provider), full data export, full account/data
@@ -105,10 +110,16 @@ See [DEVELOPMENT.md](./DEVELOPMENT.md) for the full workflow.
 - The default embedding provider is lexical/statistical (hashed term-frequency cosine
   similarity), not a trained neural model — real semantic (synonym-aware) embeddings
   are available opt-in via Voyage AI (`VOYAGE_API_KEY`).
-- The proposal engine's action registry only contains safe, internal VOX operations
-  (create a memory relation, create a task, link graph nodes) — no external integration
-  exists yet for it to gate, since Phase 2 intentionally does not add autonomous
-  consequential external actions.
+- The proposal engine's action registry contains safe, internal VOX operations (create a
+  memory relation, create a task, link graph nodes) plus one Connections Hub handler
+  (`connection.propose`) that only moves a connection to "awaiting approval" — nothing in
+  the registry reaches an external service, since Phase 2 intentionally does not add
+  autonomous consequential external actions.
+- The Connections Hub (`/connections`) is a fully working trust/control layer — lifecycle,
+  permission gating, encrypted credential storage, revocation, cached-data deletion — for
+  13 external services across 8 categories, but every provider is a stub: no real vendor
+  OAuth client is registered, so no connection can actually reach `CONNECTED`. See
+  SECURITY.md → "Connections Hub".
 - Cognitive observations, pattern detection, and contradiction checks are triggered on
   demand, not by a background scheduler.
 - The graph explorer is a list/detail view, not a force-directed visual canvas.
