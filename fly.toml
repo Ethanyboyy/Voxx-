@@ -4,8 +4,8 @@
 # decline and keep this version so the volume mount / always-on / health
 # check settings below aren't lost.
 #
-# app name must be globally unique on Fly — change it before first deploy.
-app = "vox-personal"
+# app name must be globally unique on Fly.
+app = "vox-ethansly04"
 primary_region = "iad" # pick the Fly region closest to you; see `fly platform regions`
 
 [build]

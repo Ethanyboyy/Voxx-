@@ -1,0 +1,50 @@
+name: Deploy VOX to Fly.io
+
+# Runs entirely on GitHub's infrastructure — deliberately not Fly's own
+# "Launch" wizard, which (as of this writing) has a real bug where retrying
+# a launch after Tigris object storage was already provisioned fails with
+# "project already exists" instead of skipping it. `flyctl deploy` (unlike
+# `flyctl launch`) never touches Tigris/extras at all, so this sidesteps
+# that entirely. Every step below is safe to re-run.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/vox-phase-1-build-mc2mzf]
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP_NAME: vox-ethansly04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Ensure the app exists
+        run: |
+          flyctl apps create "$APP_NAME" --org ethansly04-gmail-com || echo "App already exists, continuing."
+
+      - name: Ensure the data volume exists
+        run: |
+          if ! flyctl volumes list --app "$APP_NAME" | grep -q vox_data; then
+            flyctl volumes create vox_data --app "$APP_NAME" --region iad --size 1 --yes
+          else
+            echo "Volume already exists, continuing."
+          fi
+
+      - name: Set application secrets
+        run: |
+          flyctl secrets set \
+            VOX_ENCRYPTION_KEY="${{ secrets.VOX_ENCRYPTION_KEY }}" \
+            VOX_SESSION_SECRET="${{ secrets.VOX_SESSION_SECRET }}" \
+            --app "$APP_NAME"
+
+      - name: Deploy
+        run: flyctl deploy --remote-only --app "$APP_NAME" --config fly.toml
