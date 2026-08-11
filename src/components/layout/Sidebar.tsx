@@ -9,19 +9,19 @@ import { VoxCore } from "@/components/vox/VoxCore";
 function Icon(props: SVGProps<SVGSVGElement>) {
   return <svg width="17" height="17" viewBox="0 0 20 20" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props} />;
 }
-const IconHome = (p: SVGProps<SVGSVGElement>) => (
+export const IconHome = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <path d="M3 9.5 10 3l7 6.5" stroke="currentColor" />
     <path d="M5 8.5V16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5" stroke="currentColor" />
   </Icon>
 );
-const IconBrain = (p: SVGProps<SVGSVGElement>) => (
+export const IconBrain = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <circle cx="10" cy="10" r="6.5" stroke="currentColor" />
     <path d="M10 3.5v13M6 6.2l8 7.6M14 6.2l-8 7.6" stroke="currentColor" opacity="0.7" />
   </Icon>
 );
-const IconChat = (p: SVGProps<SVGSVGElement>) => (
+export const IconChat = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <path d="M3 4.5h14a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H8l-4 3v-3H3a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" />
   </Icon>
@@ -63,7 +63,7 @@ const IconPlug = (p: SVGProps<SVGSVGElement>) => (
     <path d="M7 3v4M13 3v4M5 7h10v2a5 5 0 0 1-5 5 5 5 0 0 1-5-5V7ZM10 14v3" stroke="currentColor" />
   </Icon>
 );
-const IconFolder = (p: SVGProps<SVGSVGElement>) => (
+export const IconFolder = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <path d="M3 6a1 1 0 0 1 1-1h4l1.5 2H16a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6Z" stroke="currentColor" strokeLinejoin="round" />
   </Icon>

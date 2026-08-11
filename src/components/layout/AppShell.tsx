@@ -2,6 +2,7 @@
 
 import { type ReactNode, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { LogoutButton } from "@/components/layout/LogoutButton";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -75,8 +76,10 @@ export function AppShell({
             <LogoutButton />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto scrollbar-thin">{children}</main>
+        <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 md:pb-0">{children}</main>
       </div>
+
+      <MobileBottomNav onMore={() => setDrawerOpen(true)} />
     </div>
   );
 }

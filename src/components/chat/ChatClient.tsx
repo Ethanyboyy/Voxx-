@@ -286,11 +286,28 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                 <button
                   type="button"
                   onClick={() => (stt.listening ? stt.stop() : stt.start())}
-                  className="flex flex-col items-center gap-4 sm:hidden"
+                  className="mt-6 flex flex-col items-center gap-6 sm:hidden"
                   aria-label={stt.listening ? "Stop listening" : "Tap to talk to VOX"}
                 >
-                  <VoxCore state={stt.listening ? "listening" : "idle"} size="xl" />
-                  <p className="text-sm font-medium text-foreground">
+                  <span className="relative flex h-64 w-64 items-center justify-center">
+                    <span
+                      className="absolute inset-0 rounded-full blur-2xl"
+                      style={{
+                        background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
+                        opacity: stt.listening ? 0.55 : 0.32,
+                      }}
+                    />
+                    <span
+                      className="absolute inset-6 rounded-full border"
+                      style={{
+                        borderColor: "var(--accent)",
+                        opacity: 0.4,
+                        animation: stt.listening ? "vox-ambient-pulse 2.4s ease-in-out infinite" : undefined,
+                      }}
+                    />
+                    <VoxCore state={stt.listening ? "listening" : "idle"} size="xl" />
+                  </span>
+                  <p className="text-base font-medium text-foreground">
                     {stt.listening ? "Listening…" : "Tap to talk to VOX"}
                   </p>
                 </button>

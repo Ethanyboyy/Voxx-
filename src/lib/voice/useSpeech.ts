@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+// Never fires — these APIs' availability doesn't change after page load, so
+// there's nothing to subscribe to. useSyncExternalStore still gives the
+// hydration-safe behavior we need: real value on the client, `false` for
+// the server-rendered snapshot, no effect-driven setState.
+function subscribeNever() {
+  return () => {};
+}
 
 /**
  * Minimal ambient types for the (non-standardized, webkit-prefixed on most
@@ -52,7 +60,7 @@ function getRecognitionCtor(): SpeechRecognitionCtor | null {
  * affordance rather than pretend it works everywhere.
  */
 export function useSpeechToText(onFinalTranscript: (text: string) => void) {
-  const [supported] = useState(() => getRecognitionCtor() !== null);
+  const supported = useSyncExternalStore(subscribeNever, () => getRecognitionCtor() !== null, () => false);
   const [listening, setListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +130,7 @@ export function useSpeechToText(onFinalTranscript: (text: string) => void) {
  * honesty rule: `supported` reflects actual API availability.
  */
 export function useTextToSpeech() {
-  const [supported] = useState(() => typeof window !== "undefined" && "speechSynthesis" in window);
+  const supported = useSyncExternalStore(subscribeNever, () => "speechSynthesis" in window, () => false);
   const [speaking, setSpeaking] = useState(false);
 
   const speak = useCallback(
