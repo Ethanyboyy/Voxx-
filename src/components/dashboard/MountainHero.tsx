@@ -1,48 +1,57 @@
 /**
  * Pure-CSS "purple nebula over a mountain range" decorative art for the
  * dashboard greeting band — no external image asset, just layered
- * gradients and jagged silhouettes so it's crisp at any size and needs
- * no licensing/attribution.
+ * gradients and a jagged silhouette path so it's crisp at any size and
+ * needs no licensing/attribution. Built by tracing the reference's
+ * proportions: one dominant rocky peak backlit by a soft moon-glow,
+ * rim-lit along its sunward edge, with a hazier ridge behind it.
  */
 export function MountainHero() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl" aria-hidden="true">
       <div
-        className="absolute -right-16 -top-40 h-[560px] w-[560px] rounded-full blur-[100px]"
-        style={{ background: "radial-gradient(circle, var(--accent) 0%, transparent 65%)", opacity: 0.6 }}
+        className="absolute -right-8 -top-24 h-[420px] w-[420px] rounded-full blur-[70px]"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(196,181,253,0.9) 0%, rgba(167,139,250,0.55) 35%, rgba(124,58,237,0.15) 60%, transparent 75%)",
+        }}
       />
       <div
-        className="absolute right-24 -top-10 h-[320px] w-[320px] rounded-full blur-[60px]"
-        style={{ background: "radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)", opacity: 0.32 }}
+        className="absolute right-32 top-10 h-[160px] w-[160px] rounded-full blur-[30px]"
+        style={{ background: "radial-gradient(circle, rgba(255,255,255,0.85) 0%, transparent 70%)" }}
       />
-      <svg
-        viewBox="0 0 1000 300"
-        preserveAspectRatio="xMaxYMax slice"
-        className="absolute inset-0 h-full w-full"
-      >
-        {/* back range — hazy, distant */}
-        <polygon
-          points="230,300 300,190 340,225 400,150 460,205 520,140 590,200 650,160 710,215 780,175 850,220 1000,180 1000,300"
-          fill="var(--accent-2)"
-          opacity="0.20"
+      <svg viewBox="0 0 1000 260" preserveAspectRatio="xMidYMax slice" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id="mtn-rim" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c4b5fd" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#c4b5fd" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* hazier back ridge for depth */}
+        <path
+          d="M 280,260 L 350,210 L 400,225 L 460,180 L 510,195 L 570,150 L 610,165 L 670,130 L 730,155 L 790,175 L 860,200 L 1000,210 L 1000,260 Z"
+          fill="#2a2045"
+          opacity="0.4"
         />
-        {/* mid range */}
-        <polygon
-          points="320,300 380,215 420,240 470,175 520,235 580,190 620,245 690,195 730,240 800,200 870,240 1000,210 1000,300"
-          fill="var(--accent)"
-          opacity="0.30"
+        {/* main jagged peak silhouette */}
+        <path
+          d="M 230,260 L 300,195 L 335,215 L 385,160 L 415,178 L 460,120 L 490,140 L 530,95 L 555,72 L 575,88 L 605,60 L 630,78 L 660,68 L 690,95 L 720,85 L 755,120 L 800,150 L 850,170 L 920,195 L 1000,215 L 1000,260 Z"
+          fill="#140f24"
         />
-        {/* front range — near-black, crisp silhouette */}
-        <polygon
-          points="420,300 470,235 505,255 555,205 600,250 655,220 700,255 760,225 800,255 860,235 900,260 1000,240 1000,300"
-          fill="#150f26"
-          opacity="0.92"
+        {/* rim light along the lit ridge edges near the glow */}
+        <path
+          d="M 490,140 L 530,95 L 555,72 L 575,88 L 605,60 L 630,78 L 660,68 L 690,95 L 720,85"
+          fill="none"
+          stroke="url(#mtn-rim)"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          opacity="0.75"
         />
       </svg>
       <div
         className="absolute inset-0"
         style={{
-          background: "linear-gradient(90deg, var(--surface-solid) 0%, transparent 38%, transparent 100%)",
+          background: "linear-gradient(90deg, var(--surface-solid) 0%, transparent 40%, transparent 100%)",
         }}
       />
     </div>

@@ -4,7 +4,31 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SVGProps } from "react";
 import { cn } from "@/lib/utils/cn";
-import { VoxCore } from "@/components/vox/VoxCore";
+
+function VoxLogoMark(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="26" height="26" viewBox="0 0 40 40" aria-hidden="true" {...props}>
+      <defs>
+        <linearGradient id="vox-logo-g1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#c4b5fd" />
+          <stop offset="100%" stopColor="#7c3aed" />
+        </linearGradient>
+        <linearGradient id="vox-logo-g2" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#8b5cf6" />
+          <stop offset="100%" stopColor="#4c1d95" />
+        </linearGradient>
+        <linearGradient id="vox-logo-g3" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#a78bfa" />
+          <stop offset="100%" stopColor="#6d28d9" />
+        </linearGradient>
+      </defs>
+      <polygon points="2,3 13,3 20,19 14,25" fill="url(#vox-logo-g1)" />
+      <polygon points="13,3 20,19 20,30 14,25" fill="url(#vox-logo-g2)" opacity="0.85" />
+      <polygon points="38,3 27,3 20,19 26,25" fill="url(#vox-logo-g3)" />
+      <polygon points="27,3 20,19 20,30 26,25" fill="url(#vox-logo-g2)" opacity="0.7" />
+    </svg>
+  );
+}
 
 function Icon(props: SVGProps<SVGSVGElement>) {
   return <svg width="17" height="17" viewBox="0 0 20 20" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props} />;
@@ -170,11 +194,8 @@ export function Sidebar({
       aria-label="Primary"
     >
       <div className="mb-3 flex items-center gap-2 px-2 pt-1 pb-3">
-        <VoxCore state="idle" size="sm" />
-        <div>
-          <span className="text-sm font-semibold tracking-wide text-foreground">VOX</span>
-          <p className="text-[11px] text-muted">Cognitive Operating System</p>
-        </div>
+        <VoxLogoMark />
+        <span className="text-lg font-bold text-foreground">VOX</span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {NAV_ITEMS.map((item) => {

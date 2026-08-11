@@ -112,18 +112,26 @@ export default async function DashboardPage() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Today&apos;s plan</CardTitle>
+            <CardTitle>Today&apos;s Plan</CardTitle>
           </CardHeader>
           <CardContent>
             {openTasksSorted.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
                 {openTasksSorted.slice(0, 6).map((t) => (
-                  <li key={t.id} className="flex items-center gap-2 text-sm">
+                  <li key={t.id} className="flex items-center gap-2.5 text-sm">
                     <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: t.priority === "HIGH" ? "var(--danger)" : t.priority === "MEDIUM" ? "var(--warning)" : "var(--muted)" }}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border"
+                      style={{
+                        borderColor:
+                          t.priority === "HIGH" ? "var(--danger)" : t.priority === "MEDIUM" ? "var(--warning)" : "var(--border-strong)",
+                      }}
                     />
                     <span className="truncate text-foreground">{t.title}</span>
+                    {t.dueDate ? (
+                      <span className="ml-auto shrink-0 text-xs text-muted">
+                        {t.dueDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -138,7 +146,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent conversations</CardTitle>
+            <CardTitle>Recent Conversations</CardTitle>
           </CardHeader>
           <CardContent>
             {recentConversations.length > 0 ? (
@@ -161,7 +169,7 @@ export default async function DashboardPage() {
         <Link href="/brain" className="block">
           <GlassPanel variant="glow" className="flex h-full flex-col justify-between overflow-hidden p-5">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">VOX Mind</p>
+              <p className="text-sm font-semibold text-foreground">Vox Mind</p>
             </div>
             <div className="-my-2 h-28 w-full">
               <BrainPreview />
@@ -177,12 +185,15 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-        <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
-        <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
-        <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
-        <QuickAction href="/memory" label="New Note" icon={<IconNote />} />
-        <QuickAction href="/chat" label="New Chat" icon={<IconChatBubble />} primary />
+      <div className="glass-panel mt-4 p-4">
+        <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
+          <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
+          <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
+          <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
+          <QuickAction href="/memory" label="New Note" icon={<IconNote />} />
+          <QuickAction href="/chat" label="New Chat" icon={<IconChatBubble />} />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -377,35 +388,13 @@ function StatCard({ label, value, sub, progress }: { label: string; value: strin
   );
 }
 
-function QuickAction({
-  href,
-  label,
-  icon,
-  primary,
-}: {
-  href: string;
-  label: string;
-  icon: ReactNode;
-  primary?: boolean;
-}) {
+function QuickAction({ href, label, icon }: { href: string; label: string; icon: ReactNode }) {
   return (
     <Link
       href={href}
-      className={
-        primary
-          ? "flex items-center gap-2.5 rounded-xl bg-gradient-to-br from-accent to-accent-2 px-4 py-3.5 text-sm font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
-          : "glass-panel flex items-center gap-2.5 rounded-xl px-4 py-3.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)]"
-      }
+      className="flex items-center gap-2.5 rounded-xl border border-border bg-surface-hover/40 px-4 py-3.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)] hover:bg-surface-hover"
     >
-      <span
-        className={
-          primary
-            ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15"
-            : "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"
-        }
-      >
-        {icon}
-      </span>
+      <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-accent">{icon}</span>
       {label}
     </Link>
   );
