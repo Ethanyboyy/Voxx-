@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { decryptField, encryptField } from "@/lib/security/crypto";
 import { getSemanticMemories, listMemories } from "@/lib/memory/service";
+import { logger } from "@/lib/observability/logger";
 import type { ChatMessageInput } from "@/lib/ai/types";
 import type { Confidence } from "@/generated/prisma/enums";
 import type { Message } from "@/generated/prisma/client";
@@ -27,11 +28,29 @@ export interface MessageDTO {
   createdAt: Date;
 }
 
+/**
+ * A single undecryptable row (e.g. content written under an encryption key
+ * that's since rotated) must not take down the whole conversation — every
+ * other message in it is still readable and the user still needs to chat.
+ */
+function decryptMessageContent(row: Message): string {
+  try {
+    return decryptField(row.content);
+  } catch (error) {
+    logger.error("chat.message_decrypt_failed", {
+      messageId: row.id,
+      conversationId: row.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "[This message could not be decrypted.]";
+  }
+}
+
 function toMessageDTO(row: Message): MessageDTO {
   return {
     id: row.id,
     role: row.role,
-    content: decryptField(row.content),
+    content: decryptMessageContent(row),
     model: row.model,
     meta: row.meta,
     createdAt: row.createdAt,

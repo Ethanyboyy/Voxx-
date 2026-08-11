@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { decryptField, encryptField } from "@/lib/security/crypto";
 import { recordEvent } from "@/lib/observability/events";
 import { ensureMemoryEmbeddingSafe, rankBySimilarity, recomputeMemoryEmbeddingSafe } from "@/lib/memory/embeddings";
+import { logger } from "@/lib/observability/logger";
 import type { Confidence, MemoryCategory, MemorySourceType } from "@/generated/prisma/enums";
 import type { Memory, MemorySource } from "@/generated/prisma/client";
 
@@ -25,11 +26,24 @@ export interface MemorySourceDTO {
   researchItemId: string | null;
 }
 
+/** See chat/service.ts#decryptMessageContent — same rationale: one bad row must not break every memory read. */
+function decryptMemoryContent(row: Memory): string {
+  try {
+    return decryptField(row.content);
+  } catch (error) {
+    logger.error("memory.content_decrypt_failed", {
+      memoryId: row.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "[This memory could not be decrypted.]";
+  }
+}
+
 function toDTO(row: Memory & { source: MemorySource | null }): MemoryDTO {
   return {
     id: row.id,
     userId: row.userId,
-    content: decryptField(row.content),
+    content: decryptMemoryContent(row),
     category: row.category,
     confidence: row.confidence,
     provenance: row.provenance,
