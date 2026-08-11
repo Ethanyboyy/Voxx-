@@ -16,12 +16,15 @@ FROM node:22-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ openssl \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-# --ignore-scripts: this stage only has package.json/package-lock.json, not
-# prisma/schema.prisma, so the "postinstall": "prisma generate" script would
-# fail here with "Could not find Prisma Schema" — it runs explicitly below in
-# the builder stage instead, once the full source is actually present.
-RUN npm ci --ignore-scripts
+COPY package.json package-lock.json prisma.config.ts ./
+COPY prisma ./prisma
+# NOT --ignore-scripts: that was tried and is wrong — it also silently skips
+# better-sqlite3's own install script (the thing that actually builds its
+# native database binding), not just our "postinstall": "prisma generate".
+# Confirmed by a real deploy where the app started but Prisma couldn't find
+# better_sqlite3.node anywhere. Fix is to give this stage the Prisma schema
+# it needs so postinstall succeeds naturally, and let all install scripts run.
+RUN npm ci
 
 FROM node:22-slim AS builder
 WORKDIR /app
