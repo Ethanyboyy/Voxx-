@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Field";
+import { Input, Select, Textarea, Label } from "@/components/ui/Field";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,6 +16,10 @@ interface TaskItem extends WithId {
   title: string;
   status: string;
   priority: string;
+  difficulty?: string | null;
+  estimatedMinutes?: number | null;
+  pros?: string[];
+  cons?: string[];
 }
 interface GoalItem extends WithId {
   title: string;
@@ -60,6 +64,50 @@ export function ProjectDetailClient({
   const [experiments, setExperiments] = useState(initialExperiments);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [detailDraft, setDetailDraft] = useState({ difficulty: "", estimatedMinutes: "", pros: "", cons: "" });
+  const [savingDetails, setSavingDetails] = useState(false);
+
+  function openTaskDetails(task: TaskItem) {
+    if (expandedTaskId === task.id) {
+      setExpandedTaskId(null);
+      return;
+    }
+    setExpandedTaskId(task.id);
+    setDetailDraft({
+      difficulty: task.difficulty ?? "",
+      estimatedMinutes: task.estimatedMinutes ? String(task.estimatedMinutes) : "",
+      pros: (task.pros ?? []).join("\n"),
+      cons: (task.cons ?? []).join("\n"),
+    });
+  }
+
+  async function saveTaskDetails(id: string) {
+    setSavingDetails(true);
+    const payload = {
+      difficulty: detailDraft.difficulty || null,
+      estimatedMinutes: detailDraft.estimatedMinutes ? Number(detailDraft.estimatedMinutes) : null,
+      pros: detailDraft.pros
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      cons: detailDraft.cons
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+    const res = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setSavingDetails(false);
+    if (res.ok) {
+      const data = await res.json();
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...data.task } : t)));
+      setExpandedTaskId(null);
+    }
+  }
 
   async function addTask() {
     if (!draft.trim()) return;
@@ -169,17 +217,79 @@ export function ProjectDetailClient({
             ) : (
               <ul className="flex flex-col gap-2">
                 {tasks.map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                    <input type="checkbox" checked={t.status === "DONE"} onChange={() => toggleTask(t)} />
-                    <span className={cn("flex-1 text-sm text-foreground", t.status === "DONE" && "line-through text-muted")}>
-                      {t.title}
-                    </span>
-                    <Badge tone={t.priority === "HIGH" ? "danger" : t.priority === "MEDIUM" ? "warning" : "neutral"}>
-                      {t.priority.toLowerCase()}
-                    </Badge>
-                    <Button size="sm" variant="ghost" onClick={() => deleteTask(t.id)}>
-                      Delete
-                    </Button>
+                  <li key={t.id} className="rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" checked={t.status === "DONE"} onChange={() => toggleTask(t)} />
+                      <span className={cn("flex-1 text-sm text-foreground", t.status === "DONE" && "line-through text-muted")}>
+                        {t.title}
+                      </span>
+                      <Badge tone={t.priority === "HIGH" ? "danger" : t.priority === "MEDIUM" ? "warning" : "neutral"}>
+                        {t.priority.toLowerCase()}
+                      </Badge>
+                      {t.difficulty ? <Badge>{t.difficulty.toLowerCase()}</Badge> : null}
+                      <Button size="sm" variant="ghost" onClick={() => openTaskDetails(t)}>
+                        {expandedTaskId === t.id ? "Close" : "Details"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => deleteTask(t.id)}>
+                        Delete
+                      </Button>
+                    </div>
+
+                    {expandedTaskId === t.id ? (
+                      <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
+                        <p className="text-xs text-muted">
+                          These feed VOX Brain — the neuron for this task shows exactly what&apos;s filled in here, nothing
+                          guessed.
+                        </p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label>Difficulty</Label>
+                            <Select
+                              value={detailDraft.difficulty}
+                              onChange={(e) => setDetailDraft((d) => ({ ...d, difficulty: e.target.value }))}
+                            >
+                              <option value="">Not set</option>
+                              <option value="EASY">Easy</option>
+                              <option value="MEDIUM">Medium</option>
+                              <option value="HARD">Hard</option>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Estimated time (minutes)</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={detailDraft.estimatedMinutes}
+                              onChange={(e) => setDetailDraft((d) => ({ ...d, estimatedMinutes: e.target.value }))}
+                              placeholder="e.g. 90"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label>Pros (one per line)</Label>
+                            <Textarea
+                              rows={3}
+                              value={detailDraft.pros}
+                              onChange={(e) => setDetailDraft((d) => ({ ...d, pros: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <Label>Cons (one per line)</Label>
+                            <Textarea
+                              rows={3}
+                              value={detailDraft.cons}
+                              onChange={(e) => setDetailDraft((d) => ({ ...d, cons: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Button size="sm" disabled={savingDetails} onClick={() => saveTaskDetails(t.id)}>
+                            Save details
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

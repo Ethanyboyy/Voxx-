@@ -374,6 +374,12 @@ enum TaskPriority {
   HIGH
 }
 
+enum TaskDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
 model Task {
   id          String       @id @default(uuid())
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -386,6 +392,13 @@ model Task {
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?
   completedAt DateTime?
+  // All four below are optional and unset (null) until the user provides
+  // them — never inferred or defaulted to a fabricated value. The Brain's
+  // task-neuron detail panel shows "not set" rather than guessing.
+  difficulty       TaskDifficulty?
+  estimatedMinutes Int?
+  pros             String? // JSON string[]
+  cons             String? // JSON string[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

@@ -34,6 +34,7 @@ export const projectStatusSchema = z.enum(["ACTIVE", "PAUSED", "COMPLETED", "ARC
 export const goalStatusSchema = z.enum(["ACTIVE", "PAUSED", "ACHIEVED", "ABANDONED"]);
 export const taskStatusSchema = z.enum(["TODO", "IN_PROGRESS", "DONE", "CANCELLED"]);
 export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+export const taskDifficultySchema = z.enum(["EASY", "MEDIUM", "HARD"]);
 export const decisionStatusSchema = z.enum(["PENDING", "DECIDED", "REVISITED"]);
 export const ideaStatusSchema = z.enum(["CAPTURED", "EXPLORING", "IN_EXPERIMENT", "EXECUTED", "ABANDONED"]);
 export const experimentStatusSchema = z.enum(["PLANNED", "RUNNING", "COMPLETED", "ABANDONED"]);
@@ -135,6 +136,10 @@ export const createTaskSchema = z.object({
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
   dueDate: z.coerce.date().optional(),
+  difficulty: taskDifficultySchema.optional(),
+  estimatedMinutes: z.coerce.number().int().min(1).max(100_000).optional(),
+  pros: z.array(z.string().min(1).max(200)).max(20).optional(),
+  cons: z.array(z.string().min(1).max(200)).max(20).optional(),
 });
 
 export const updateTaskSchema = z.object({
@@ -143,6 +148,10 @@ export const updateTaskSchema = z.object({
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
   dueDate: z.coerce.date().nullable().optional(),
+  difficulty: taskDifficultySchema.nullable().optional(),
+  estimatedMinutes: z.coerce.number().int().min(1).max(100_000).nullable().optional(),
+  pros: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
+  cons: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
 });
 
 export const createDecisionSchema = z.object({

@@ -6,9 +6,11 @@ import type {
   GoalStatus,
   IdeaStatus,
   ProjectStatus,
+  TaskDifficulty,
   TaskPriority,
   TaskStatus,
 } from "@/generated/prisma/enums";
+import type { Task } from "@/generated/prisma/client";
 
 // ---------------------------------------------------------------------------
 // Projects
@@ -140,6 +142,54 @@ export async function deleteGoal(userId: string, id: string) {
 // Tasks
 // ---------------------------------------------------------------------------
 
+export interface TaskDTO {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: Date | null;
+  completedAt: Date | null;
+  difficulty: TaskDifficulty | null;
+  estimatedMinutes: number | null;
+  pros: string[];
+  cons: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function parseStringArray(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function toTaskDTO(row: Task): TaskDTO {
+  return {
+    id: row.id,
+    userId: row.userId,
+    projectId: row.projectId,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    priority: row.priority,
+    dueDate: row.dueDate,
+    completedAt: row.completedAt,
+    difficulty: row.difficulty,
+    estimatedMinutes: row.estimatedMinutes,
+    pros: parseStringArray(row.pros),
+    cons: parseStringArray(row.cons),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 export interface CreateTaskInput {
   userId: string;
   projectId?: string;
@@ -148,10 +198,14 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueDate?: Date;
+  difficulty?: TaskDifficulty;
+  estimatedMinutes?: number;
+  pros?: string[];
+  cons?: string[];
 }
 
-export async function createTask(input: CreateTaskInput) {
-  return db.task.create({
+export async function createTask(input: CreateTaskInput): Promise<TaskDTO> {
+  const row = await db.task.create({
     data: {
       userId: input.userId,
       projectId: input.projectId,
@@ -160,15 +214,21 @@ export async function createTask(input: CreateTaskInput) {
       status: input.status ?? "TODO",
       priority: input.priority ?? "MEDIUM",
       dueDate: input.dueDate,
+      difficulty: input.difficulty,
+      estimatedMinutes: input.estimatedMinutes,
+      pros: input.pros ? JSON.stringify(input.pros) : undefined,
+      cons: input.cons ? JSON.stringify(input.cons) : undefined,
     },
   });
+  return toTaskDTO(row);
 }
 
-export async function listTasks(userId: string, projectId?: string, status?: TaskStatus) {
-  return db.task.findMany({
+export async function listTasks(userId: string, projectId?: string, status?: TaskStatus): Promise<TaskDTO[]> {
+  const rows = await db.task.findMany({
     where: { userId, projectId, status },
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
   });
+  return rows.map(toTaskDTO);
 }
 
 export interface UpdateTaskInput {
@@ -177,15 +237,21 @@ export interface UpdateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueDate?: Date | null;
+  difficulty?: TaskDifficulty | null;
+  estimatedMinutes?: number | null;
+  pros?: string[] | null;
+  cons?: string[] | null;
 }
 
-export async function updateTask(userId: string, id: string, updates: UpdateTaskInput) {
+export async function updateTask(userId: string, id: string, updates: UpdateTaskInput): Promise<TaskDTO | null> {
   const existing = await db.task.findFirst({ where: { id, userId } });
   if (!existing) return null;
   const task = await db.task.update({
     where: { id },
     data: {
       ...updates,
+      pros: updates.pros === undefined ? undefined : updates.pros === null ? null : JSON.stringify(updates.pros),
+      cons: updates.cons === undefined ? undefined : updates.cons === null ? null : JSON.stringify(updates.cons),
       completedAt: updates.status === "DONE" ? new Date() : updates.status ? null : undefined,
     },
   });
@@ -200,7 +266,7 @@ export async function updateTask(userId: string, id: string, updates: UpdateTask
     });
   }
 
-  return task;
+  return toTaskDTO(task);
 }
 
 export async function deleteTask(userId: string, id: string) {

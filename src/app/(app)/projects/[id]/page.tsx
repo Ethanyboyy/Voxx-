@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getProject } from "@/lib/projects/service";
+import { getProject, parseStringArray } from "@/lib/projects/service";
 import { ProjectDetailClient } from "@/components/projects/ProjectDetailClient";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +18,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
       <ProjectDetailClient
         projectId={project.id}
-        tasks={project.tasks.map((t) => ({ ...t, createdAt: t.createdAt.toISOString() }))}
+        tasks={project.tasks.map((t) => ({
+          ...t,
+          createdAt: t.createdAt.toISOString(),
+          pros: parseStringArray(t.pros),
+          cons: parseStringArray(t.cons),
+        }))}
         goals={project.goals.map((g) => ({ ...g, createdAt: g.createdAt.toISOString() }))}
         decisions={project.decisions.map((d) => ({ ...d, createdAt: d.createdAt.toISOString() }))}
         ideas={project.ideas.map((i) => ({ ...i, createdAt: i.createdAt.toISOString() }))}

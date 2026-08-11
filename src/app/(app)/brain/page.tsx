@@ -73,6 +73,23 @@ export default async function BrainPage() {
           status: c.status,
         }))}
         activity={events.map((e) => ({ id: e.id, type: e.type, createdAt: e.createdAt.toISOString(), consequential: e.consequential }))}
+        tasks={tasks
+          .filter((t) => t.status !== "CANCELLED")
+          .map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            status: t.status,
+            priority: t.priority,
+            difficulty: t.difficulty,
+            estimatedMinutes: t.estimatedMinutes,
+            pros: t.pros,
+            cons: t.cons,
+            dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+            completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+            createdAt: t.createdAt.toISOString(),
+            projectName: t.projectId ? (projects.find((p) => p.id === t.projectId)?.name ?? null) : null,
+          }))}
       />
     </div>
   );

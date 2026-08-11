@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GlassPanel } from "@/components/ui/GlassPanel";
@@ -54,6 +54,21 @@ interface ActivityItem {
   createdAt: string;
   consequential: boolean;
 }
+interface TaskNeuron {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  difficulty: string | null;
+  estimatedMinutes: number | null;
+  pros: string[];
+  cons: string[];
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  projectName: string | null;
+}
 
 type Mode = "overview" | "memory" | "planning" | "execution" | "activity";
 const MODES: { id: Mode; label: string }[] = [
@@ -65,21 +80,61 @@ const MODES: { id: Mode; label: string }[] = [
 ];
 
 type GraphSelection =
-  | { kind: "node"; node: KnowledgeNode }
+  | { kind: "task"; task: TaskNeuron }
   | { kind: "pattern"; pattern: PatternItem }
   | { kind: "connection"; connection: ConnectionSummary }
   | null;
 
-const TYPE_COLOR: Record<string, string> = {
-  PERSON: "var(--core-listening)",
-  ORGANIZATION: "var(--core-executing)",
-  PROJECT: "var(--core-responding)",
-  GOAL: "var(--core-success)",
-  CONCEPT: "var(--core-thinking)",
-  TOPIC: "var(--accent-2)",
-  ENTITY: "var(--muted)",
-  OTHER: "var(--muted)",
+const PRIORITY_COLOR: Record<string, string> = {
+  HIGH: "var(--core-error)",
+  MEDIUM: "var(--core-executing)",
+  LOW: "var(--core-listening)",
 };
+const DIFFICULTY_RADIUS: Record<string, number> = {
+  EASY: 5,
+  MEDIUM: 6.5,
+  HARD: 8.5,
+};
+
+function neuronColor(t: TaskNeuron): string {
+  if (t.status === "DONE") return "var(--core-success)";
+  return PRIORITY_COLOR[t.priority] ?? "var(--core-thinking)";
+}
+
+function neuronRadius(t: TaskNeuron): number {
+  return t.difficulty ? DIFFICULTY_RADIUS[t.difficulty] ?? 6.5 : 6.5;
+}
+
+/** Deterministic pseudo-random in [0,1) from a string — stable neuron layout across re-renders without persisting coordinates. */
+function seedFrom(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+function formatMinutes(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * Honest, not fabricated: only shown when both an estimate and an actual
+ * completion timestamp exist. Measured from creation to completion, so it
+ * includes any idle time — that limitation is stated, not hidden.
+ */
+function efficiencyLabel(t: TaskNeuron): string | null {
+  if (!t.completedAt || !t.estimatedMinutes) return null;
+  const openMs = new Date(t.completedAt).getTime() - new Date(t.createdAt).getTime();
+  const openMinutes = Math.max(1, Math.round(openMs / 60000));
+  const pct = Math.round((t.estimatedMinutes / openMinutes) * 100);
+  return `Open ${formatMinutes(openMinutes)} vs. an estimated ${formatMinutes(t.estimatedMinutes)} (${pct}% of estimate). Measured start-to-finish, so it includes idle time, not just active work.`;
+}
 
 export function VoxBrainClient({
   nodes,
@@ -90,6 +145,7 @@ export function VoxBrainClient({
   execution,
   connectionsSummary,
   activity,
+  tasks,
 }: {
   nodes: KnowledgeNode[];
   connections: KnowledgeEdge[];
@@ -99,6 +155,7 @@ export function VoxBrainClient({
   execution: ExecutionState;
   connectionsSummary: ConnectionSummary[];
   activity: ActivityItem[];
+  tasks: TaskNeuron[];
 }) {
   const [mode, setMode] = useState<Mode>("overview");
   const [livePatterns, setLivePatterns] = useState(patterns);
@@ -171,7 +228,14 @@ export function VoxBrainClient({
       </div>
 
       {mode === "overview" ? (
-        <BrainGraph nodes={nodes} edges={edges} patterns={livePatterns} connectionsSummary={connectionsSummary} freshPatternIds={freshPatternIds} />
+        <BrainOverview
+          tasks={tasks}
+          nodeCount={nodes.length}
+          edgeCount={edges.length}
+          patterns={livePatterns}
+          connectionsSummary={connectionsSummary}
+          freshPatternIds={freshPatternIds}
+        />
       ) : mode === "memory" ? (
         <MemoryMode stats={memoryStats} />
       ) : mode === "planning" ? (
@@ -187,211 +251,148 @@ export function VoxBrainClient({
 
 /* ---------------- Overview: the neural graph ---------------- */
 
-function BrainGraph({
-  nodes,
-  edges,
+/**
+ * Simplified anatomical brain silhouette (two hemispheres, central fissure,
+ * cortex-fold hints, brainstem taper) in a 500x420 viewBox. Task "neurons"
+ * are scattered deterministically inside it — each dot is a real Task, not
+ * decoration; nothing here is generated per-render randomness.
+ */
+function BrainSilhouette() {
+  return (
+    <g fill="none" stroke="var(--accent)" strokeWidth={2} opacity={0.65}>
+      <path d="M 250 55 C 275 30, 310 28, 335 45 C 365 40, 390 65, 388 95 C 415 105, 420 140, 400 160 C 418 175, 412 205, 388 215 C 398 240, 380 265, 353 265 C 358 288, 335 308, 310 298 C 305 318, 278 325, 258 308 C 250 320, 235 318, 228 305 C 215 290, 218 270, 228 258 C 210 248, 208 225, 222 210 C 208 198, 210 175, 226 163 C 215 145, 222 120, 242 108 C 235 90, 238 68, 250 55 Z" />
+      <path d="M 250 55 C 225 30, 190 28, 165 45 C 135 40, 110 65, 112 95 C 85 105, 80 140, 100 160 C 82 175, 88 205, 112 215 C 102 240, 120 265, 147 265 C 142 288, 165 308, 190 298 C 195 318, 222 325, 242 308 C 250 320, 265 318, 272 305 C 285 290, 282 270, 272 258 C 290 248, 292 225, 278 210 C 292 198, 290 175, 274 163 C 285 145, 278 120, 258 108 C 265 90, 262 68, 250 55 Z" />
+      <path d="M 250 55 C 248 100, 252 150, 250 200 C 248 240, 252 270, 250 308" strokeOpacity={0.55} />
+      <path d="M 300 80 C 310 95, 308 115, 295 125 M 340 130 C 350 145, 345 165, 330 172 M 340 195 C 348 210, 340 228, 325 232 M 300 240 C 308 255, 298 270, 285 272" strokeOpacity={0.4} strokeWidth={1.4} />
+      <path d="M 200 80 C 190 95, 192 115, 205 125 M 160 130 C 150 145, 155 165, 170 172 M 160 195 C 152 210, 160 228, 175 232 M 200 240 C 192 255, 202 270, 215 272" strokeOpacity={0.4} strokeWidth={1.4} />
+      <path d="M 210 300 C 225 315, 275 315, 290 300" strokeOpacity={0.45} strokeWidth={1.4} />
+      <path d="M 238 308 C 236 330, 240 348, 248 358 C 256 348, 260 330, 258 308" strokeOpacity={0.5} strokeWidth={1.4} />
+    </g>
+  );
+}
+
+function BrainOverview({
+  tasks,
+  nodeCount,
+  edgeCount,
   patterns,
   connectionsSummary,
   freshPatternIds,
 }: {
-  nodes: KnowledgeNode[];
-  edges: KnowledgeEdge[];
+  tasks: TaskNeuron[];
+  nodeCount: number;
+  edgeCount: number;
   patterns: PatternItem[];
   connectionsSummary: ConnectionSummary[];
   freshPatternIds: Set<string>;
 }) {
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
-  const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
-
   const activeConnections = connectionsSummary.filter((c) => c.status !== "NOT_CONNECTED");
-  const size = 720;
-  const cx = size / 2;
-  const cy = size / 2;
+  const cx = 250;
+  const cy = 175;
 
-  const ring1 = useMemo(() => layoutRing(nodes.length, 240), [nodes.length]);
-  const ring2 = useMemo(() => layoutRing(patterns.length, 330), [patterns.length]);
-  const ring3 = useMemo(() => layoutRing(activeConnections.length, 400), [activeConnections.length]);
-
-  const nodePos = new Map(nodes.map((n, i) => [n.id, ring1[i]!]));
-
-  function onWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    setView((v) => ({ ...v, scale: Math.min(2.4, Math.max(0.5, v.scale - e.deltaY * 0.001)) }));
-  }
-  function onPointerDown(e: React.PointerEvent) {
-    dragRef.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty };
-  }
-  function onPointerMove(e: React.PointerEvent) {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.x;
-    const dy = e.clientY - dragRef.current.y;
-    setView((v) => ({ ...v, tx: dragRef.current!.tx + dx, ty: dragRef.current!.ty + dy }));
-  }
-  function onPointerUp() {
-    dragRef.current = null;
-  }
+  const positions = useMemo(() => {
+    const map = new Map<string, { x: number; y: number }>();
+    for (const t of tasks) {
+      const angle = seedFrom(t.id) * Math.PI * 2;
+      const radiusFrac = Math.sqrt(seedFrom(`${t.id}:r`));
+      map.set(t.id, {
+        x: cx + Math.cos(angle) * 148 * radiusFrac,
+        y: cy + Math.sin(angle) * 118 * radiusFrac * 0.95 - 8,
+      });
+    }
+    return map;
+  }, [tasks]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
       <GlassPanel className="relative overflow-hidden" style={{ height: 560 }}>
-        {nodes.length === 0 && patterns.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <EmptyState
-              title="Nothing to map yet"
-              description="The brain fills in as VOX accumulates knowledge entities, patterns, and connections."
-            />
-          </div>
-        ) : (
-          <>
-            <svg
-              viewBox={`0 0 ${size} ${size}`}
-              className="h-full w-full cursor-grab active:cursor-grabbing touch-none"
-              onWheel={onWheel}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerLeave={onPointerUp}
-            >
-              <g transform={`translate(${view.tx},${view.ty}) scale(${view.scale})`} style={{ transformOrigin: `${cx}px ${cy}px` }}>
-                {/* spokes from center */}
-                {nodes.map((n, i) => (
-                  <line
-                    key={`spoke-${n.id}`}
-                    x1={cx}
-                    y1={cy}
-                    x2={cx + ring1[i]!.x}
-                    y2={cy + ring1[i]!.y}
-                    stroke="var(--border)"
-                    strokeWidth={1}
-                  />
-                ))}
-                {/* knowledge-graph edges */}
-                {edges.map((edge) => {
-                  const a = nodePos.get(edge.fromNodeId);
-                  const b = nodePos.get(edge.toNodeId);
-                  if (!a || !b) return null;
-                  return (
-                    <line
-                      key={edge.id}
-                      x1={cx + a.x}
-                      y1={cy + a.y}
-                      x2={cx + b.x}
-                      y2={cy + b.y}
-                      stroke="var(--accent-blue)"
-                      strokeOpacity={0.45}
-                      strokeWidth={1.4}
-                    />
-                  );
-                })}
-
-                {/* center: VOX */}
-                <circle cx={cx} cy={cy} r={34} fill="var(--accent)" opacity={0.18} style={{ filter: "blur(10px)" }} />
-                <circle cx={cx} cy={cy} r={20} fill="var(--accent)" />
-                <text x={cx} y={cy + 4} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--accent-foreground)">
-                  VOX
-                </text>
-
-                {/* ring 1: knowledge nodes */}
-                {nodes.map((n, i) => {
-                  const p = ring1[i]!;
-                  const color = TYPE_COLOR[n.type] ?? "var(--muted)";
-                  const isSelected = selection?.kind === "node" && selection.node.id === n.id;
-                  return (
-                    <g
-                      key={n.id}
-                      transform={`translate(${cx + p.x},${cy + p.y})`}
-                      className="cursor-pointer"
-                      onClick={() => setSelection({ kind: "node", node: n })}
-                    >
-                      <circle r={isSelected ? 12 : 9} fill={color} opacity={isSelected ? 1 : 0.85} />
-                      {isSelected ? <circle r={18} fill="none" stroke={color} strokeWidth={1} opacity={0.5} /> : null}
-                      <text
-                        y={22}
-                        textAnchor="middle"
-                        fontSize={10}
-                        fill="var(--muted-foreground)"
-                        style={{ pointerEvents: "none" }}
-                      >
-                        {truncate(n.label, 14)}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* ring 2: patterns (insights) */}
-                {patterns.map((p, i) => {
-                  const pos = ring2[i]!;
-                  const isSelected = selection?.kind === "pattern" && selection.pattern.id === p.id;
-                  const isFresh = freshPatternIds.has(p.id);
-                  return (
-                    <g
-                      key={p.id}
-                      transform={`translate(${cx + pos.x},${cy + pos.y})`}
-                      className="cursor-pointer"
-                      onClick={() => setSelection({ kind: "pattern", pattern: p })}
-                    >
-                      {isFresh ? (
-                        <circle r={7} fill="none" stroke="var(--core-thinking)" strokeWidth={1.5}>
-                          <animate attributeName="r" values="7;18;7" dur="1.6s" repeatCount="indefinite" />
-                          <animate attributeName="opacity" values="0.8;0;0.8" dur="1.6s" repeatCount="indefinite" />
-                        </circle>
-                      ) : null}
-                      <circle r={isSelected ? 10 : 7} fill="var(--core-thinking)" opacity={0.9}>
-                        <animate attributeName="opacity" values="0.5;1;0.5" dur="2.4s" repeatCount="indefinite" />
-                      </circle>
-                      <text y={20} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)" style={{ pointerEvents: "none" }}>
-                        {truncate(p.type.replace(/_/g, " ").toLowerCase(), 16)}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* ring 3: active connections */}
-                {activeConnections.map((c, i) => {
-                  const pos = ring3[i]!;
-                  const color = c.status === "CONNECTED" ? "var(--core-success)" : "var(--core-executing)";
-                  const isSelected = selection?.kind === "connection" && selection.connection.service === c.service;
-                  return (
-                    <g
-                      key={c.service}
-                      transform={`translate(${cx + pos.x},${cy + pos.y})`}
-                      className="cursor-pointer"
-                      onClick={() => setSelection({ kind: "connection", connection: c })}
-                    >
-                      <circle r={isSelected ? 8 : 5.5} fill={color} opacity={0.9} />
-                      <text y={17} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)" style={{ pointerEvents: "none" }}>
-                        {truncate(c.displayName, 14)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
-            <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-[10px] uppercase tracking-wide text-muted">
-              <Legend color="var(--core-thinking)" label="knowledge" />
-              <Legend color="var(--core-thinking)" pulse label="patterns" />
-              <Legend color="var(--core-success)" label="connections" />
-            </div>
-            <p className="pointer-events-none absolute bottom-3 right-3 text-[10px] text-muted">scroll to zoom · drag to pan</p>
-          </>
-        )}
+        <svg viewBox="0 0 500 420" className="h-full w-full">
+          <defs>
+            <filter id="neuron-glow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="3.2" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <BrainSilhouette />
+          {tasks.length === 0 ? (
+            <text x={cx} y={cy} textAnchor="middle" fontSize={13} fill="var(--muted)">
+              No tasks yet
+            </text>
+          ) : (
+            tasks.map((t) => {
+              const pos = positions.get(t.id)!;
+              const isSelected = selection?.kind === "task" && selection.task.id === t.id;
+              const isActive = t.status === "IN_PROGRESS";
+              const color = neuronColor(t);
+              const r = neuronRadius(t) + (isSelected ? 2.5 : 0);
+              return (
+                <g
+                  key={t.id}
+                  transform={`translate(${pos.x},${pos.y})`}
+                  className="cursor-pointer"
+                  onClick={() => setSelection({ kind: "task", task: t })}
+                  filter="url(#neuron-glow)"
+                >
+                  {isSelected ? <circle r={r + 8} fill="none" stroke={color} strokeWidth={1} opacity={0.6} /> : null}
+                  <circle r={r} fill={color} opacity={t.status === "DONE" ? 0.45 : 0.92}>
+                    {isActive ? (
+                      <animate attributeName="opacity" values="0.5;1;0.5" dur="2.2s" repeatCount="indefinite" />
+                    ) : null}
+                  </circle>
+                </g>
+              );
+            })
+          )}
+        </svg>
+        <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-3 text-[10px] uppercase tracking-wide text-muted">
+          <Legend color="var(--core-error)" label="high priority" />
+          <Legend color="var(--core-executing)" label="medium priority" />
+          <Legend color="var(--core-listening)" label="low priority" />
+          <Legend color="var(--core-success)" label="done" />
+        </div>
+        <p className="pointer-events-none absolute bottom-3 right-3 text-[10px] text-muted">
+          {nodeCount} knowledge entities · {edgeCount} links
+        </p>
       </GlassPanel>
 
       <GlassPanel className="p-4">
         {!selection ? (
-          <EmptyState title="Select a node" description="Click anything in the graph to see what VOX knows about it." />
-        ) : selection.kind === "node" ? (
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-foreground">{selection.node.label}</h3>
-              <Badge tone="accent">{selection.node.type.toLowerCase()}</Badge>
-            </div>
-            {selection.node.description ? <p className="mt-2 text-sm text-muted">{selection.node.description}</p> : null}
-            {selection.node.memoryId ? <p className="mt-2 text-xs text-accent">linked memory</p> : null}
-            {selection.node.projectId ? <p className="mt-1 text-xs text-accent">linked project</p> : null}
-            {selection.node.goalId ? <p className="mt-1 text-xs text-accent">linked goal</p> : null}
+            <EmptyState
+              title="Click a neuron"
+              description="Each glowing neuron is a real task. Click one to see what it is, how hard it is, how long it's estimated to take, and its tradeoffs."
+            />
+            {(patterns.length > 0 || activeConnections.length > 0) && (
+              <div className="mt-4 flex flex-col gap-2 border-t border-border pt-3">
+                {patterns.length > 0 ? (
+                  <button
+                    type="button"
+                    className="flex items-center justify-between text-left text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelection({ kind: "pattern", pattern: patterns[0]! })}
+                  >
+                    <span>Active patterns detected</span>
+                    <Badge tone={freshPatternIds.size > 0 ? "warning" : "neutral"}>{patterns.length}</Badge>
+                  </button>
+                ) : null}
+                {activeConnections.length > 0 ? (
+                  <button
+                    type="button"
+                    className="flex items-center justify-between text-left text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelection({ kind: "connection", connection: activeConnections[0]! })}
+                  >
+                    <span>Active connections</span>
+                    <Badge tone="success">{activeConnections.length}</Badge>
+                  </button>
+                ) : null}
+              </div>
+            )}
           </div>
+        ) : selection.kind === "task" ? (
+          <TaskDetail task={selection.task} />
         ) : selection.kind === "pattern" ? (
           <div>
             <div className="flex items-center gap-2">
@@ -417,6 +418,73 @@ function BrainGraph({
   );
 }
 
+function TaskDetail({ task }: { task: TaskNeuron }) {
+  const efficiency = efficiencyLabel(task);
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground">{task.title}</h3>
+        <Badge tone={task.status === "DONE" ? "success" : task.priority === "HIGH" ? "danger" : "accent"}>
+          {task.status.replace(/_/g, " ").toLowerCase()}
+        </Badge>
+      </div>
+      {task.projectName ? <p className="mt-1 text-xs text-muted">{task.projectName}</p> : null}
+      {task.description ? <p className="mt-2 text-sm text-muted">{task.description}</p> : null}
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+        <div>
+          <dt className="text-muted-foreground">Priority</dt>
+          <dd className="text-foreground">{task.priority.toLowerCase()}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Difficulty</dt>
+          <dd className="text-foreground">{task.difficulty ? task.difficulty.toLowerCase() : "Not set"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Estimated time</dt>
+          <dd className="text-foreground">{task.estimatedMinutes ? formatMinutes(task.estimatedMinutes) : "Not set"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Due</dt>
+          <dd className="text-foreground">{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "Not set"}</dd>
+        </div>
+      </dl>
+
+      <p className="mt-3 text-xs text-muted">
+        {efficiency ?? "Efficiency: not enough data yet — set an estimated time, then complete the task, to see this."}
+      </p>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Pros</p>
+          {task.pros.length === 0 ? (
+            <p className="mt-1 text-xs text-muted">Not set</p>
+          ) : (
+            <ul className="mt-1 list-disc pl-4 text-xs text-foreground">
+              {task.pros.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Cons</p>
+          {task.cons.length === 0 ? (
+            <p className="mt-1 text-xs text-muted">Not set</p>
+          ) : (
+            <ul className="mt-1 list-disc pl-4 text-xs text-foreground">
+              {task.cons.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] text-muted">Set difficulty, an estimate, and pros/cons from the task&apos;s project page.</p>
+    </div>
+  );
+}
+
 function Legend({ color, label, pulse }: { color: string; label: string; pulse?: boolean }) {
   return (
     <span className="flex items-center gap-1">
@@ -424,18 +492,6 @@ function Legend({ color, label, pulse }: { color: string; label: string; pulse?:
       {label}
     </span>
   );
-}
-
-function layoutRing(count: number, radius: number): { x: number; y: number }[] {
-  if (count === 0) return [];
-  return Array.from({ length: count }, (_, i) => {
-    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
-  });
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 /* ---------------- Other modes: real-data summaries ---------------- */
