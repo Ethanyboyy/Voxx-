@@ -160,8 +160,11 @@ export function VoxCore({
             key={i}
             className="absolute left-1/2 top-1/2 h-full w-full"
             style={{
-              animation: `vox-core-particle ${timing.particleDuration}s linear infinite`,
-              animationDelay: `${(i / particles.length) * timing.particleDuration}s`,
+              // Delay folded into the shorthand (rather than a separate
+              // animationDelay) — mixing shorthand and longhand for the same
+              // property across rerenders (e.g. a state change swaps
+              // particleDuration) makes React drop the longhand update.
+              animation: `vox-core-particle ${timing.particleDuration}s linear ${(i / particles.length) * timing.particleDuration}s infinite`,
               ["--orbit-r" as string]: `${orbitR}px`,
             }}
           >
