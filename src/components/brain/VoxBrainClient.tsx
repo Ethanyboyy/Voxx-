@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GlassPanel } from "@/components/ui/GlassPanel";
+import { HoloBrain, type HoloTaskPoint } from "@/components/brain/HoloBrain";
 import { cn } from "@/lib/utils/cn";
 
 interface KnowledgeNode {
@@ -85,34 +86,24 @@ type GraphSelection =
   | { kind: "connection"; connection: ConnectionSummary }
   | null;
 
-const PRIORITY_COLOR: Record<string, string> = {
-  HIGH: "var(--core-error)",
-  MEDIUM: "var(--core-executing)",
-  LOW: "var(--core-listening)",
+const PRIORITY_COLOR_VAR: Record<string, string> = {
+  HIGH: "--core-error",
+  MEDIUM: "--core-executing",
+  LOW: "--core-listening",
 };
-const DIFFICULTY_RADIUS: Record<string, number> = {
-  EASY: 5,
-  MEDIUM: 6.5,
-  HARD: 8.5,
+const DIFFICULTY_SIZE: Record<string, HoloTaskPoint["size"]> = {
+  EASY: "sm",
+  MEDIUM: "md",
+  HARD: "lg",
 };
 
-function neuronColor(t: TaskNeuron): string {
-  if (t.status === "DONE") return "var(--core-success)";
-  return PRIORITY_COLOR[t.priority] ?? "var(--core-thinking)";
+function neuronColorVar(t: TaskNeuron): string {
+  if (t.status === "DONE") return "--core-success";
+  return PRIORITY_COLOR_VAR[t.priority] ?? "--core-thinking";
 }
 
-function neuronRadius(t: TaskNeuron): number {
-  return t.difficulty ? DIFFICULTY_RADIUS[t.difficulty] ?? 6.5 : 6.5;
-}
-
-/** Deterministic pseudo-random in [0,1) from a string — stable neuron layout across re-renders without persisting coordinates. */
-function seedFrom(id: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0) / 4294967296;
+function neuronSize(t: TaskNeuron): HoloTaskPoint["size"] {
+  return t.difficulty ? DIFFICULTY_SIZE[t.difficulty] ?? "md" : "md";
 }
 
 function formatMinutes(total: number): string {
@@ -251,26 +242,6 @@ export function VoxBrainClient({
 
 /* ---------------- Overview: the neural graph ---------------- */
 
-/**
- * Simplified anatomical brain silhouette (two hemispheres, central fissure,
- * cortex-fold hints, brainstem taper) in a 500x420 viewBox. Task "neurons"
- * are scattered deterministically inside it — each dot is a real Task, not
- * decoration; nothing here is generated per-render randomness.
- */
-function BrainSilhouette() {
-  return (
-    <g fill="none" stroke="var(--accent)" strokeWidth={2} opacity={0.65}>
-      <path d="M 250 55 C 275 30, 310 28, 335 45 C 365 40, 390 65, 388 95 C 415 105, 420 140, 400 160 C 418 175, 412 205, 388 215 C 398 240, 380 265, 353 265 C 358 288, 335 308, 310 298 C 305 318, 278 325, 258 308 C 250 320, 235 318, 228 305 C 215 290, 218 270, 228 258 C 210 248, 208 225, 222 210 C 208 198, 210 175, 226 163 C 215 145, 222 120, 242 108 C 235 90, 238 68, 250 55 Z" />
-      <path d="M 250 55 C 225 30, 190 28, 165 45 C 135 40, 110 65, 112 95 C 85 105, 80 140, 100 160 C 82 175, 88 205, 112 215 C 102 240, 120 265, 147 265 C 142 288, 165 308, 190 298 C 195 318, 222 325, 242 308 C 250 320, 265 318, 272 305 C 285 290, 282 270, 272 258 C 290 248, 292 225, 278 210 C 292 198, 290 175, 274 163 C 285 145, 278 120, 258 108 C 265 90, 262 68, 250 55 Z" />
-      <path d="M 250 55 C 248 100, 252 150, 250 200 C 248 240, 252 270, 250 308" strokeOpacity={0.55} />
-      <path d="M 300 80 C 310 95, 308 115, 295 125 M 340 130 C 350 145, 345 165, 330 172 M 340 195 C 348 210, 340 228, 325 232 M 300 240 C 308 255, 298 270, 285 272" strokeOpacity={0.4} strokeWidth={1.4} />
-      <path d="M 200 80 C 190 95, 192 115, 205 125 M 160 130 C 150 145, 155 165, 170 172 M 160 195 C 152 210, 160 228, 175 232 M 200 240 C 192 255, 202 270, 215 272" strokeOpacity={0.4} strokeWidth={1.4} />
-      <path d="M 210 300 C 225 315, 275 315, 290 300" strokeOpacity={0.45} strokeWidth={1.4} />
-      <path d="M 238 308 C 236 330, 240 348, 248 358 C 256 348, 260 330, 258 308" strokeOpacity={0.5} strokeWidth={1.4} />
-    </g>
-  );
-}
-
 function BrainOverview({
   tasks,
   nodeCount,
@@ -288,66 +259,40 @@ function BrainOverview({
 }) {
   const [selection, setSelection] = useState<GraphSelection>(null);
   const activeConnections = connectionsSummary.filter((c) => c.status !== "NOT_CONNECTED");
-  const cx = 250;
-  const cy = 175;
 
-  const positions = useMemo(() => {
-    const map = new Map<string, { x: number; y: number }>();
-    for (const t of tasks) {
-      const angle = seedFrom(t.id) * Math.PI * 2;
-      const radiusFrac = Math.sqrt(seedFrom(`${t.id}:r`));
-      map.set(t.id, {
-        x: cx + Math.cos(angle) * 148 * radiusFrac,
-        y: cy + Math.sin(angle) * 118 * radiusFrac * 0.95 - 8,
-      });
-    }
-    return map;
-  }, [tasks]);
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const taskPoints = useMemo<HoloTaskPoint[]>(
+    () =>
+      tasks.map((t) => ({
+        id: t.id,
+        colorVar: neuronColorVar(t),
+        size: neuronSize(t),
+        pulse: t.status === "IN_PROGRESS",
+        dim: t.status === "DONE",
+        selected: selection?.kind === "task" && selection.task.id === t.id,
+      })),
+    [tasks, selection]
+  );
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <GlassPanel className="relative overflow-hidden" style={{ height: 560 }}>
-        <svg viewBox="0 0 500 420" className="h-full w-full">
-          <defs>
-            <filter id="neuron-glow" x="-80%" y="-80%" width="260%" height="260%">
-              <feGaussianBlur stdDeviation="3.2" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <BrainSilhouette />
-          {tasks.length === 0 ? (
-            <text x={cx} y={cy} textAnchor="middle" fontSize={13} fill="var(--muted)">
-              No tasks yet
-            </text>
-          ) : (
-            tasks.map((t) => {
-              const pos = positions.get(t.id)!;
-              const isSelected = selection?.kind === "task" && selection.task.id === t.id;
-              const isActive = t.status === "IN_PROGRESS";
-              const color = neuronColor(t);
-              const r = neuronRadius(t) + (isSelected ? 2.5 : 0);
-              return (
-                <g
-                  key={t.id}
-                  transform={`translate(${pos.x},${pos.y})`}
-                  className="cursor-pointer"
-                  onClick={() => setSelection({ kind: "task", task: t })}
-                  filter="url(#neuron-glow)"
-                >
-                  {isSelected ? <circle r={r + 8} fill="none" stroke={color} strokeWidth={1} opacity={0.6} /> : null}
-                  <circle r={r} fill={color} opacity={t.status === "DONE" ? 0.45 : 0.92}>
-                    {isActive ? (
-                      <animate attributeName="opacity" values="0.5;1;0.5" dur="2.2s" repeatCount="indefinite" />
-                    ) : null}
-                  </circle>
-                </g>
-              );
-            })
-          )}
-        </svg>
+      <GlassPanel className="relative overflow-hidden p-0" style={{ height: 560 }}>
+        {tasks.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <EmptyState
+              title="No tasks yet"
+              description="Add a task from a project and it appears here as a glowing neuron."
+            />
+          </div>
+        ) : (
+          <HoloBrain
+            taskPoints={taskPoints}
+            onSelectTask={(id) => {
+              const task = taskById.get(id);
+              if (task) setSelection({ kind: "task", task });
+            }}
+          />
+        )}
         <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-3 text-[10px] uppercase tracking-wide text-muted">
           <Legend color="var(--core-error)" label="high priority" />
           <Legend color="var(--core-executing)" label="medium priority" />
@@ -357,6 +302,7 @@ function BrainOverview({
         <p className="pointer-events-none absolute bottom-3 right-3 text-[10px] text-muted">
           {nodeCount} knowledge entities · {edgeCount} links
         </p>
+        <p className="pointer-events-none absolute top-3 right-3 text-[10px] text-muted">drag to rotate</p>
       </GlassPanel>
 
       <GlassPanel className="p-4">
