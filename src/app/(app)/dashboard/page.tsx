@@ -7,16 +7,32 @@ import { listMemories } from "@/lib/memory/service";
 import { listIdeas } from "@/lib/projects/service";
 import { listResearchItems } from "@/lib/research/service";
 import { listProposals } from "@/lib/cognition/proposals";
+import { listAgentRuns } from "@/lib/agents/service";
+import { listNotifications } from "@/lib/notifications/service";
+import { listConnections } from "@/lib/connections/service";
 import { getAIProvider } from "@/lib/ai";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [activeProjects, openTasks, observations, profile, memories, ideas, research, pendingProposals] = await Promise.all([
+  const [
+    activeProjects,
+    openTasks,
+    observations,
+    profile,
+    memories,
+    ideas,
+    research,
+    pendingProposals,
+    agentRuns,
+    notifications,
+    connections,
+  ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
     listObservations(user.id, undefined, 5),
@@ -25,6 +41,9 @@ export default async function DashboardPage() {
     listIdeas(user.id),
     listResearchItems(user.id, 5),
     listProposals(user.id, "PROPOSED"),
+    listAgentRuns(user.id, 5),
+    listNotifications(user.id, true),
+    listConnections(user.id),
   ]);
 
   const currentProject = activeProjects[0] ?? null;
@@ -36,13 +55,88 @@ export default async function DashboardPage() {
   const recentIdeas = ideas.slice(0, 5);
   const activeDimensions = profile.filter((d) => d.hasData);
   const provider = getAIProvider();
+  const connectedCount = connections.filter((c) => c.status === "CONNECTED").length;
+  const coreState = aggregateCoreState(agentRuns, pendingProposals.length);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
-      <p className="mt-1 text-sm text-muted">A snapshot of what VOX currently knows and is tracking.</p>
+      <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface px-6 py-10 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
+        <div className="flex flex-col items-center gap-4 sm:flex-row">
+          <VoxCore state={coreState} size="xl" />
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">VOX</h1>
+            <p className="mt-1 max-w-sm text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/chat" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">
+            Talk to VOX
+          </Link>
+          <Link href="/agents?new=1" className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground">
+            Start an agent run
+          </Link>
+        </div>
+      </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent runs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {agentRuns.length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {agentRuns.map((run) => (
+                  <li key={run.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate text-foreground">{run.objective}</span>
+                    <Badge tone={run.status === "FAILED" ? "danger" : run.status === "COMPLETED" ? "success" : "accent"}>
+                      {run.status.replace(/_/g, " ").toLowerCase()}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="No agent runs yet" description="Give VOX an objective and it will plan and execute real steps." />
+            )}
+            <Link href="/agents" className="mt-3 inline-block text-sm font-medium text-accent">
+              Open Agents →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Unread notifications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {notifications.length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {notifications.slice(0, 5).map((n) => (
+                  <li key={n.id} className="text-sm">
+                    <p className="text-foreground">{n.title}</p>
+                    <p className="text-muted">{n.body}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="Nothing unread" />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Connections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-foreground">
+              {connectedCount} of {connections.length} services connected.
+            </p>
+            <Link href="/connections" className="mt-3 inline-block text-sm font-medium text-accent">
+              Open Connections Hub →
+            </Link>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader>
             <CardTitle>Active project</CardTitle>
@@ -246,4 +340,30 @@ export default async function DashboardPage() {
 
 function priorityRank(priority: string): number {
   return { HIGH: 2, MEDIUM: 1, LOW: 0 }[priority] ?? 0;
+}
+
+function aggregateCoreState(
+  agentRuns: { status: string }[],
+  pendingProposalCount: number
+): VoxCoreState {
+  if (agentRuns.some((r) => r.status === "RUNNING")) return "executing";
+  if (agentRuns.some((r) => r.status === "PLANNING")) return "thinking";
+  if (agentRuns.some((r) => r.status === "WAITING_FOR_PERMISSION")) return "waiting";
+  if (pendingProposalCount > 0) return "waiting";
+  return "idle";
+}
+
+function coreStateMessage(state: VoxCoreState, pendingProposalCount: number, agentRunCount: number): string {
+  switch (state) {
+    case "executing":
+      return "An agent run is executing right now.";
+    case "thinking":
+      return "Planning an agent run.";
+    case "waiting":
+      return pendingProposalCount > 0
+        ? `${pendingProposalCount} proposal${pendingProposalCount === 1 ? "" : "s"} waiting on you.`
+        : "An agent run is waiting on a permission.";
+    default:
+      return agentRunCount > 0 ? "Idle. Everything's caught up." : "Idle. Give VOX something to do.";
+  }
 }

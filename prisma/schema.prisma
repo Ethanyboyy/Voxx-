@@ -66,6 +66,9 @@ model User {
   connections     Connection[]
   events          Event[]
   proposals       Proposal[]
+  agentRuns             AgentRun[]
+  notifications         Notification[]
+  notificationPreference NotificationPreference?
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -332,6 +335,7 @@ model Project {
   experiments   Experiment[]
   conversations Conversation[]
   knowledgeNode KnowledgeNode?
+  agentRuns     AgentRun[]
 }
 
 enum GoalStatus {
@@ -762,4 +766,129 @@ model Proposal {
   result          String?
   createdAt       DateTime        @default(now())
   resolvedAt      DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// Agent engine (Phase 4) — objective -> plan -> steps -> execution
+// ---------------------------------------------------------------------------
+//
+// Deliberately sequential (ordered by AgentStep.order), not a general DAG —
+// covers the real "step N depends on step N-1" case without building a full
+// dependency graph nobody asked for yet. Every step that reaches an external
+// or mutating tool goes through the exact same enforceCapability() as
+// everything else in VOX (src/lib/permissions/service.ts) — the agent engine
+// is a new caller of the permission system, not a new gate.
+
+enum AgentRunStatus {
+  PLANNING
+  WAITING_FOR_PERMISSION
+  RUNNING
+  WAITING
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
+enum AgentStepStatus {
+  PENDING
+  RUNNING
+  WAITING_FOR_PERMISSION
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+model AgentRun {
+  id          String         @id @default(uuid())
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
+  objective   String
+  status      AgentRunStatus @default(PLANNING)
+  /// Index into `steps` (order value) the executor is currently on / paused at.
+  currentStep Int            @default(0)
+  /// Final synthesized outcome once COMPLETED.
+  result      String?
+  /// Failure reason once FAILED.
+  error       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  completedAt DateTime?
+
+  steps AgentStep[]
+}
+
+/// One planned unit of work within an AgentRun. `toolName` references a
+/// key in the code-level tool registry (src/lib/tools/registry.ts) — tools
+/// are not a DB table, matching the existing closed-registry pattern used by
+/// the Proposal engine's ACTION_HANDLERS, just made discoverable/generic.
+model AgentStep {
+  id            String          @id @default(uuid())
+  run           AgentRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId         String
+  order         Int
+  description   String
+  toolName      String?
+  /// JSON — input passed to the tool.
+  input         String?
+  /// JSON — the tool's result, once executed.
+  output        String?
+  status        AgentStepStatus @default(PENDING)
+  /// Permission capability key this step's tool requires, if any.
+  capability    String?
+  requiredLevel CapabilityLevel @default(OBSERVE)
+  error         String?
+  retryCount    Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  @@unique([runId, order])
+}
+
+// ---------------------------------------------------------------------------
+// Proactive intelligence — notification delivery layer (Phase 3)
+// ---------------------------------------------------------------------------
+//
+// Pattern/Observation detection (see Pattern model above) already decides
+// *what* might be worth surfacing; this is the missing delivery layer —
+// whether, when, and how loudly to actually tell the user, subject to their
+// own preferences. Never bypasses those preferences.
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Notification {
+  id         String               @id @default(uuid())
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  title      String
+  body       String
+  priority   NotificationPriority @default(NORMAL)
+  /// Descriptive-only, e.g. "Pattern" / "AgentRun" — not a foreign key, same
+  /// convention as Event.subjectType (must survive subject deletion).
+  sourceType String?
+  sourceId   String?
+  projectId  String?
+  read       Boolean              @default(false)
+  createdAt  DateTime             @default(now())
+}
+
+model NotificationPreference {
+  id              String               @id @default(uuid())
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String               @unique
+  enabled         Boolean              @default(true)
+  /// Local hour-of-day (0-23). Both null = no quiet hours configured.
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+  /// Notifications below this priority are suppressed entirely.
+  minPriority     NotificationPriority @default(LOW)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 }

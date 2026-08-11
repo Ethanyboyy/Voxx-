@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
 import { ContextPanel, type ContextTrace } from "@/components/chat/ContextPanel";
+import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
 
 interface ConversationSummary {
   id: string;
@@ -152,6 +153,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
     }
   }
 
+  const pendingAssistant = messages.find((m) => m.pending);
+  const coreState: VoxCoreState = streaming ? (pendingAssistant?.content ? "responding" : "thinking") : "idle";
+
   function exportConversation() {
     const text = messages.map((m) => `${m.role}: ${m.content}`).join("\n\n");
     navigator.clipboard.writeText(text);
@@ -219,6 +223,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                 <path d="M3 5h14M3 10h10M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
+            <VoxCore state={coreState} size="sm" />
             <h1 className="text-sm font-semibold text-foreground">Chat</h1>
           </div>
           <Button size="sm" variant="ghost" onClick={exportConversation} disabled={messages.length === 0}>
@@ -233,20 +238,34 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             </p>
           ) : (
             <div className="mx-auto flex max-w-2xl flex-col gap-4">
-              {messages.map((m) => (
-                <div key={m.id} className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
-                      m.role === "USER" ? "bg-accent text-accent-foreground" : "bg-surface-hover text-foreground"
-                    )}
-                  >
-                    {m.content || (m.pending ? "…" : "")}
+              {messages.map((m) => {
+                if (m.role === "SYSTEM") {
+                  return (
+                    <div key={m.id} className="mx-auto max-w-[90%] rounded-full bg-surface-hover px-3 py-1 text-center text-xs text-muted">
+                      {m.content}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={m.id} className={cn("flex items-end gap-2", m.role === "USER" ? "flex-row-reverse" : "flex-row")}>
+                    {m.role === "ASSISTANT" ? (
+                      <VoxCore state={m.pending ? coreState : "idle"} size="sm" className="mb-1 shrink-0" />
+                    ) : null}
+                    <div className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
+                          m.role === "USER" ? "bg-accent text-accent-foreground" : "bg-surface-hover text-foreground"
+                        )}
+                      >
+                        {m.content || (m.pending ? "…" : "")}
+                      </div>
+                      {m.model ? <span className="mt-1 text-xs text-muted">{m.model}</span> : null}
+                      {m.role === "ASSISTANT" && m.context ? <ContextPanel trace={m.context} /> : null}
+                    </div>
                   </div>
-                  {m.model ? <span className="mt-1 text-xs text-muted">{m.model}</span> : null}
-                  {m.role === "ASSISTANT" && m.context ? <ContextPanel trace={m.context} /> : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {error ? <p className="mx-auto mt-4 max-w-2xl text-sm text-danger">{error}</p> : null}

@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { listPermissions } from "@/lib/permissions/service";
 import { listRecentEvents } from "@/lib/observability/events";
+import { getNotificationPreference } from "@/lib/notifications/service";
 import { getAIProvider } from "@/lib/ai";
 import { getResearchProvider } from "@/lib/research";
 import { SettingsClient } from "@/components/settings/SettingsClient";
@@ -9,9 +10,10 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [permissions, events] = await Promise.all([
+  const [permissions, events, notificationPreference] = await Promise.all([
     listPermissions(user.id),
     listRecentEvents(user.id, 30),
+    getNotificationPreference(user.id),
   ]);
   const aiProvider = getAIProvider();
   const researchProvider = getResearchProvider();
@@ -28,6 +30,12 @@ export default async function SettingsPage() {
         researchProviderId={researchProvider.id}
         initialPermissions={permissions.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() }))}
         events={events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() }))}
+        initialNotificationPreference={{
+          enabled: notificationPreference.enabled,
+          quietHoursStart: notificationPreference.quietHoursStart,
+          quietHoursEnd: notificationPreference.quietHoursEnd,
+          minPriority: notificationPreference.minPriority,
+        }}
       />
     </div>
   );

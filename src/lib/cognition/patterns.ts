@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
 import { createProposal } from "@/lib/cognition/proposals";
+import { notify } from "@/lib/notifications/service";
 import type { PatternType } from "@/generated/prisma/enums";
 
 const STALE_IDEA_DAYS = 14;
@@ -45,12 +46,22 @@ export async function detectPatterns(userId: string) {
     },
   });
   if (staleIdeas.length >= 3) {
-    const { pattern } = await upsertPattern(
+    const { pattern, isNew } = await upsertPattern(
       userId,
       "IDEA_WITHOUT_EXECUTION",
       `${staleIdeas.length} ideas have been captured or explored for ${STALE_IDEA_DAYS}+ days without moving to an experiment. Possible loop: idea expansion without execution.`
     );
     detected.push(pattern);
+    if (isNew) {
+      await notify({
+        userId,
+        title: "Ideas piling up without execution",
+        body: `${staleIdeas.length} ideas have sat for ${STALE_IDEA_DAYS}+ days without moving forward.`,
+        priority: "LOW",
+        sourceType: "Pattern",
+        sourceId: pattern.id,
+      });
+    }
   }
 
   const pendingDecisions = await db.decision.findMany({
@@ -72,6 +83,15 @@ export async function detectPatterns(userId: string) {
     // re-scan, so re-running the scan doesn't spam duplicate proposals.
     if (isNew) {
       const oldest = pendingDecisions[0]!;
+      await notify({
+        userId,
+        title: "Decisions piling up",
+        body: `${pendingDecisions.length} decisions have been pending for ${STALE_DECISION_DAYS}+ days, oldest: "${oldest.title}".`,
+        priority: "NORMAL",
+        sourceType: "Pattern",
+        sourceId: pattern.id,
+        projectId: oldest.projectId ?? undefined,
+      });
       await createProposal({
         userId,
         observation: `Observed ${pendingDecisions.length} decisions pending for ${STALE_DECISION_DAYS}+ days.`,

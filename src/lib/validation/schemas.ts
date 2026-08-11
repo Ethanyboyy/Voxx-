@@ -262,3 +262,17 @@ export const grantConnectionAccessSchema = z.object({
   read: z.boolean().optional(),
   write: z.boolean().optional(),
 });
+
+export const startAgentRunSchema = z.object({
+  objective: z.string().min(1).max(2000),
+  projectId: z.string().optional(),
+});
+
+export const notificationPrioritySchema = z.enum(["LOW", "NORMAL", "HIGH"]);
+
+export const updateNotificationPreferenceSchema = z.object({
+  enabled: z.boolean().optional(),
+  quietHoursStart: z.number().int().min(0).max(23).nullable().optional(),
+  quietHoursEnd: z.number().int().min(0).max(23).nullable().optional(),
+  minPriority: notificationPrioritySchema.optional(),
+});

@@ -16,6 +16,17 @@
   --danger: #dc2626;
   --danger-muted: #fef2f2;
   --focus-ring: #6366f1;
+  --core-1: #6366f1;
+  --core-2: #22d3ee;
+  --core-3: #a855f7;
+  --core-idle: #818cf8;
+  --core-listening: #22d3ee;
+  --core-thinking: #a855f7;
+  --core-responding: #6366f1;
+  --core-executing: #f59e0b;
+  --core-waiting: #71717a;
+  --core-success: #16a34a;
+  --core-error: #dc2626;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -71,6 +82,9 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-danger-muted: var(--danger-muted);
+  --color-core-1: var(--core-1);
+  --color-core-2: var(--core-2);
+  --color-core-3: var(--core-3);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -110,5 +124,71 @@ body {
   button,
   a[role="button"] {
     min-height: 44px;
+  }
+}
+
+/* VOX Core — the state-driven presence indicator. Pure CSS, no canvas/WebGL,
+   so it stays cheap on a phone over cellular data. Each state maps to a
+   rotation speed / pulse rhythm rather than a different asset. */
+@keyframes vox-core-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes vox-core-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes vox-core-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+@keyframes vox-core-pulse-fast {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+@keyframes vox-core-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  75% {
+    opacity: 0.8;
+  }
+}
+@keyframes vox-core-ring-expand {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vox-core-anim,
+  .vox-core-anim * {
+    animation: none !important;
   }
 }

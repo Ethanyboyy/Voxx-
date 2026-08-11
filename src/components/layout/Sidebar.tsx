@@ -10,11 +10,13 @@ const NAV_ITEMS = [
   { href: "/memory", label: "Memory" },
   { href: "/cognition", label: "Cognition" },
   { href: "/graph", label: "Graph" },
+  { href: "/agents", label: "Agents" },
   { href: "/proposals", label: "Proposals" },
   { href: "/connections", label: "Connections" },
   { href: "/projects", label: "Projects" },
   { href: "/experiments", label: "Experiments" },
   { href: "/research", label: "Research" },
+  { href: "/activity", label: "Activity" },
   { href: "/settings", label: "Settings" },
 ];
 

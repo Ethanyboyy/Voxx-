@@ -4,6 +4,8 @@ import { type ReactNode, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { LogoutButton } from "@/components/layout/LogoutButton";
+import { NotificationBell } from "@/components/layout/NotificationBell";
+import { CommandPalette } from "@/components/command/CommandPalette";
 
 function MenuIcon() {
   return (
@@ -66,7 +68,9 @@ export function AppShell({
           </button>
           <span className="text-sm font-semibold text-foreground md:hidden">VOX</span>
           <div className="ml-auto flex items-center gap-3">
+            <CommandPalette />
             <span className="hidden text-sm text-muted sm:inline">{userEmail}</span>
+            <NotificationBell />
             <ThemeToggle />
             <LogoutButton />
           </div>

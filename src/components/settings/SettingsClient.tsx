@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 const LEVELS = ["OBSERVE", "ANALYZE", "RECOMMEND", "ASK", "ACT"] as const;
+const PRIORITIES = ["LOW", "NORMAL", "HIGH"] as const;
 
 interface PermissionItem {
   id: string;
@@ -22,6 +23,12 @@ interface EventItem {
   consequential: boolean;
   createdAt: string;
 }
+interface NotificationPreferenceState {
+  enabled: boolean;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+  minPriority: string;
+}
 
 export function SettingsClient({
   userEmail,
@@ -30,6 +37,7 @@ export function SettingsClient({
   researchProviderId,
   initialPermissions,
   events,
+  initialNotificationPreference,
 }: {
   userEmail: string;
   aiProviderId: string;
@@ -37,6 +45,7 @@ export function SettingsClient({
   researchProviderId: string;
   initialPermissions: PermissionItem[];
   events: EventItem[];
+  initialNotificationPreference: NotificationPreferenceState;
 }) {
   const router = useRouter();
   const [permissions, setPermissions] = useState(initialPermissions);
@@ -44,6 +53,8 @@ export function SettingsClient({
   const [level, setLevel] = useState<string>("RECOMMEND");
   const [confirmDelete, setConfirmDelete] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [notificationPref, setNotificationPref] = useState(initialNotificationPreference);
+  const [savingNotificationPref, setSavingNotificationPref] = useState(false);
 
   async function grant() {
     if (!capability.trim()) return;
@@ -68,6 +79,27 @@ export function SettingsClient({
     if (res.ok) {
       const data = await res.json();
       setPermissions((prev) => prev.map((p) => (p.capability === cap ? data.permission : p)));
+    }
+  }
+
+  async function saveNotificationPref(updates: Partial<NotificationPreferenceState>) {
+    const next = { ...notificationPref, ...updates };
+    setNotificationPref(next);
+    setSavingNotificationPref(true);
+    const res = await fetch("/api/notifications/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    setSavingNotificationPref(false);
+    if (res.ok) {
+      const data = await res.json();
+      setNotificationPref({
+        enabled: data.preference.enabled,
+        quietHoursStart: data.preference.quietHoursStart,
+        quietHoursEnd: data.preference.quietHoursEnd,
+        minPriority: data.preference.minPriority,
+      });
     }
   }
 
@@ -161,6 +193,70 @@ export function SettingsClient({
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            Controls the proactive-intelligence delivery layer — every notification VOX would send (patterns
+            detected, agent runs finishing) is checked against these settings before it&apos;s ever created.
+          </p>
+          <label className="flex items-center justify-between text-sm">
+            <span className="text-foreground">Notifications enabled</span>
+            <input
+              type="checkbox"
+              checked={notificationPref.enabled}
+              onChange={(e) => saveNotificationPref({ enabled: e.target.checked })}
+              className="h-5 w-5"
+            />
+          </label>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-foreground">Minimum priority</span>
+            <Select
+              value={notificationPref.minPriority}
+              onChange={(e) => saveNotificationPref({ minPriority: e.target.value as NotificationPreferenceState["minPriority"] })}
+              className="w-auto"
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-foreground">Quiet hours (0–23, overnight ranges supported)</span>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={23}
+                value={notificationPref.quietHoursStart ?? ""}
+                onChange={(e) =>
+                  saveNotificationPref({ quietHoursStart: e.target.value === "" ? null : Number(e.target.value) })
+                }
+                placeholder="off"
+                className="w-20"
+              />
+              <span className="text-muted">to</span>
+              <Input
+                type="number"
+                min={0}
+                max={23}
+                value={notificationPref.quietHoursEnd ?? ""}
+                onChange={(e) =>
+                  saveNotificationPref({ quietHoursEnd: e.target.value === "" ? null : Number(e.target.value) })
+                }
+                placeholder="off"
+                className="w-20"
+              />
+            </div>
+          </div>
+          {savingNotificationPref ? <p className="text-xs text-muted">Saving…</p> : null}
         </CardContent>
       </Card>
 
