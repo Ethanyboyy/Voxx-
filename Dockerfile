@@ -24,6 +24,9 @@ COPY prisma ./prisma
 # Confirmed by a real deploy where the app started but Prisma couldn't find
 # better_sqlite3.node anywhere. Fix is to give this stage the Prisma schema
 # it needs so postinstall succeeds naturally, and let all install scripts run.
+# prisma.config.ts itself requires DATABASE_URL to resolve (even just to
+# generate the client, no queries run) — same placeholder value as builder.
+ENV DATABASE_URL="file:/data/prod.db"
 RUN npm ci
 
 FROM node:22-slim AS builder
