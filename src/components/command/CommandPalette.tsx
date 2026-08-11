@@ -12,20 +12,21 @@ interface Command {
 }
 
 const COMMANDS: Command[] = [
-  { id: "dashboard", label: "Go to Dashboard", href: "/dashboard" },
-  { id: "chat", label: "Go to Chat", href: "/chat" },
-  { id: "memory", label: "Go to Memory", href: "/memory" },
-  { id: "cognition", label: "Go to Cognition", href: "/cognition" },
-  { id: "graph", label: "Go to Knowledge Graph", href: "/graph" },
-  { id: "agents", label: "Go to Agents", href: "/agents" },
+  { id: "dashboard", label: "Open Command Center", href: "/dashboard" },
+  { id: "brain", label: "Open VOX Brain", href: "/brain" },
+  { id: "chat", label: "Talk to VOX", href: "/chat" },
+  { id: "memory", label: "Open Memory Vault", href: "/memory" },
+  { id: "cognition", label: "Open Observations", href: "/cognition" },
+  { id: "graph", label: "Open Knowledge Graph", href: "/graph" },
+  { id: "agents", label: "Open Agents", href: "/agents" },
   { id: "new-agent-run", label: "Start a new agent run", hint: "Agents", href: "/agents?new=1" },
-  { id: "proposals", label: "Go to Proposals", href: "/proposals" },
-  { id: "connections", label: "Go to Connections Hub", href: "/connections" },
-  { id: "projects", label: "Go to Projects", href: "/projects" },
-  { id: "experiments", label: "Go to Experiments", href: "/experiments" },
-  { id: "research", label: "Go to Research", href: "/research" },
-  { id: "activity", label: "Go to Activity", href: "/activity" },
-  { id: "settings", label: "Go to Settings", href: "/settings" },
+  { id: "proposals", label: "Open Decisions & Proposals", href: "/proposals" },
+  { id: "connections", label: "Open Connections Hub", href: "/connections" },
+  { id: "projects", label: "Open Mission Control", href: "/projects" },
+  { id: "experiments", label: "Open Laboratory", href: "/experiments" },
+  { id: "research", label: "Open Research Intelligence", href: "/research" },
+  { id: "activity", label: "Open Activity", href: "/activity" },
+  { id: "settings", label: "Open System Configuration", href: "/settings" },
 ];
 
 export function CommandPalette() {
@@ -80,18 +81,18 @@ export function CommandPalette() {
       <button
         type="button"
         onClick={openPalette}
-        className="hidden items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-surface-hover sm:flex"
+        className="hidden items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-[var(--border-strong)] hover:text-foreground sm:flex"
       >
-        <span>Search…</span>
+        <span>What do you want VOX to do?</span>
         <kbd className="rounded border border-border bg-surface-hover px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
       </button>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 px-4 pt-24">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-24 backdrop-blur-sm">
       <button type="button" aria-label="Close" className="absolute inset-0" onClick={() => setOpen(false)} />
-      <div className="relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+      <div className="glow-border relative w-full max-w-lg overflow-hidden rounded-xl glass-panel-strong shadow-2xl">
         <input
           ref={inputRef}
           value={query}
@@ -111,7 +112,7 @@ export function CommandPalette() {
               select(filtered[activeIndex]);
             }
           }}
-          placeholder="Where do you want to go?"
+          placeholder="What do you want VOX to do?"
           className="w-full border-b border-border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted focus:outline-none sm:text-sm"
         />
         <div className="max-h-80 overflow-y-auto scrollbar-thin py-1">

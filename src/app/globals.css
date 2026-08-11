@@ -1,74 +1,91 @@
 @import "tailwindcss";
 
+/*
+ * VOX design system — obsidian/violet is the identity, not a "dark mode".
+ * The bare :root is the obsidian palette; [data-theme="light"] is the only
+ * opt-out, reachable via the theme toggle. There is no prefers-color-scheme
+ * branch — VOX doesn't inherit the host OS's theme, it has its own.
+ */
 :root {
-  --background: #f7f7f8;
-  --surface: #ffffff;
-  --surface-hover: #f0f0f2;
-  --border: #e4e4e7;
-  --foreground: #18181b;
-  --muted: #6b7280;
-  --muted-foreground: #71717a;
-  --accent: #4f46e5;
+  --background: #050308;
+  --background-2: #0a0616;
+  --surface: rgba(22, 15, 38, 0.6);
+  --surface-solid: #130c22;
+  --surface-hover: rgba(168, 85, 247, 0.1);
+  --border: rgba(167, 139, 250, 0.16);
+  --border-strong: rgba(167, 139, 250, 0.36);
+  --foreground: #f5f2ff;
+  --muted: #a99fc9;
+  --muted-foreground: #8b7fb0;
+  --accent: #a855f7;
+  --accent-2: #6366f1;
+  --accent-blue: #38bdf8;
+  --accent-foreground: #0a0714;
+  --accent-muted: rgba(168, 85, 247, 0.16);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --danger-muted: rgba(248, 113, 113, 0.14);
+  --focus-ring: #c084fc;
+
+  --glass-bg: rgba(20, 13, 36, 0.55);
+  --glass-bg-strong: rgba(24, 16, 42, 0.78);
+  --glass-border: rgba(167, 139, 250, 0.22);
+  --glass-blur: 22px;
+  --radius-panel: 20px;
+
+  --core-idle: #a78bfa;
+  --core-listening: #38bdf8;
+  --core-thinking: #c084fc;
+  --core-responding: #a855f7;
+  --core-executing: #fbbf24;
+  --core-waiting: #8b7fb0;
+  --core-success: #34d399;
+  --core-error: #f87171;
+  --core-1: #a855f7;
+  --core-2: #38bdf8;
+  --core-3: #6366f1;
+}
+
+:root[data-theme="light"] {
+  --background: #f7f5fb;
+  --background-2: #efebf7;
+  --surface: rgba(255, 255, 255, 0.7);
+  --surface-solid: #ffffff;
+  --surface-hover: rgba(124, 58, 237, 0.06);
+  --border: rgba(124, 58, 237, 0.14);
+  --border-strong: rgba(124, 58, 237, 0.28);
+  --foreground: #1c1428;
+  --muted: #6b6280;
+  --muted-foreground: #7a7191;
+  --accent: #7c3aed;
+  --accent-2: #4f46e5;
+  --accent-blue: #0284c7;
   --accent-foreground: #ffffff;
-  --accent-muted: #eef2ff;
+  --accent-muted: #efe6fe;
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
   --danger-muted: #fef2f2;
-  --focus-ring: #6366f1;
-  --core-1: #6366f1;
-  --core-2: #22d3ee;
-  --core-3: #a855f7;
-  --core-idle: #818cf8;
-  --core-listening: #22d3ee;
-  --core-thinking: #a855f7;
-  --core-responding: #6366f1;
-  --core-executing: #f59e0b;
-  --core-waiting: #71717a;
+  --focus-ring: #7c3aed;
+
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg-strong: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(124, 58, 237, 0.16);
+
+  --core-idle: #8b5cf6;
+  --core-listening: #0284c7;
+  --core-thinking: #7c3aed;
+  --core-responding: #7c3aed;
+  --core-executing: #d97706;
+  --core-waiting: #7a7191;
   --core-success: #16a34a;
   --core-error: #dc2626;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --background: #0b0b0e;
-    --surface: #16161a;
-    --surface-hover: #1e1e23;
-    --border: #2a2a30;
-    --foreground: #f4f4f5;
-    --muted: #9ca3af;
-    --muted-foreground: #a1a1aa;
-    --accent: #818cf8;
-    --accent-foreground: #0b0b0e;
-    --accent-muted: #1e1e3f;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --danger: #f87171;
-    --danger-muted: #2a1618;
-    --focus-ring: #818cf8;
-  }
-}
-
-:root[data-theme="dark"] {
-  --background: #0b0b0e;
-  --surface: #16161a;
-  --surface-hover: #1e1e23;
-  --border: #2a2a30;
-  --foreground: #f4f4f5;
-  --muted: #9ca3af;
-  --muted-foreground: #a1a1aa;
-  --accent: #818cf8;
-  --accent-foreground: #0b0b0e;
-  --accent-muted: #1e1e3f;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --danger-muted: #2a1618;
-  --focus-ring: #818cf8;
-}
-
 @theme inline {
   --color-background: var(--background);
+  --color-background-2: var(--background-2);
   --color-surface: var(--surface);
   --color-surface-hover: var(--surface-hover);
   --color-border: var(--border);
@@ -76,6 +93,8 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-blue: var(--accent-blue);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-muted: var(--accent-muted);
   --color-success: var(--success);
@@ -97,6 +116,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
@@ -114,7 +134,7 @@ body {
   height: 8px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border-radius: 9999px;
 }
 
@@ -127,9 +147,48 @@ body {
   }
 }
 
-/* VOX Core — the state-driven presence indicator. Pure CSS, no canvas/WebGL,
-   so it stays cheap on a phone over cellular data. Each state maps to a
-   rotation speed / pulse rhythm rather than a different asset. */
+/* ---------- Glass surfaces ---------- */
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-panel);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 20px 60px -30px rgba(168, 85, 247, 0.35);
+}
+
+.glass-panel-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-panel);
+}
+
+.glow-border {
+  position: relative;
+}
+.glow-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent), transparent 40%, var(--accent-blue));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---------- Ambient / VOX Core keyframes ---------- */
+
 @keyframes vox-core-spin {
   to {
     transform: rotate(360deg);
@@ -185,10 +244,78 @@ body {
     opacity: 0;
   }
 }
+@keyframes vox-core-particle {
+  0% {
+    transform: rotate(0deg) translateX(var(--orbit-r, 40px)) rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg) translateX(var(--orbit-r, 40px)) rotate(-360deg);
+  }
+}
+
+@keyframes vox-ambient-drift-1 {
+  0%,
+  100% {
+    transform: translate(-6%, -4%) scale(1);
+  }
+  50% {
+    transform: translate(4%, 6%) scale(1.12);
+  }
+}
+@keyframes vox-ambient-drift-2 {
+  0%,
+  100% {
+    transform: translate(5%, 3%) scale(1.05);
+  }
+  50% {
+    transform: translate(-4%, -5%) scale(0.95);
+  }
+}
+@keyframes vox-ambient-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes vox-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.vox-panel-in {
+  animation: vox-panel-in 0.4s ease-out both;
+}
+
+@keyframes vox-status-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 6px 1px currentColor;
+  }
+}
+.vox-status-dot {
+  animation: vox-status-dot-pulse 2.4s ease-in-out infinite;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .vox-core-anim,
-  .vox-core-anim * {
+  .vox-core-anim *,
+  .vox-ambient,
+  .vox-ambient *,
+  .vox-status-dot {
     animation: none !important;
   }
 }

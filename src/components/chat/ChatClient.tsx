@@ -202,7 +202,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             onClick={() => setListOpen(false)}
           />
           <div
-            className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-surface p-3 shadow-xl"
+            className="glass-panel-strong absolute inset-y-0 left-0 flex w-64 flex-col rounded-none p-3 shadow-xl"
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
             {conversationList}
@@ -211,7 +211,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
+        <div className="glass-panel-strong flex items-center justify-between rounded-none border-x-0 border-t-0 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -223,8 +223,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                 <path d="M3 5h14M3 10h10M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
-            <VoxCore state={coreState} size="sm" />
-            <h1 className="text-sm font-semibold text-foreground">Chat</h1>
+            <VoxCore state={coreState} size="sm" showLabel />
           </div>
           <Button size="sm" variant="ghost" onClick={exportConversation} disabled={messages.length === 0}>
             Copy conversation
@@ -233,15 +232,18 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
           {messages.length === 0 ? (
-            <p className="mt-10 text-center text-sm text-muted">
-              Say something to start. VOX remembers context across this conversation and your saved memories.
-            </p>
+            <div className="mt-16 flex flex-col items-center gap-4 text-center">
+              <VoxCore state="idle" size="lg" />
+              <p className="max-w-sm text-sm text-muted">
+                Say something to start. VOX remembers context across this conversation and your saved memories.
+              </p>
+            </div>
           ) : (
             <div className="mx-auto flex max-w-2xl flex-col gap-4">
               {messages.map((m) => {
                 if (m.role === "SYSTEM") {
                   return (
-                    <div key={m.id} className="mx-auto max-w-[90%] rounded-full bg-surface-hover px-3 py-1 text-center text-xs text-muted">
+                    <div key={m.id} className="glass-panel mx-auto max-w-[90%] rounded-full px-3 py-1 text-center text-xs text-muted">
                       {m.content}
                     </div>
                   );
@@ -255,7 +257,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                       <div
                         className={cn(
                           "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
-                          m.role === "USER" ? "bg-accent text-accent-foreground" : "bg-surface-hover text-foreground"
+                          m.role === "USER"
+                            ? "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
+                            : "glass-panel text-foreground"
                         )}
                       >
                         {m.content || (m.pending ? "…" : "")}
@@ -271,8 +275,20 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           {error ? <p className="mx-auto mt-4 max-w-2xl text-sm text-danger">{error}</p> : null}
         </div>
 
-        <div className="border-t border-border p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        <div className="glass-panel-strong rounded-none border-x-0 border-b-0 p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
+            <button
+              type="button"
+              disabled
+              title="Voice input is not implemented yet — text is the only real input path today."
+              aria-label="Voice input (not yet available)"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted opacity-40"
+            >
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M4 9.5a6 6 0 0 0 12 0M10 15.5v2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}

@@ -55,7 +55,7 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
-          className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:px-6"
+          className="glass-panel-strong flex h-14 shrink-0 items-center gap-3 rounded-none border-x-0 border-t-0 px-4 sm:px-6"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
           <button

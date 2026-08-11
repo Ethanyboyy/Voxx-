@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils/cn";
 // text-base (16px), not text-sm (14px): iOS Safari auto-zooms the viewport
 // on focus for any form field under 16px computed font size.
 const fieldClasses =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring sm:text-sm";
+  "w-full rounded-lg border border-border bg-[var(--surface-solid)] px-3 py-2 text-base text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:border-[var(--border-strong)] transition-colors sm:text-sm";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...props },

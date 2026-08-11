@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AmbientBackground } from "@/components/vox/AmbientBackground";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "VOX",
   },
   icons: {
@@ -38,10 +39,10 @@ export const viewport: Viewport = {
   // Lets the app draw under the iPhone notch/home-indicator area so the
   // safe-area-inset-* CSS vars used in AppShell/ChatClient have real values.
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0b0e" },
-  ],
+  // VOX's obsidian identity is the default appearance regardless of host OS
+  // theme (see globals.css) — the browser chrome matches that, not the
+  // system preference.
+  themeColor: "#050308",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -50,7 +51,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AmbientBackground />
+        {children}
+      </body>
     </html>
   );
 }
