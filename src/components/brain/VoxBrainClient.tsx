@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GlassPanel } from "@/components/ui/GlassPanel";
@@ -101,6 +101,47 @@ export function VoxBrainClient({
   activity: ActivityItem[];
 }) {
   const [mode, setMode] = useState<Mode>("overview");
+  const [livePatterns, setLivePatterns] = useState(patterns);
+  const [liveActivity, setLiveActivity] = useState(activity);
+  const [freshPatternIds, setFreshPatternIds] = useState<Set<string>>(new Set());
+  const [newActivityCount, setNewActivityCount] = useState(0);
+
+  // Live activity polling — real data, not decorative: every 20s, pull the
+  // latest patterns/events and highlight what's actually new since mount.
+  useEffect(() => {
+    const knownPatternIds = new Set(patterns.map((p) => p.id));
+    const knownEventIds = new Set(activity.map((e) => e.id));
+
+    const interval = setInterval(async () => {
+      try {
+        const [patternsRes, eventsRes] = await Promise.all([fetch("/api/patterns"), fetch("/api/events")]);
+        const patternsData = await patternsRes.json();
+        const eventsData = await eventsRes.json();
+        const freshPatterns: PatternItem[] = (patternsData.patterns ?? []).filter((p: PatternItem) => p.status === "ACTIVE");
+        const freshEvents: ActivityItem[] = eventsData.events ?? [];
+
+        const newlyDetected = freshPatterns.filter((p) => !knownPatternIds.has(p.id));
+        if (newlyDetected.length > 0) {
+          for (const p of newlyDetected) knownPatternIds.add(p.id);
+          setFreshPatternIds(new Set(newlyDetected.map((p) => p.id)));
+          setTimeout(() => setFreshPatternIds(new Set()), 8000);
+        }
+        const newEvents = freshEvents.filter((e) => !knownEventIds.has(e.id));
+        if (newEvents.length > 0) {
+          for (const e of newEvents) knownEventIds.add(e.id);
+          setNewActivityCount((c) => c + newEvents.length);
+        }
+
+        setLivePatterns(freshPatterns);
+        setLiveActivity(freshEvents);
+      } catch {
+        // transient network hiccup — next tick tries again, no need to surface an error for a background poll
+      }
+    }, 20000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mt-6">
@@ -108,21 +149,29 @@ export function VoxBrainClient({
         {MODES.map((m) => (
           <button
             key={m.id}
-            onClick={() => setMode(m.id)}
+            onClick={() => {
+              setMode(m.id);
+              if (m.id === "activity") setNewActivityCount(0);
+            }}
             className={cn(
-              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+              "relative rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
               mode === m.id
                 ? "border-[var(--border-strong)] bg-accent-muted text-accent shadow-[0_0_16px_-6px_var(--accent)]"
                 : "border-border text-muted-foreground hover:text-foreground"
             )}
           >
             {m.label}
+            {m.id === "activity" && newActivityCount > 0 ? (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-foreground">
+                {newActivityCount > 9 ? "9+" : newActivityCount}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
 
       {mode === "overview" ? (
-        <BrainGraph nodes={nodes} edges={edges} patterns={patterns} connectionsSummary={connectionsSummary} />
+        <BrainGraph nodes={nodes} edges={edges} patterns={livePatterns} connectionsSummary={connectionsSummary} freshPatternIds={freshPatternIds} />
       ) : mode === "memory" ? (
         <MemoryMode stats={memoryStats} />
       ) : mode === "planning" ? (
@@ -130,7 +179,7 @@ export function VoxBrainClient({
       ) : mode === "execution" ? (
         <ExecutionMode execution={execution} />
       ) : (
-        <ActivityMode activity={activity} />
+        <ActivityMode activity={liveActivity} />
       )}
     </div>
   );
@@ -143,11 +192,13 @@ function BrainGraph({
   edges,
   patterns,
   connectionsSummary,
+  freshPatternIds,
 }: {
   nodes: KnowledgeNode[];
   edges: KnowledgeEdge[];
   patterns: PatternItem[];
   connectionsSummary: ConnectionSummary[];
+  freshPatternIds: Set<string>;
 }) {
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -272,6 +323,7 @@ function BrainGraph({
                 {patterns.map((p, i) => {
                   const pos = ring2[i]!;
                   const isSelected = selection?.kind === "pattern" && selection.pattern.id === p.id;
+                  const isFresh = freshPatternIds.has(p.id);
                   return (
                     <g
                       key={p.id}
@@ -279,6 +331,12 @@ function BrainGraph({
                       className="cursor-pointer"
                       onClick={() => setSelection({ kind: "pattern", pattern: p })}
                     >
+                      {isFresh ? (
+                        <circle r={7} fill="none" stroke="var(--core-thinking)" strokeWidth={1.5}>
+                          <animate attributeName="r" values="7;18;7" dur="1.6s" repeatCount="indefinite" />
+                          <animate attributeName="opacity" values="0.8;0;0.8" dur="1.6s" repeatCount="indefinite" />
+                        </circle>
+                      ) : null}
                       <circle r={isSelected ? 10 : 7} fill="var(--core-thinking)" opacity={0.9}>
                         <animate attributeName="opacity" values="0.5;1;0.5" dur="2.4s" repeatCount="indefinite" />
                       </circle>

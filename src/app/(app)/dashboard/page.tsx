@@ -68,7 +68,7 @@ export default async function DashboardPage() {
         <StatusDot label={`memory synced · ${memories.length}`} tone="accent" />
         <StatusDot label={`connections · ${connectedCount}/${connections.length}`} tone={connectedCount > 0 ? "accent" : "neutral"} />
         <StatusDot label={`agents · ${agentRuns.length}`} tone="accent" />
-        <StatusDot label="voice · not yet available" tone="neutral" />
+        <StatusDot label="voice · in Chat (browser-dependent)" tone="accent" />
       </div>
 
       {/* hero */}

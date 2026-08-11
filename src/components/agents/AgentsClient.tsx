@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
+import { VoxErrorPanel } from "@/components/vox/VoxErrorPanel";
 import { cn } from "@/lib/utils/cn";
 
 type AgentRunStatus = "PLANNING" | "WAITING_FOR_PERMISSION" | "RUNNING" | "WAITING" | "FAILED" | "COMPLETED" | "CANCELLED";
@@ -167,7 +168,7 @@ export function AgentsClient({
                 </Select>
               </div>
             ) : null}
-            {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+            {error ? <div className="mt-2"><VoxErrorPanel title="Run failed to start" message={error} /></div> : null}
             <div className="mt-4 flex gap-2">
               <Button onClick={startRun} disabled={starting || !objective.trim()}>
                 {starting ? "Planning…" : "Start"}

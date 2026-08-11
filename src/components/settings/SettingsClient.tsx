@@ -34,7 +34,12 @@ export function SettingsClient({
   userEmail,
   aiProviderId,
   aiModel,
+  aiConfigured,
   researchProviderId,
+  researchConfigured,
+  dbReachable,
+  connectionsConnected,
+  connectionsTotal,
   initialPermissions,
   events,
   initialNotificationPreference,
@@ -42,7 +47,12 @@ export function SettingsClient({
   userEmail: string;
   aiProviderId: string;
   aiModel: string;
+  aiConfigured: boolean;
   researchProviderId: string;
+  researchConfigured: boolean;
+  dbReachable: boolean;
+  connectionsConnected: number;
+  connectionsTotal: number;
   initialPermissions: PermissionItem[];
   events: EventItem[];
   initialNotificationPreference: NotificationPreferenceState;
@@ -127,21 +137,45 @@ export function SettingsClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>Providers</CardTitle>
+          <CardTitle>System health</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="flex flex-col gap-2 text-sm">
-            <li className="flex justify-between">
-              <span className="text-muted">AI provider</span>
-              <span className="text-foreground">
+          <ul className="flex flex-col gap-2.5 text-sm">
+            <li className="flex items-center justify-between">
+              <span className="text-muted">AI model</span>
+              <span className="flex items-center gap-2 text-foreground">
                 {aiProviderId} ({aiModel})
+                <HealthBadge ok={aiConfigured} onLabel="live" offLabel="mock — no ANTHROPIC_API_KEY set" />
               </span>
             </li>
-            <li className="flex justify-between">
-              <span className="text-muted">Research provider</span>
-              <span className="text-foreground">{researchProviderId}</span>
+            <li className="flex items-center justify-between">
+              <span className="text-muted">Research</span>
+              <span className="flex items-center gap-2 text-foreground">
+                {researchProviderId}
+                <HealthBadge ok={researchConfigured} onLabel="live web search" offLabel="mock" />
+              </span>
+            </li>
+            <li className="flex items-center justify-between">
+              <span className="text-muted">Database</span>
+              <HealthBadge ok={dbReachable} onLabel="reachable" offLabel="unreachable" />
+            </li>
+            <li className="flex items-center justify-between">
+              <span className="text-muted">Connections</span>
+              <span className="text-foreground">
+                {connectionsConnected} / {connectionsTotal} connected
+              </span>
+            </li>
+            <li className="flex items-center justify-between">
+              <span className="text-muted">Voice (speech-to-text / text-to-speech)</span>
+              <span className="text-xs text-muted">browser-dependent — see Chat</span>
             </li>
           </ul>
+          {!aiConfigured ? (
+            <p className="mt-3 text-xs text-warning">
+              VOX is running on the deterministic mock AI provider — real chat responses require an{" "}
+              <code>ANTHROPIC_API_KEY</code> set on the server.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -293,6 +327,15 @@ export function SettingsClient({
               Download memory export
             </a>
           </div>
+          <div>
+            <p className="text-sm text-muted">
+              Export everything — memories, projects, tasks, decisions, conversations, research, the knowledge
+              graph, patterns, permissions, and agent runs — as one portable JSON document.
+            </p>
+            <a href="/api/account/export" className="mt-1 inline-block text-sm font-medium text-accent">
+              Download full data export
+            </a>
+          </div>
           <div className="rounded-lg border border-danger/30 p-4">
             <p className="text-sm font-medium text-danger">Delete all data</p>
             <p className="mt-1 text-sm text-muted">
@@ -309,5 +352,13 @@ export function SettingsClient({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function HealthBadge({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel: string }) {
+  return (
+    <Badge tone={ok ? "success" : "warning"} className="whitespace-nowrap">
+      {ok ? onLabel : offLabel}
+    </Badge>
   );
 }

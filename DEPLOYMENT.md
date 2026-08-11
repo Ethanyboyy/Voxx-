@@ -91,6 +91,20 @@ at the database transaction level, not just the UI).
 - Fly volumes are automatically snapshotted daily (a few days of retention) — a basic
   backup story with nothing extra to configure.
 
+## Backups beyond the daily volume snapshot (optional, recommended before real use)
+
+Fly's daily volume snapshot (above) protects against most failure modes, but it's a
+once-a-day point, not continuous. If you want tighter recovery — e.g. losing at most a
+few seconds of writes instead of up to a day — the standard approach for SQLite on Fly
+is [Litestream](https://litestream.io/guides/fly/): it streams the WAL to an S3-compatible
+bucket (Fly's own Tigris object storage works) continuously, and restores by replaying
+that stream on boot. This is a genuine, widely-used pattern for exactly this setup
+(SQLite + `better-sqlite3`/Prisma + a single Fly volume) — not implemented here, since
+wiring it up means adding a Tigris bucket and a sidecar process to a deployment that's
+already live, which is worth doing deliberately with you rather than as a background
+change. In the meantime, `Settings → Your data → Download full data export` gives you
+an application-level backup you control directly, independent of Fly.
+
 ## Custom domain / a second auth layer later (optional, not required)
 
 Fly gives you `https://<app-name>.fly.dev` with a valid cert out of the box — nothing
