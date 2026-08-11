@@ -1,0 +1,8 @@
+# Force LF line endings for files that run inside the Linux Docker image
+# regardless of the checkout platform's line-ending settings (e.g. Git for
+# Windows' core.autocrlf=true). A CRLF shebang line breaks the interpreter
+# lookup inside the container with a misleading "No such file or directory"
+# error that looks like a missing file, not a line-ending problem.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf
