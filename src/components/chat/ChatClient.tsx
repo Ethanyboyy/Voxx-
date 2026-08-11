@@ -282,10 +282,25 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
           {messages.length === 0 ? (
             <div className="mt-16 flex flex-col items-center gap-4 text-center">
-              <VoxCore state="idle" size="lg" />
-              <p className="max-w-sm text-sm text-muted">
-                Say something to start. VOX remembers context across this conversation and your saved memories.
-              </p>
+              {stt.supported ? (
+                <button
+                  type="button"
+                  onClick={() => (stt.listening ? stt.stop() : stt.start())}
+                  className="flex flex-col items-center gap-4 sm:hidden"
+                  aria-label={stt.listening ? "Stop listening" : "Tap to talk to VOX"}
+                >
+                  <VoxCore state={stt.listening ? "listening" : "idle"} size="xl" />
+                  <p className="text-sm font-medium text-foreground">
+                    {stt.listening ? "Listening…" : "Tap to talk to VOX"}
+                  </p>
+                </button>
+              ) : null}
+              <div className={cn("flex-col items-center gap-4", stt.supported ? "hidden sm:flex" : "flex")}>
+                <VoxCore state="idle" size="lg" />
+                <p className="max-w-sm text-sm text-muted">
+                  Say something to start. VOX remembers context across this conversation and your saved memories.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -393,6 +408,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               {streaming ? "Sending..." : "Send"}
             </Button>
           </div>
+          {stt.error ? (
+            <p className="mx-auto mt-2 max-w-2xl text-xs text-danger">{stt.error}</p>
+          ) : null}
         </div>
       </div>
     </div>

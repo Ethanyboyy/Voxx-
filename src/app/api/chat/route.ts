@@ -29,21 +29,35 @@ export async function POST(request: NextRequest) {
     return apiErrorResponse(error);
   }
 
-  const conversation = await db.conversation.findFirst({
-    where: { id: body.conversationId, userId: user.id },
-  });
-  if (!conversation) {
-    return apiErrorResponse(new ApiError(404, "Conversation not found."));
+  let system: string;
+  let trace: Awaited<ReturnType<typeof buildSystemPrompt>>["trace"];
+  let providerMessages: ReturnType<typeof toProviderMessages>;
+  let provider: ReturnType<typeof getAIProvider>;
+  let conversation: NonNullable<Awaited<ReturnType<typeof db.conversation.findFirst>>>;
+
+  try {
+    const found = await db.conversation.findFirst({
+      where: { id: body.conversationId, userId: user.id },
+    });
+    if (!found) {
+      return apiErrorResponse(new ApiError(404, "Conversation not found."));
+    }
+    conversation = found;
+
+    await addMessage(conversation.id, "USER", body.message);
+
+    const [systemPromptResult, full] = await Promise.all([
+      buildSystemPrompt(user.id, body.message),
+      getConversation(user.id, conversation.id),
+    ]);
+    system = systemPromptResult.prompt;
+    trace = systemPromptResult.trace;
+    providerMessages = toProviderMessages(full?.messages ?? []);
+    provider = getAIProvider();
+  } catch (error) {
+    logger.error("chat.setup_failed", { error: error instanceof Error ? error.message : String(error) });
+    return apiErrorResponse(error);
   }
-
-  await addMessage(conversation.id, "USER", body.message);
-
-  const [{ prompt: system, trace }, full] = await Promise.all([
-    buildSystemPrompt(user.id, body.message),
-    getConversation(user.id, conversation.id),
-  ]);
-  const providerMessages = toProviderMessages(full?.messages ?? []);
-  const provider = getAIProvider();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

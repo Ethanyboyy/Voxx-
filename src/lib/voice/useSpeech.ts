@@ -15,6 +15,9 @@ interface SpeechRecognitionEventLike extends Event {
   resultIndex: number;
   results: ArrayLike<SpeechRecognitionResultLike>;
 }
+interface SpeechRecognitionErrorEventLike extends Event {
+  error: string;
+}
 interface SpeechRecognitionLike extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
@@ -22,9 +25,17 @@ interface SpeechRecognitionLike extends EventTarget {
   start(): void;
   stop(): void;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: Event) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
 }
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "not-allowed": "Microphone access was blocked. Allow it for this site and try again.",
+  "no-speech": "Didn't catch any speech — try again.",
+  "audio-capture": "No microphone was found.",
+  network: "Speech recognition needs a network connection — check your connection and try again.",
+  aborted: "Listening was cancelled.",
+};
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 function getRecognitionCtor(): SpeechRecognitionCtor | null {
@@ -44,6 +55,7 @@ export function useSpeechToText(onFinalTranscript: (text: string) => void) {
   const [supported] = useState(() => getRecognitionCtor() !== null);
   const [listening, setListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const onFinalRef = useRef(onFinalTranscript);
 
@@ -72,7 +84,10 @@ export function useSpeechToText(onFinalTranscript: (text: string) => void) {
       }
       if (interim) setInterimTranscript(interim);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (event) => {
+      setListening(false);
+      setError(ERROR_MESSAGES[event.error] ?? `Microphone error: ${event.error}`);
+    };
     recognition.onend = () => {
       setListening(false);
       setInterimTranscript("");
@@ -85,15 +100,21 @@ export function useSpeechToText(onFinalTranscript: (text: string) => void) {
 
   const start = useCallback(() => {
     if (!recognitionRef.current || listening) return;
+    setError(null);
     setListening(true);
-    recognitionRef.current.start();
+    try {
+      recognitionRef.current.start();
+    } catch {
+      setListening(false);
+      setError("Couldn't start listening — try again.");
+    }
   }, [listening]);
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
   }, []);
 
-  return { supported, listening, interimTranscript, start, stop };
+  return { supported, listening, interimTranscript, error, start, stop };
 }
 
 /**

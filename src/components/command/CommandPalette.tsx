@@ -12,21 +12,21 @@ interface Command {
 }
 
 const COMMANDS: Command[] = [
-  { id: "dashboard", label: "Open Command Center", href: "/dashboard" },
+  { id: "dashboard", label: "Go Home", href: "/dashboard" },
   { id: "brain", label: "Open VOX Brain", href: "/brain" },
   { id: "chat", label: "Talk to VOX", href: "/chat" },
-  { id: "memory", label: "Open Memory Vault", href: "/memory" },
+  { id: "memory", label: "Open Memory", href: "/memory" },
   { id: "cognition", label: "Open Observations", href: "/cognition" },
-  { id: "graph", label: "Open Knowledge Graph", href: "/graph" },
-  { id: "agents", label: "Open Agents", href: "/agents" },
-  { id: "new-agent-run", label: "Start a new agent run", hint: "Agents", href: "/agents?new=1" },
-  { id: "proposals", label: "Open Decisions & Proposals", href: "/proposals" },
-  { id: "connections", label: "Open Connections Hub", href: "/connections" },
-  { id: "projects", label: "Open Mission Control", href: "/projects" },
+  { id: "graph", label: "Open Knowledge", href: "/graph" },
+  { id: "agents", label: "Open Automations", href: "/agents" },
+  { id: "new-agent-run", label: "Start a new automation", hint: "Automations", href: "/agents?new=1" },
+  { id: "proposals", label: "Open Proposals", href: "/proposals" },
+  { id: "connections", label: "Open Integrations", href: "/connections" },
+  { id: "projects", label: "Open Projects", href: "/projects" },
   { id: "experiments", label: "Open Laboratory", href: "/experiments" },
-  { id: "research", label: "Open Research Intelligence", href: "/research" },
+  { id: "research", label: "Open Research", href: "/research" },
   { id: "activity", label: "Open Activity", href: "/activity" },
-  { id: "settings", label: "Open System Configuration", href: "/settings" },
+  { id: "settings", label: "Open Settings", href: "/settings" },
 ];
 
 export function CommandPalette() {

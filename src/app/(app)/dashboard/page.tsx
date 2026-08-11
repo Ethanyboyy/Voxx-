@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/session";
-import { listProjects, listTasks } from "@/lib/projects/service";
+import { listProjects, listTasks, listGoals } from "@/lib/projects/service";
 import { getCognitiveProfile } from "@/lib/cognition/profile";
 import { listMemories } from "@/lib/memory/service";
 import { listIdeas } from "@/lib/projects/service";
@@ -10,6 +10,7 @@ import { listAgentRuns } from "@/lib/agents/service";
 import { listNotifications } from "@/lib/notifications/service";
 import { listConnections } from "@/lib/connections/service";
 import { listPatterns } from "@/lib/cognition/patterns";
+import { listConversations } from "@/lib/chat/service";
 import { getAIProvider } from "@/lib/ai";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -23,7 +24,8 @@ export default async function DashboardPage() {
 
   const [
     activeProjects,
-    openTasks,
+    allTasks,
+    goals,
     profile,
     memories,
     ideas,
@@ -33,9 +35,11 @@ export default async function DashboardPage() {
     notifications,
     connections,
     patterns,
+    conversations,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
+    listGoals(user.id),
     getCognitiveProfile(user.id),
     listMemories(user.id),
     listIdeas(user.id),
@@ -45,13 +49,16 @@ export default async function DashboardPage() {
     listNotifications(user.id, true),
     listConnections(user.id),
     listPatterns(user.id),
+    listConversations(user.id),
   ]);
 
-  const currentProject = activeProjects[0] ?? null;
-  const openTasksSorted = openTasks
+  const displayName = user.name?.trim() || user.email.split("@")[0];
+  const openTasksSorted = allTasks
     .filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS")
     .sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority));
-  const topTask = openTasksSorted[0] ?? null;
+  const doneTasks = allTasks.filter((t) => t.status === "DONE");
+  const activeGoals = goals.filter((g) => g.status === "ACTIVE");
+  const achievedGoals = goals.filter((g) => g.status === "ACHIEVED");
   const recentMemories = memories.slice(0, 4);
   const recentIdeas = ideas.slice(0, 4);
   const activeDimensions = profile.filter((d) => d.hasData);
@@ -59,6 +66,7 @@ export default async function DashboardPage() {
   const connectedCount = connections.filter((c) => c.status === "CONNECTED").length;
   const activePatterns = patterns.filter((p) => p.status === "ACTIVE");
   const coreState = aggregateCoreState(agentRuns, pendingProposals.length);
+  const recentConversations = conversations.slice(0, 5);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -71,97 +79,106 @@ export default async function DashboardPage() {
         <StatusDot label="voice · in Chat (browser-dependent)" tone="accent" />
       </div>
 
-      {/* hero */}
-      <GlassPanel variant="glow" className="flex flex-col items-center gap-5 px-6 py-10 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
-        <div className="flex flex-col items-center gap-5 sm:flex-row">
-          <VoxCore state={coreState} size="xl" showLabel />
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">VOX</h1>
-            <p className="mt-1 max-w-sm text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
-          </div>
+      {/* greeting header */}
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{greeting()}, {displayName}.</h1>
+          <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <VoxCore state={coreState} size="md" />
           <Link
             href="/chat"
             className="rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
           >
-            Talk to VOX
-          </Link>
-          <Link href="/agents?new=1" className="glass-panel px-4 py-2 text-sm font-medium text-foreground">
-            Start an agent run
+            New Chat
           </Link>
         </div>
-      </GlassPanel>
+      </div>
 
-      {/* focus + brain teaser */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.3fr_1fr]">
+      {/* stat row — every number here is a real, live count */}
+      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
+          label="Goals achieved"
+          value={goals.length > 0 ? `${Math.round((achievedGoals.length / goals.length) * 100)}%` : "—"}
+          sub={`${activeGoals.length} active`}
+        />
+        <StatCard label="Tasks completed" value={String(doneTasks.length)} sub="all time" />
+        <StatCard label="Open tasks" value={String(openTasksSorted.length)} sub="across projects" />
+        <StatCard label="Connections" value={`${connectedCount}/${connections.length}`} sub="services live" />
+      </div>
+
+      {/* Today's Plan / Recent Conversations / Vox Mind */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Current focus</CardTitle>
+            <CardTitle>Today&apos;s plan</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-xs text-muted-foreground">Active project</p>
-              {currentProject ? (
-                <p className="mt-1 font-medium text-foreground">{currentProject.name}</p>
-              ) : (
-                <Link href="/projects" className="mt-1 inline-block text-sm text-accent">
-                  Create one →
-                </Link>
-              )}
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Top task</p>
-              {topTask ? (
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="font-medium text-foreground">{topTask.title}</span>
-                  <Badge tone={topTask.priority === "HIGH" ? "danger" : topTask.priority === "MEDIUM" ? "warning" : "neutral"}>
-                    {topTask.priority.toLowerCase()}
-                  </Badge>
-                </div>
-              ) : (
-                <p className="mt-1 text-sm text-muted">Nothing queued</p>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <p className="text-xs text-muted-foreground">Proposals waiting on you</p>
-              {pendingProposals.length > 0 ? (
-                <ul className="mt-1 flex flex-col gap-1">
-                  {pendingProposals.slice(0, 3).map((p) => (
-                    <li key={p.id} className="text-sm text-foreground">
-                      {p.suggestedAction}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1 text-sm text-muted">Nothing proposed right now</p>
-              )}
-              <Link href="/proposals" className="mt-2 inline-block text-sm font-medium text-accent">
-                Review proposals →
-              </Link>
-            </div>
+          <CardContent>
+            {openTasksSorted.length > 0 ? (
+              <ul className="flex flex-col gap-2.5">
+                {openTasksSorted.slice(0, 6).map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 text-sm">
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: t.priority === "HIGH" ? "var(--danger)" : t.priority === "MEDIUM" ? "var(--warning)" : "var(--muted)" }}
+                    />
+                    <span className="truncate text-foreground">{t.title}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="Nothing queued" description="Create a task to see it here." />
+            )}
+            <Link href="/projects" className="mt-3 inline-block text-sm font-medium text-accent">
+              Open Mission Control →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent conversations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentConversations.length > 0 ? (
+              <ul className="flex flex-col gap-2.5">
+                {recentConversations.map((c) => (
+                  <li key={c.id}>
+                    <Link href="/chat" className="flex items-center justify-between gap-2 text-sm hover:text-accent">
+                      <span className="truncate text-foreground">{c.title}</span>
+                      <span className="shrink-0 text-xs text-muted">{formatRelativeTime(c.updatedAt)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="No conversations yet" description="Start one from Chat." />
+            )}
           </CardContent>
         </Card>
 
         <Link href="/brain" className="block">
           <GlassPanel variant="glow" className="flex h-full flex-col justify-between p-5">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">VOX Brain</p>
-              <p className="mt-1 text-sm text-muted">A live map of memory, knowledge, and activity.</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">VOX Mind</p>
+              <p className="mt-1 text-sm text-muted">Memory: {memories.length} · Patterns: {activePatterns.length}</p>
             </div>
             <div className="mt-4 flex items-center justify-between">
-              <div className="flex gap-4 text-xs text-muted-foreground">
-                <span>
-                  <span className="text-lg font-semibold text-foreground">{memories.length}</span> memories
-                </span>
-                <span>
-                  <span className="text-lg font-semibold text-foreground">{activePatterns.length}</span> patterns
-                </span>
-              </div>
-              <VoxCore state={activePatterns.length > 0 ? "thinking" : "idle"} size="md" />
+              <p className="text-xs text-muted-foreground">Always learning. Always improving.</p>
+              <VoxCore state={activePatterns.length > 0 ? "thinking" : "idle"} size="lg" />
             </div>
           </GlassPanel>
         </Link>
+      </div>
+
+      {/* Quick actions */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <QuickAction href="/projects" label="New Goal" />
+        <QuickAction href="/projects" label="New Project" />
+        <QuickAction href="/agents?new=1" label="New Task" />
+        <QuickAction href="/memory" label="New Memory" />
+        <QuickAction href="/chat" label="New Chat" primary />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -336,6 +353,51 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="glass-panel px-4 py-3.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="text-xs text-muted">{sub}</p>
+    </div>
+  );
+}
+
+function QuickAction({ href, label, primary }: { href: string; label: string; primary?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={
+        primary
+          ? "rounded-full bg-gradient-to-br from-accent to-accent-2 px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
+          : "glass-panel rounded-full px-4 py-1.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)]"
+      }
+    >
+      {label}
+    </Link>
+  );
+}
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
 }
 
 function StatusDot({ label, tone }: { label: string; tone: "success" | "accent" | "neutral" }) {
