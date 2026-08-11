@@ -52,7 +52,13 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+# Strip any \r from line endings unconditionally, regardless of what the
+# host checkout did to this file (e.g. Git for Windows' core.autocrlf=true
+# rewriting it to CRLF) — a CRLF shebang line breaks the interpreter lookup
+# inside the container with a misleading "No such file or directory" for the
+# script itself. Doing this in the build makes the image correct no matter
+# what platform it was built from, instead of depending on the checkout.
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 
 # The SQLite file lives on a mounted Fly volume, not in the image — writable
 # by the non-root user, and survives redeploys since it's outside /app.
