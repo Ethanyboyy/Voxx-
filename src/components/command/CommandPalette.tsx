@@ -86,10 +86,14 @@ export function CommandPalette() {
       <button
         type="button"
         onClick={openPalette}
-        className="hidden items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:border-[var(--border-strong)] hover:text-foreground sm:flex"
+        aria-label="Search / command palette (⌘K)"
+        title="What do you want VOX to do? (⌘K)"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground hover:bg-surface-hover"
       >
-        <span>What do you want VOX to do?</span>
-        <kbd className="rounded border border-border bg-surface-hover px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="8.7" cy="8.7" r="5.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="m16.5 16.5-3.6-3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </button>
     );
   }

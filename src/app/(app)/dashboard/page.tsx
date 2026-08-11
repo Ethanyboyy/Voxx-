@@ -17,7 +17,7 @@ import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
+import type { VoxCoreState } from "@/components/vox/VoxCore";
 import { MountainHero } from "@/components/dashboard/MountainHero";
 import { BrainPreview } from "@/components/dashboard/BrainPreview";
 
@@ -73,47 +73,38 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      {/* system status strip */}
-      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] uppercase tracking-wide text-muted">
-        <StatusDot label="VOX online" tone="success" />
-        <StatusDot label={`memory synced · ${memories.length}`} tone="accent" />
-        <StatusDot label={`connections · ${connectedCount}/${connections.length}`} tone={connectedCount > 0 ? "accent" : "neutral"} />
-        <StatusDot label={`agents · ${agentRuns.length}`} tone="accent" />
-        <StatusDot label="voice · in Chat (browser-dependent)" tone="accent" />
-      </div>
-
       {/* greeting header */}
-      <div className="glass-panel relative overflow-hidden p-5 sm:p-6">
+      <div className="glass-panel relative overflow-hidden p-6 sm:p-8" style={{ minHeight: 168 }}>
         <MountainHero />
-        <div className="relative flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex h-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {greeting()}, {displayName}.
             </h1>
             <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <VoxCore state={coreState} size="md" />
-            <Link
-              href="/chat"
-              className="rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
-            >
-              New Chat
-            </Link>
-          </div>
+          <Link
+            href="/chat"
+            className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
+          >
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M10 3.5v13M3.5 10h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            New Chat
+          </Link>
         </div>
       </div>
 
       {/* stat row — every number here is a real, live count */}
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard
-          label="Goals progress"
+          label="Goals Progress"
           value={goals.length > 0 ? `${Math.round((achievedGoals.length / goals.length) * 100)}%` : "—"}
           sub={`${activeGoals.length} active`}
           progress={goals.length > 0 ? achievedGoals.length / goals.length : null}
         />
-        <StatCard label="Tasks completed" value={String(doneTasks.length)} sub="all time" />
-        <StatCard label="Open tasks" value={String(openTasksSorted.length)} sub="across projects" />
+        <StatCard label="Tasks Completed" value={String(doneTasks.length)} sub="all time" />
+        <StatCard label="Open Tasks" value={String(openTasksSorted.length)} sub="across projects" />
         <StatCard label="Connections" value={`${connectedCount}/${connections.length}`} sub="services live" />
       </div>
 
@@ -186,7 +177,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
         <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
         <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
@@ -402,11 +393,19 @@ function QuickAction({
       href={href}
       className={
         primary
-          ? "flex flex-col items-center gap-1.5 rounded-xl bg-gradient-to-br from-accent to-accent-2 px-3 py-3 text-center text-xs font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
-          : "glass-panel flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-center text-xs font-medium text-foreground hover:border-[var(--border-strong)]"
+          ? "flex items-center gap-2.5 rounded-xl bg-gradient-to-br from-accent to-accent-2 px-4 py-3.5 text-sm font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
+          : "glass-panel flex items-center gap-2.5 rounded-xl px-4 py-3.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)]"
       }
     >
-      {icon}
+      <span
+        className={
+          primary
+            ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15"
+            : "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent"
+        }
+      >
+        {icon}
+      </span>
       {label}
     </Link>
   );
@@ -432,15 +431,6 @@ function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString();
 }
 
-function StatusDot({ label, tone }: { label: string; tone: "success" | "accent" | "neutral" }) {
-  const color = tone === "success" ? "var(--core-success)" : tone === "accent" ? "var(--accent)" : "var(--muted)";
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className="h-1.5 w-1.5 rounded-full vox-status-dot" style={{ background: color, color }} />
-      {label}
-    </span>
-  );
-}
 
 function priorityRank(priority: string): number {
   return { HIGH: 2, MEDIUM: 1, LOW: 0 }[priority] ?? 0;

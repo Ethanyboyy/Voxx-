@@ -3,8 +3,7 @@
 import { type ReactNode, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { LogoutButton } from "@/components/layout/LogoutButton";
+import { AccountMenu } from "@/components/layout/AccountMenu";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { CommandPalette } from "@/components/command/CommandPalette";
 
@@ -32,7 +31,7 @@ export function AppShell({
       {/* Desktop: persistent sidebar. Hidden below md — a fixed 224px column
           has no reasonable place on an iPhone-width viewport. */}
       <div className="hidden md:flex">
-        <Sidebar pendingProposalCount={pendingProposalCount} />
+        <Sidebar pendingProposalCount={pendingProposalCount} userEmail={userEmail} />
       </div>
 
       {/* Mobile: slide-in drawer, triggered by the header hamburger button. */}
@@ -49,6 +48,7 @@ export function AppShell({
               pendingProposalCount={pendingProposalCount}
               onNavigate={() => setDrawerOpen(false)}
               className="h-full"
+              userEmail={userEmail}
             />
           </div>
         </div>
@@ -68,12 +68,10 @@ export function AppShell({
             <MenuIcon />
           </button>
           <span className="text-sm font-semibold text-foreground md:hidden">VOX</span>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
             <CommandPalette />
-            <span className="hidden text-sm text-muted sm:inline">{userEmail}</span>
             <NotificationBell />
-            <ThemeToggle />
-            <LogoutButton />
+            <AccountMenu userEmail={userEmail} />
           </div>
         </header>
         <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 md:pb-0">{children}</main>

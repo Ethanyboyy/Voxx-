@@ -154,11 +154,13 @@ export function Sidebar({
   pendingProposalCount = 0,
   onNavigate,
   className,
+  userEmail,
 }: {
   pendingProposalCount?: number;
   /** Called after a nav link is clicked — used by the mobile drawer to close itself. */
   onNavigate?: () => void;
   className?: string;
+  userEmail?: string;
 }) {
   const pathname = usePathname();
 
@@ -205,6 +207,14 @@ export function Sidebar({
           );
         })}
       </div>
+      {userEmail ? (
+        <div className="mt-2 flex items-center gap-2.5 border-t border-border px-2 pt-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">
+            {userEmail.trim().charAt(0).toUpperCase() || "?"}
+          </span>
+          <p className="truncate text-sm font-medium text-foreground">{userEmail.split("@")[0]}</p>
+        </div>
+      ) : null}
     </nav>
   );
 }
