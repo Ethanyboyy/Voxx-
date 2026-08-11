@@ -39,12 +39,14 @@ jobs:
             echo "Volume already exists, continuing."
           fi
 
-      - name: Set application secrets
-        run: |
-          flyctl secrets set \
-            VOX_ENCRYPTION_KEY="${{ secrets.VOX_ENCRYPTION_KEY }}" \
-            VOX_SESSION_SECRET="${{ secrets.VOX_SESSION_SECRET }}" \
-            --app "$APP_NAME"
+      # VOX_ENCRYPTION_KEY and VOX_SESSION_SECRET are deliberately NOT set
+      # here. They're one-time, sensitive values set directly on Fly via
+      # `flyctl secrets set` (see DEPLOYMENT.md) — never through CI. This
+      # step used to pass them from GitHub Actions secrets that were never
+      # configured, which meant it silently overwrote the real values on
+      # Fly with empty strings on every deploy, breaking auth and
+      # encrypted-field decryption. Do not re-add without first confirming
+      # the GitHub secret actually holds the real, current value.
 
       - name: Deploy
         run: flyctl deploy --remote-only --app "$APP_NAME" --config fly.toml
