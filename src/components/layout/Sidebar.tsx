@@ -94,18 +94,56 @@ const IconGear = (p: SVGProps<SVGSVGElement>) => (
     />
   </Icon>
 );
+const IconTarget = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="7" stroke="currentColor" />
+    <circle cx="10" cy="10" r="3.7" stroke="currentColor" opacity="0.75" />
+    <circle cx="10" cy="10" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);
+const IconChecklist = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="3" y="3.5" width="4" height="4" rx="1" stroke="currentColor" />
+    <path d="M4.3 5.5 5 6.2 6.2 4.8" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M9.5 5.5h7.5" stroke="currentColor" />
+    <rect x="3" y="12" width="4" height="4" rx="1" stroke="currentColor" opacity="0.7" />
+    <path d="M9.5 14h7.5" stroke="currentColor" opacity="0.7" />
+  </Icon>
+);
+const IconDollar = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="7" stroke="currentColor" />
+    <path d="M10 5.5v9M12.5 7.5c0-1-1-1.6-2.5-1.6s-2.5.7-2.5 1.8.9 1.5 2.5 1.8c1.6.3 2.5.8 2.5 1.9S11.5 13.4 10 13.4s-2.5-.5-2.5-1.5" stroke="currentColor" />
+  </Icon>
+);
+const IconSparklePen = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M4 16.5 5 13l7.3-7.3a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L8 16l-4 .5Z" stroke="currentColor" strokeLinejoin="round" />
+    <path d="M16 3.5l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4Z" fill="currentColor" stroke="none" />
+  </Icon>
+);
+const IconBarChart = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M4 16.5V10M9.3 16.5V3.5M14.7 16.5V7.5" stroke="currentColor" strokeLinecap="round" />
+  </Icon>
+);
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Home", icon: IconHome },
-  { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
   { href: "/chat", label: "Chat", icon: IconChat },
   { href: "/memory", label: "Memory", icon: IconMemory },
-  { href: "/cognition", label: "Observations", icon: IconEye },
+  { href: "/goals", label: "Goals", icon: IconTarget },
+  { href: "/projects", label: "Projects", icon: IconFolder },
+  { href: "/tasks", label: "Tasks", icon: IconChecklist },
+  { href: "/finance", label: "Finance", icon: IconDollar },
+  { href: "/content", label: "Content", icon: IconSparklePen },
   { href: "/graph", label: "Knowledge", icon: IconGraph },
   { href: "/agents", label: "Automations", icon: IconBolt },
-  { href: "/proposals", label: "Proposals", icon: IconCheck },
+  { href: "/analytics", label: "Analytics", icon: IconBarChart },
   { href: "/connections", label: "Integrations", icon: IconPlug },
-  { href: "/projects", label: "Projects", icon: IconFolder },
+  { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
+  { href: "/cognition", label: "Observations", icon: IconEye },
+  { href: "/proposals", label: "Proposals", icon: IconCheck },
   { href: "/experiments", label: "Laboratory", icon: IconFlask },
   { href: "/research", label: "Research", icon: IconSearch },
   { href: "/activity", label: "Activity", icon: IconPulse },

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProjects, listTasks, listGoals } from "@/lib/projects/service";
 import { getCognitiveProfile } from "@/lib/cognition/profile";
@@ -17,6 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
+import { MountainHero } from "@/components/dashboard/MountainHero";
+import { BrainPreview } from "@/components/dashboard/BrainPreview";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -80,28 +83,34 @@ export default async function DashboardPage() {
       </div>
 
       {/* greeting header */}
-      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{greeting()}, {displayName}.</h1>
-          <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <VoxCore state={coreState} size="md" />
-          <Link
-            href="/chat"
-            className="rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
-          >
-            New Chat
-          </Link>
+      <div className="glass-panel relative overflow-hidden p-5 sm:p-6">
+        <MountainHero />
+        <div className="relative flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              {greeting()}, {displayName}.
+            </h1>
+            <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <VoxCore state={coreState} size="md" />
+            <Link
+              href="/chat"
+              className="rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
+            >
+              New Chat
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* stat row — every number here is a real, live count */}
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard
-          label="Goals achieved"
+          label="Goals progress"
           value={goals.length > 0 ? `${Math.round((achievedGoals.length / goals.length) * 100)}%` : "—"}
           sub={`${activeGoals.length} active`}
+          progress={goals.length > 0 ? achievedGoals.length / goals.length : null}
         />
         <StatCard label="Tasks completed" value={String(doneTasks.length)} sub="all time" />
         <StatCard label="Open tasks" value={String(openTasksSorted.length)} sub="across projects" />
@@ -159,26 +168,30 @@ export default async function DashboardPage() {
         </Card>
 
         <Link href="/brain" className="block">
-          <GlassPanel variant="glow" className="flex h-full flex-col justify-between p-5">
+          <GlassPanel variant="glow" className="flex h-full flex-col justify-between overflow-hidden p-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">VOX Mind</p>
-              <p className="mt-1 text-sm text-muted">Memory: {memories.length} · Patterns: {activePatterns.length}</p>
             </div>
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Always learning. Always improving.</p>
-              <VoxCore state={activePatterns.length > 0 ? "thinking" : "idle"} size="lg" />
+            <div className="-my-2 h-28 w-full">
+              <BrainPreview />
+            </div>
+            <div>
+              <p className="text-sm text-muted">
+                Memory: {memories.length} · Patterns: {activePatterns.length}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Always learning. Always improving.</p>
             </div>
           </GlassPanel>
         </Link>
       </div>
 
       {/* Quick actions */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <QuickAction href="/projects" label="New Goal" />
-        <QuickAction href="/projects" label="New Project" />
-        <QuickAction href="/agents?new=1" label="New Task" />
-        <QuickAction href="/memory" label="New Memory" />
-        <QuickAction href="/chat" label="New Chat" primary />
+      <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
+        <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
+        <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
+        <QuickAction href="/memory" label="New Note" icon={<IconNote />} />
+        <QuickAction href="/chat" label="New Chat" icon={<IconChatBubble />} primary />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -355,26 +368,45 @@ export default async function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function StatCard({ label, value, sub, progress }: { label: string; value: string; sub: string; progress?: number | null }) {
   return (
     <div className="glass-panel px-4 py-3.5">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-      <p className="text-xs text-muted">{sub}</p>
+      {progress != null ? (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-accent to-accent-2"
+            style={{ width: `${Math.round(progress * 100)}%` }}
+          />
+        </div>
+      ) : null}
+      <p className="mt-1 text-xs text-muted">{sub}</p>
     </div>
   );
 }
 
-function QuickAction({ href, label, primary }: { href: string; label: string; primary?: boolean }) {
+function QuickAction({
+  href,
+  label,
+  icon,
+  primary,
+}: {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  primary?: boolean;
+}) {
   return (
     <Link
       href={href}
       className={
         primary
-          ? "rounded-full bg-gradient-to-br from-accent to-accent-2 px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
-          : "glass-panel rounded-full px-4 py-1.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)]"
+          ? "flex flex-col items-center gap-1.5 rounded-xl bg-gradient-to-br from-accent to-accent-2 px-3 py-3 text-center text-xs font-medium text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
+          : "glass-panel flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-center text-xs font-medium text-foreground hover:border-[var(--border-strong)]"
       }
     >
+      {icon}
       {label}
     </Link>
   );
@@ -438,4 +470,48 @@ function coreStateMessage(state: VoxCoreState, pendingProposalCount: number, age
     default:
       return agentRunCount > 0 ? "Idle. Everything's caught up." : "Idle. Give VOX something to do.";
   }
+}
+
+function iconProps() {
+  return { width: 18, height: 18, viewBox: "0 0 20 20", fill: "none", strokeWidth: 1.5, strokeLinecap: "round" as const, "aria-hidden": true };
+}
+function IconTarget() {
+  return (
+    <svg {...iconProps()}>
+      <circle cx="10" cy="10" r="7" stroke="currentColor" />
+      <circle cx="10" cy="10" r="3.5" stroke="currentColor" opacity="0.75" />
+      <circle cx="10" cy="10" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+function IconFolderPlus() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M3 6a1 1 0 0 1 1-1h4l1.5 2H16a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6Z" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M10 9v4M8 11h4" stroke="currentColor" />
+    </svg>
+  );
+}
+function IconCheckSquare() {
+  return (
+    <svg {...iconProps()}>
+      <rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" />
+      <path d="M6.5 10.3 9 12.8l4.5-5.6" stroke="currentColor" />
+    </svg>
+  );
+}
+function IconNote() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M5 3.5h10a1 1 0 0 1 1 1V16l-3-2-3 2-3-2-3 2V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" strokeLinejoin="round" />
+      <path d="M7 7.5h6M7 10.5h6" stroke="currentColor" opacity="0.7" />
+    </svg>
+  );
+}
+function IconChatBubble() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M3 4.5h14a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H8l-4 3v-3H3a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" />
+    </svg>
+  );
 }
