@@ -26,6 +26,31 @@ jobs:
       - name: Recent logs
         run: timeout 25 flyctl logs --app "$APP_NAME" --no-tail || true
 
+      # Names + digests only — flyctl never prints secret values.
+      - name: Secrets configured (names only)
+        run: flyctl secrets list --app "$APP_NAME"
+
+      # Directly exercises the *actual* configured ANTHROPIC_API_KEY against
+      # Anthropic's API from inside the running container — prints only
+      # whether auth succeeded/failed and the HTTP status, never the key.
+      - name: Live probe — is ANTHROPIC_API_KEY currently valid?
+        run: |
+          flyctl ssh console --app "$APP_NAME" -C "node -e \"
+            const key = process.env.ANTHROPIC_API_KEY;
+            console.log('ANTHROPIC_API_KEY present:', Boolean(key), key ? 'length=' + key.length : '');
+            console.log('VOX_AI_PROVIDER:', process.env.VOX_AI_PROVIDER || '(unset)');
+            if (!key) { console.log('No key set — provider would fall back to mock.'); process.exit(0); }
+            fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+              body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }),
+            }).then(async (res) => {
+              const text = await res.text();
+              console.log('HTTP status:', res.status);
+              console.log('Body (first 300 chars):', text.slice(0, 300));
+            }).catch((e) => console.log('fetch error:', e.message));
+          \"" || true
+
       # Read-only: table row counts and enum-column value distributions only
       # (status/priority/confidence/effort/risk/category) — never touches
       # encrypted or free-text columns (content/title/description/etc).
