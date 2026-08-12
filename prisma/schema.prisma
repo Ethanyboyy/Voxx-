@@ -338,6 +338,7 @@ model Project {
   conversations Conversation[]
   knowledgeNode KnowledgeNode?
   agentRuns     AgentRun[]
+  opportunities Opportunity[]
 }
 
 enum GoalStatus {
@@ -512,6 +513,10 @@ model ResearchItem {
   summary     String?
   relevance   Float?
   confidence  Confidence @default(MEDIUM)
+  /// Set when this research was run in the context of a specific Opportunity
+  /// (e.g. from the Brain workspace) — null for general/unscoped research.
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?
   retrievedAt DateTime   @default(now())
   createdAt   DateTime   @default(now())
 
@@ -953,8 +958,14 @@ model Opportunity {
   /// JSON string[] — reasoning/evidence behind the estimate, so it stays inspectable.
   evidence    String?
   status      OpportunityStatus @default(IDEA)
+  /// Set once this opportunity has been promoted into a real Project (Brain
+  /// workspace "Create Project" action) — null until that happens.
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  researchItems ResearchItem[]
 }
 
 // ---------------------------------------------------------------------------

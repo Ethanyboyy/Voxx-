@@ -204,6 +204,7 @@ export const updateHypothesisSchema = z.object({
 
 export const researchRequestSchema = z.object({
   query: z.string().min(1).max(500),
+  opportunityId: z.string().optional(),
 });
 
 export const createKnowledgeNodeSchema = z.object({
@@ -316,6 +317,10 @@ export const createOpportunitySchema = z.object({
   nextAction: z.string().max(2000).optional(),
   evidence: z.array(z.string().min(1).max(1000)).max(20).optional(),
   status: opportunityStatusSchema.optional(),
+});
+
+export const promoteOpportunitySchema = z.object({
+  projectName: z.string().min(1).max(200).optional(),
 });
 
 export const updateOpportunitySchema = z.object({

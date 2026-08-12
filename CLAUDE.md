@@ -84,6 +84,12 @@ before making structural changes. These rules apply to every change, not just Ph
   both read from here so the active objective is real, shared state.
 - `src/lib/cognition/` — observations, hypotheses, pattern detection, cognitive
   profile, and the proposal engine (`proposals.ts`)
+- `src/lib/brain/` — `getBrainGraph()`, the Brain workspace's data source: real
+  Objective/Opportunity/Project/Task/Research/Proposal/Connection/Memory rows
+  turned into nodes and edges, plus `getBrainState()` (idle/thinking/executing/
+  waiting/error, derived from real AgentRun/Proposal state, never decorative).
+  `src/components/brain/BrainWorkspace.tsx` is the pan/zoom/select spatial
+  canvas UI built on top of it — see the Brain section in `ARCHITECTURE.md`.
 - `src/lib/knowledge/`, `src/lib/permissions/`, `src/lib/observability/` — domain services
 - `src/lib/integrations/` — provider-agnostic external-integration abstraction (catalog +
   stub provider); `src/lib/connections/` — the Connections Hub service layer (lifecycle,

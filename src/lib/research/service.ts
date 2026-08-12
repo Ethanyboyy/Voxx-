@@ -5,8 +5,17 @@ import { recordEvent } from "@/lib/observability/events";
 
 export const RESEARCH_CAPABILITY = "research.web";
 
-export async function runResearch(userId: string, query: string) {
+export async function runResearch(userId: string, query: string, opportunityId?: string) {
   await enforceCapability(userId, RESEARCH_CAPABILITY, "ANALYZE");
+
+  // A caller-supplied opportunityId is only trusted once ownership is
+  // confirmed — otherwise the research still runs, just unscoped, rather
+  // than silently attaching to someone else's data.
+  let scopedOpportunityId: string | undefined;
+  if (opportunityId) {
+    const opportunity = await db.opportunity.findFirst({ where: { id: opportunityId, userId } });
+    scopedOpportunityId = opportunity ? opportunityId : undefined;
+  }
 
   const provider = getResearchProvider();
   const results = await provider.search(query);
@@ -24,6 +33,7 @@ export async function runResearch(userId: string, query: string) {
           relevance: result.relevance,
           confidence: result.confidence,
           retrievedAt: result.retrievedAt,
+          opportunityId: scopedOpportunityId,
         },
       })
     )
@@ -32,16 +42,17 @@ export async function runResearch(userId: string, query: string) {
   await recordEvent({
     userId,
     type: "research.performed",
-    subjectType: "ResearchQuery",
-    payload: { query, provider: provider.id, resultCount: rows.length },
+    subjectType: scopedOpportunityId ? "Opportunity" : "ResearchQuery",
+    subjectId: scopedOpportunityId,
+    payload: { query, provider: provider.id, resultCount: rows.length, opportunityId: scopedOpportunityId },
   });
 
   return rows;
 }
 
-export async function listResearchItems(userId: string, limit = 50) {
+export async function listResearchItems(userId: string, limit = 50, opportunityId?: string) {
   return db.researchItem.findMany({
-    where: { userId },
+    where: { userId, opportunityId },
     orderBy: { createdAt: "desc" },
     take: limit,
   });

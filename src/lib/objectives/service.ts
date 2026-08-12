@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
+import { createProject } from "@/lib/projects/service";
 import type {
   Confidence,
   EffortLevel,
@@ -7,7 +8,7 @@ import type {
   OpportunityStatus,
   RiskLevel,
 } from "@/generated/prisma/enums";
-import type { Objective, Opportunity } from "@/generated/prisma/client";
+import type { Objective, Opportunity, Project } from "@/generated/prisma/client";
 
 // ---------------------------------------------------------------------------
 // Objectives
@@ -194,6 +195,8 @@ export interface OpportunityDTO {
   nextAction: string | null;
   evidence: string[];
   status: OpportunityStatus;
+  /// Set once this opportunity has been promoted into a real Project.
+  projectId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -212,6 +215,7 @@ function toOpportunityDTO(row: Opportunity): OpportunityDTO {
     nextAction: row.nextAction,
     evidence: parseStringArray(row.evidence),
     status: row.status,
+    projectId: row.projectId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -316,6 +320,55 @@ export async function deleteOpportunity(userId: string, id: string): Promise<boo
 }
 
 // ---------------------------------------------------------------------------
+// Promotion — turning an evaluated opportunity into real execution. This is
+// the one path that sets Opportunity.projectId, so "promoted" always means a
+// real Project row exists, never just a status label.
+// ---------------------------------------------------------------------------
+
+export interface PromoteOpportunityResult {
+  opportunity: OpportunityDTO;
+  project: Project;
+  alreadyPromoted: boolean;
+}
+
+export async function promoteOpportunityToProject(
+  userId: string,
+  opportunityId: string,
+  projectName?: string
+): Promise<PromoteOpportunityResult | null> {
+  const existing = await db.opportunity.findFirst({ where: { id: opportunityId, userId } });
+  if (!existing) return null;
+
+  if (existing.projectId) {
+    const project = await db.project.findFirst({ where: { id: existing.projectId, userId } });
+    if (project) {
+      return { opportunity: toOpportunityDTO(existing), project, alreadyPromoted: true };
+    }
+  }
+
+  const project = await createProject({
+    userId,
+    name: projectName?.trim() || existing.title,
+    description: existing.description ?? undefined,
+  });
+
+  const updated = await db.opportunity.update({
+    where: { id: opportunityId },
+    data: { projectId: project.id, status: existing.status === "IDEA" ? "ACTIVE" : existing.status },
+  });
+
+  await recordEvent({
+    userId,
+    type: "opportunity.promoted_to_project",
+    subjectType: "Opportunity",
+    subjectId: opportunityId,
+    payload: { projectId: project.id, projectName: project.name },
+  });
+
+  return { opportunity: toOpportunityDTO(updated), project, alreadyPromoted: false };
+}
+
+// ---------------------------------------------------------------------------
 // Next best action — an honest ranking of the user's own data, never a
 // fabricated suggestion. Nothing here invents an opportunity or an action;
 // it only surfaces what's already recorded, ranked by a transparent formula.
@@ -333,7 +386,7 @@ const CONFIDENCE_WEIGHT: Record<Confidence, number> = { LOW: 0.5, MEDIUM: 0.75, 
  * Purely a re-ranking of numbers the user already entered — never generates
  * a value that wasn't already on the row.
  */
-function scoreOpportunity(o: OpportunityDTO): number {
+export function scoreOpportunity(o: OpportunityDTO): number {
   const value = o.estimatedValue ?? 1;
   const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
   const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
