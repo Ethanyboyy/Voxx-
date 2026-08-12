@@ -15,6 +15,10 @@ const PERSPECTIVES: { id: Perspective; label: string }[] = [
   { id: "SYSTEM", label: "System" },
 ];
 
+export function perspectiveLabel(p: Perspective): string {
+  return PERSPECTIVES.find((x) => x.id === p)?.label ?? p;
+}
+
 export function PerspectiveTabs({ value, onChange }: { value: Perspective; onChange: (p: Perspective) => void }) {
   return (
     <div className="flex gap-1 overflow-x-auto scrollbar-thin">

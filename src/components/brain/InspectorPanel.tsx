@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { AskVoxPanel } from "@/components/brain/AskVoxPanel";
-import type { BrainNode, BrainEdge } from "@/lib/brain/graph";
+import type { BrainNode, BrainEdge, BrainState } from "@/lib/brain/graph";
 
 interface ActivityEvent {
   id: string;
@@ -62,7 +62,7 @@ function buildContextText(node: BrainNode, objectiveTitle: string | null, projec
     case "TASK":
       return `Task "${node.label}" in project "${projectName ?? "none"}" (status: ${node.status}, priority: ${node.meta.priority}).`;
     case "RESEARCH":
-      return `Research result for query "${node.meta.query}": ${node.meta.summary ?? node.label}.`;
+      return `Research result for query "${node.meta.query}" (provider: ${node.meta.provider}): ${node.meta.summary ?? node.label}.`;
     case "PROPOSAL":
       return `Proposal: "${node.label}" (status: ${node.status}). Observation: ${node.meta.observation}.`;
     case "CONNECTION":
@@ -74,24 +74,46 @@ function buildContextText(node: BrainNode, objectiveTitle: string | null, projec
   }
 }
 
+export interface MemoryAnnotation {
+  id: string;
+  content: string;
+  confidence: string;
+}
+
 export function InspectorPanel({
   node,
   nodes,
   edges,
   events,
+  perspectiveLabel,
+  focusedLabels,
+  isPinned,
+  canCompare,
   onClose,
   onFocus,
   onSelectNode,
   onGraphPatch,
+  onTogglePin,
+  onStartCompare,
+  onActivity,
+  onMemoryAnnotations,
 }: {
   node: BrainNode;
   nodes: BrainNode[];
   edges: BrainEdge[];
   events: ActivityEvent[];
+  perspectiveLabel: string;
+  focusedLabels: string[];
+  isPinned: boolean;
+  canCompare: boolean;
   onClose: () => void;
   onFocus: () => void;
   onSelectNode: (nodeId: string) => void;
   onGraphPatch: (patch: GraphPatch) => void;
+  onTogglePin: () => void;
+  onStartCompare: () => void;
+  onActivity: (state: BrainState | null, detail: string | null) => void;
+  onMemoryAnnotations: (memories: MemoryAnnotation[]) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +150,7 @@ export function InspectorPanel({
     if (!researchQuery.trim()) return;
     setBusy("research");
     setError(null);
+    onActivity("researching", `Researching "${researchQuery}"`);
     try {
       const res = await fetch("/api/research", {
         method: "POST",
@@ -137,6 +160,7 @@ export function InspectorPanel({
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: "Research failed." }));
         setError(body.error ?? "Research failed.");
+        onActivity("error", body.error ?? "Research failed.");
         return;
       }
       const data = await res.json();
@@ -163,6 +187,8 @@ export function InspectorPanel({
         edges: newNodes.map((n, i) => ({ id: `new-research-edge-${Date.now()}-${i}`, from: node.id, to: n.id, relation: "evidenced_by" })),
       });
       setShowResearchInput(false);
+      onActivity("learning", `${newNodes.length} new research result${newNodes.length === 1 ? "" : "s"}`);
+      setTimeout(() => onActivity(null, null), 3500);
     } finally {
       setBusy(null);
     }
@@ -268,12 +294,16 @@ export function InspectorPanel({
   async function retrieveContext() {
     setBusy("context");
     setError(null);
+    onActivity("thinking", "Retrieving relevant memories");
     try {
       const query = `${node.label} ${node.meta.description ?? ""}`.trim();
       const res = await fetch(`/api/brain/context?query=${encodeURIComponent(query)}`);
       if (res.ok) {
         const data = await res.json();
         setRelevantMemories(data.memories);
+        onMemoryAnnotations(data.memories);
+        onActivity("learning", `${data.memories.length} relevant memor${data.memories.length === 1 ? "y" : "ies"} retrieved`);
+        setTimeout(() => onActivity(null, null), 3500);
       }
     } finally {
       setBusy(null);
@@ -281,6 +311,7 @@ export function InspectorPanel({
   }
 
   const contextText = buildContextText(node, (objective?.label as string) ?? null, (project?.label as string) ?? null);
+  const visualContext = `Brain perspective: ${perspectiveLabel}. Currently focused on: ${focusedLabels.join(", ") || node.label}.`;
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto scrollbar-thin p-4">
@@ -289,9 +320,20 @@ export function InspectorPanel({
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{node.type.toLowerCase()}</p>
           <h3 className="mt-0.5 text-sm font-semibold text-foreground">{node.label}</h3>
         </div>
-        <button type="button" onClick={onClose} className="shrink-0 text-muted hover:text-foreground" aria-label="Close">
-          ✕
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onTogglePin}
+            className={pinButtonClass(isPinned)}
+            title={isPinned ? "Unpin" : "Pin — stays visible across perspectives"}
+            aria-pressed={isPinned}
+          >
+            📌
+          </button>
+          <button type="button" onClick={onClose} className="text-muted hover:text-foreground" aria-label="Close">
+            ✕
+          </button>
+        </div>
       </div>
 
       {node.status ? <Badge tone={STATUS_TONE[node.status] ?? "neutral"}>{node.status.toLowerCase().replace(/_/g, " ")}</Badge> : null}
@@ -345,8 +387,13 @@ export function InspectorPanel({
       ) : null}
 
       {node.type === "RESEARCH" ? (
-        <div className="flex flex-col gap-1 text-xs">
-          {node.meta.summary ? <p className="text-foreground">{node.meta.summary as string}</p> : null}
+        <div className="flex flex-col gap-2 text-xs">
+          <Field label="Query" value={node.meta.query as string} />
+          <Field
+            label="Provider"
+            value={node.meta.provider === "mock" ? "mock — no live source" : (node.meta.provider as string)}
+          />
+          {node.meta.summary ? <Field label="Finding" value={node.meta.summary as string} /> : null}
           {node.meta.sourceUrl ? (
             <a href={node.meta.sourceUrl as string} target="_blank" rel="noreferrer" className="text-accent">
               Open source →
@@ -377,7 +424,7 @@ export function InspectorPanel({
       {/* recorded change log — only real Events, never fabricated history */}
       {changeLog.length > 0 ? (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recorded changes</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">History</p>
           <ol className="mt-1 flex flex-col gap-1 border-l border-border pl-3">
             {changeLog.map((e) => (
               <li key={e.id} className="text-xs text-muted-foreground">
@@ -388,7 +435,7 @@ export function InspectorPanel({
         </div>
       ) : null}
 
-      {/* contextual actions */}
+      {/* contextual actions — only what actually applies to this type/state */}
       <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
         <Button size="sm" variant="secondary" onClick={onFocus}>
           Focus
@@ -416,6 +463,11 @@ export function InspectorPanel({
             <Button size="sm" variant="ghost" disabled={busy === "context"} onClick={retrieveContext}>
               Retrieve context
             </Button>
+            {canCompare ? (
+              <Button size="sm" variant="ghost" onClick={onStartCompare}>
+                Compare
+              </Button>
+            ) : null}
           </>
         ) : null}
 
@@ -505,10 +557,16 @@ export function InspectorPanel({
       {error ? <p className="text-xs text-danger">{error}</p> : null}
 
       <div className="border-t border-border pt-3">
-        <AskVoxPanel contextText={contextText} contextLabel={node.label} />
+        <AskVoxPanel contextText={contextText} contextLabel={node.label} visualContext={visualContext} onActivity={onActivity} />
       </div>
     </div>
   );
+}
+
+function pinButtonClass(active: boolean): string {
+  return active
+    ? "flex h-6 w-6 items-center justify-center rounded-full bg-accent-muted text-xs"
+    : "flex h-6 w-6 items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100";
 }
 
 function Field({ label, value }: { label: string; value: string }) {

@@ -52,14 +52,24 @@ function subtitle(node: BrainNode): string | null {
   }
 }
 
+/**
+ * Three real levels of detail, driven by zoom scale (overview/explore) or by
+ * being the current focus anchor (focus) — not decorative tiers, each one
+ * shows strictly more of the same underlying fields as you get closer.
+ */
+export type NodeLOD = "overview" | "explore" | "focus";
+
 export function NodeCard({
   node,
   x,
   y,
   selected,
   dimmed,
-  compact,
+  pinned,
+  lod,
+  relationshipCount,
   onSelect,
+  onFocusRequest,
   onPointerDownNode,
 }: {
   node: BrainNode;
@@ -67,14 +77,19 @@ export function NodeCard({
   y: number;
   selected: boolean;
   dimmed: boolean;
-  compact: boolean;
+  pinned: boolean;
+  lod: NodeLOD;
+  relationshipCount: number;
   onSelect: (node: BrainNode) => void;
+  onFocusRequest: (node: BrainNode) => void;
   onPointerDownNode: (e: React.PointerEvent, node: BrainNode) => void;
 }) {
   const accent = TYPE_ACCENT[node.type] ?? "var(--accent)";
   const isHero = node.type === "OBJECTIVE";
   const isNBA = node.type === "OPPORTUNITY" && Boolean(node.meta.isNextBestAction);
   const sub = subtitle(node);
+  const compact = lod === "overview";
+  const focused = lod === "focus";
 
   return (
     <div
@@ -86,29 +101,41 @@ export function NodeCard({
         e.stopPropagation();
         onSelect(node);
       }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onFocusRequest(node);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onSelect(node);
       }}
       className={cn(
-        "absolute flex select-none flex-col justify-center rounded-xl border px-3 py-2 text-left shadow-lg backdrop-blur-md transition-[opacity,transform,box-shadow] duration-200",
+        "absolute flex select-none flex-col justify-center rounded-xl border px-3 py-2 text-left shadow-lg backdrop-blur-md transition-[opacity,left,top,transform,box-shadow] duration-300 ease-out",
         "bg-[color-mix(in_srgb,var(--surface-solid)_88%,transparent)]",
-        selected ? "z-30 scale-105 border-[var(--border-strong)]" : "z-10 border-border"
+        selected ? "z-30 border-[var(--border-strong)]" : "z-10 border-border"
       )}
       style={{
         left: x,
         top: y,
-        transform: "translate(-50%, -50%)",
-        width: compact ? 92 : isHero ? 200 : 168,
-        minHeight: compact ? 40 : isHero ? 92 : 66,
-        opacity: dimmed ? 0.22 : 1,
+        transform: `translate(-50%, -50%) scale(${selected ? 1.05 : 1})`,
+        width: compact ? 84 : focused ? 232 : isHero ? 200 : 168,
+        minHeight: compact ? 34 : focused ? 116 : isHero ? 92 : 66,
+        opacity: dimmed ? 0.16 : 1,
         boxShadow: selected
-          ? `0 0 0 1px ${accent}, 0 0 26px -4px ${accent}`
+          ? `0 0 0 1px ${accent}, 0 0 30px -4px ${accent}`
           : isNBA
             ? `0 0 18px -6px ${accent}`
             : undefined,
         cursor: "pointer",
       }}
     >
+      {pinned ? (
+        <span
+          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-solid)] text-[9px]"
+          title="Pinned"
+        >
+          📌
+        </span>
+      ) : null}
       {!compact ? (
         <div className="mb-0.5 flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
@@ -123,11 +150,21 @@ export function NodeCard({
         </div>
       ) : null}
       <p
-        className={cn("truncate font-medium text-foreground", compact ? "text-[11px]" : isHero ? "text-sm" : "text-xs")}
+        className={cn(
+          "truncate font-medium text-foreground",
+          compact ? "text-[10px]" : focused ? "text-base" : isHero ? "text-sm" : "text-xs"
+        )}
       >
         {node.label}
       </p>
-      {!compact && sub ? <p className="mt-0.5 truncate text-[10px] text-muted">{sub}</p> : null}
+      {!compact && sub ? (
+        <p className={cn("mt-0.5 truncate text-muted", focused ? "text-xs" : "text-[10px]")}>{sub}</p>
+      ) : null}
+      {(focused || (!compact && relationshipCount > 0)) && !compact ? (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {relationshipCount} relationship{relationshipCount === 1 ? "" : "s"}
+        </p>
+      ) : null}
     </div>
   );
 }

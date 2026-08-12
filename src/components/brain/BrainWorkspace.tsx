@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { NodeCard } from "@/components/brain/NodeCard";
-import { InspectorPanel, type GraphPatch } from "@/components/brain/InspectorPanel";
+import { NodeCard, type NodeLOD } from "@/components/brain/NodeCard";
+import { InspectorPanel, type GraphPatch, type MemoryAnnotation } from "@/components/brain/InspectorPanel";
+import { CompareView } from "@/components/brain/CompareView";
+import { OrbitAnnotations, annotationConnectors, type AnnotationItem } from "@/components/brain/Annotations";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
-import { PerspectiveTabs, type Perspective } from "@/components/brain/PerspectiveTabs";
+import { PerspectiveTabs, perspectiveLabel, type Perspective } from "@/components/brain/PerspectiveTabs";
 import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
-import { layoutRadial, layoutGrid, type Point } from "@/components/brain/layout";
+import { layoutRadial, layoutGrid, layoutFocus, type Point } from "@/components/brain/layout";
 import type { BrainNode, BrainEdge, BrainState } from "@/lib/brain/graph";
 
 interface ActivityEvent {
@@ -27,9 +29,13 @@ interface BrainPayload {
 }
 
 const POSITIONS_KEY = "vox-brain-positions-v1";
+const PINNED_KEY = "vox-brain-pinned-v1";
 const MIN_SCALE = 0.28;
 const MAX_SCALE = 2.4;
-const LOD_THRESHOLD = 0.55;
+// Real 3-tier LOD thresholds: below OVERVIEW_MAX show dots/labels only,
+// above EXPLORE_MIN show full cards. The current focus anchor always
+// renders at the richest "focus" tier regardless of zoom.
+const OVERVIEW_MAX = 0.5;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
@@ -54,6 +60,42 @@ function filterByPerspective(nodes: BrainNode[], perspective: Perspective): Brai
     case "ACTIVITY":
       return [];
   }
+}
+
+function usePersistedSet(key: string) {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setIds(new Set(JSON.parse(raw)));
+      }
+    } catch {
+      // corrupt/blocked storage — start fresh, not fatal
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggle = useCallback(
+    (id: string) => {
+      setIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        try {
+          localStorage.setItem(key, JSON.stringify([...next]));
+        } catch {
+          // storage full/blocked — non-fatal
+        }
+        return next;
+      });
+    },
+    [key]
+  );
+
+  return { ids, toggle };
 }
 
 function usePositions(nodes: BrainNode[], perspective: Perspective) {
@@ -93,7 +135,7 @@ function usePositions(nodes: BrainNode[], perspective: Perspective) {
     return map;
   }, [filtered, computed, overrides]);
 
-  return { filtered, resolved, overrides, setOverrides, persist };
+  return { filtered, resolved, computed, overrides, setOverrides, persist };
 }
 
 export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
@@ -104,13 +146,20 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
   const [perspective, setPerspective] = useState<Perspective>("MAP");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectionHistory, setSelectionHistory] = useState<string[]>([]);
+  const [focusMode, setFocusMode] = useState(false);
   const [viewport, setViewport] = useState<{ x: number; y: number; scale: number }>({ x: 0, y: 0, scale: 0.85 });
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [memoryAnnotations, setMemoryAnnotations] = useState<AnnotationItem[]>([]);
+  const [activity, setActivity] = useState<{ state: BrainState; detail: string | null } | null>(null);
+  const [compareA, setCompareA] = useState<string | null>(null);
+  const [compareB, setCompareB] = useState<string | null>(null);
+  const [comparePicking, setComparePicking] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const centeredOnce = useRef(false);
 
-  const { filtered, resolved, setOverrides, persist } = usePositions(nodes, perspective);
+  const { filtered, resolved, computed, setOverrides, persist } = usePositions(nodes, perspective);
+  const { ids: pinnedIds, toggle: togglePin } = usePersistedSet(PINNED_KEY);
 
   const filteredIds = useMemo(() => new Set(filtered.map((n) => n.id)), [filtered]);
   const visibleEdges = useMemo(
@@ -119,6 +168,8 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null;
+  const compareNodeA = compareA ? (nodes.find((n) => n.id === compareA) ?? null) : null;
+  const compareNodeB = compareB ? (nodes.find((n) => n.id === compareB) ?? null) : null;
 
   const neighborIds = useMemo(() => {
     if (!selectedId) return new Set<string>();
@@ -129,6 +180,40 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
     }
     return s;
   }, [selectedId, visibleEdges]);
+
+  // Real relationship count per node, from the *full* edge set (not just the
+  // current perspective's filtered subset) — Level 2/3 detail is honest
+  // about how connected something really is, not just within this view.
+  const relationshipCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of edges) {
+      counts.set(e.from, (counts.get(e.from) ?? 0) + 1);
+      counts.set(e.to, (counts.get(e.to) ?? 0) + 1);
+    }
+    return counts;
+  }, [edges]);
+
+  // Focus layout reorganizes the workspace around the selection instead of
+  // just dimming in place — direct neighbors ring in close, everything else
+  // recedes to an outer ring at roughly its normal-layout angle.
+  const focusPositions = useMemo(() => {
+    if (!focusMode || !selectedId || !filteredIds.has(selectedId)) return null;
+    return layoutFocus(filtered, visibleEdges, selectedId, computed);
+  }, [focusMode, selectedId, filtered, visibleEdges, computed, filteredIds]);
+
+  const displayPositions = focusPositions ?? resolved;
+
+  const pullApartItems = useMemo<AnnotationItem[]>(() => {
+    if (!focusMode || !selectedNode || selectedNode.type !== "OPPORTUNITY") return [];
+    const m = selectedNode.meta;
+    const items: AnnotationItem[] = [];
+    if (m.estimatedValue != null) items.push({ id: "value", label: "Value", value: String(m.estimatedValue) });
+    if (m.effort) items.push({ id: "effort", label: "Effort", value: String(m.effort) });
+    items.push({ id: "confidence", label: "Confidence", value: String(m.confidence) });
+    if (m.risk) items.push({ id: "risk", label: "Risk", value: String(m.risk) });
+    if (m.nextAction) items.push({ id: "next", label: "Next action", value: String(m.nextAction) });
+    return items;
+  }, [focusMode, selectedNode]);
 
   // Poll for real state changes (agent runs, proposals, new events) — same
   // cadence/pattern as the rest of the app's live-activity polling.
@@ -163,35 +248,105 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
     setViewport((v) => ({ x: rect.width / 2 - target.x * v.scale, y: rect.height / 2 - target.y * v.scale, scale: v.scale }));
   }, [filtered, resolved]);
 
-  function recenterOn(nodeId: string) {
+  function centerCamera(point: Point, scale?: number) {
     const container = containerRef.current;
-    const point = resolved.get(nodeId);
-    if (!container || !point) return;
+    if (!container) return;
     const rect = container.getBoundingClientRect();
-    const scale = clamp(Math.max(viewport.scale, 0.9), MIN_SCALE, MAX_SCALE);
-    setViewport({ x: rect.width / 2 - point.x * scale, y: rect.height / 2 - point.y * scale, scale });
+    const s = clamp(scale ?? viewport.scale, MIN_SCALE, MAX_SCALE);
+    setViewport({ x: rect.width / 2 - point.x * s, y: rect.height / 2 - point.y * s, scale: s });
   }
 
   function selectNode(node: BrainNode) {
+    if (comparePicking) {
+      if (node.type === "OPPORTUNITY" && node.id !== compareA) {
+        setCompareB(node.id);
+        setComparePicking(false);
+      }
+      return;
+    }
     setSelectedId((prev) => {
       if (prev && prev !== node.id) setSelectionHistory((h) => [...h, prev]);
       return node.id;
     });
+    setFocusMode(false);
     setMobileSheetOpen(true);
+    setMemoryAnnotations([]);
+  }
+
+  function focusNode(node: BrainNode) {
+    if (comparePicking) {
+      selectNode(node);
+      return;
+    }
+    setSelectedId((prev) => {
+      if (prev && prev !== node.id) setSelectionHistory((h) => [...h, prev]);
+      return node.id;
+    });
+    setFocusMode(true);
+    setMobileSheetOpen(true);
+    setMemoryAnnotations([]);
+    setTimeout(() => centerCamera({ x: 0, y: 0 }, 1.05), 0);
+  }
+
+  function enterFocusForSelected() {
+    if (!selectedNode) return;
+    setFocusMode(true);
+    setTimeout(() => centerCamera({ x: 0, y: 0 }, 1.05), 0);
+  }
+
+  function exitFocus() {
+    if (!focusMode) return;
+    setFocusMode(false);
+    if (selectedId) {
+      const point = resolved.get(selectedId);
+      if (point) setTimeout(() => centerCamera(point, viewport.scale), 0);
+    }
   }
 
   function goBack() {
+    setMemoryAnnotations([]);
     setSelectionHistory((h) => {
       if (h.length === 0) {
         setSelectedId(null);
+        setFocusMode(false);
         return h;
       }
       const next = [...h];
       const prev = next.pop();
       setSelectedId(prev ?? null);
+      setFocusMode(false);
       return next;
     });
   }
+
+  // Escape: cancel a compare pick, else exit focus, else clear selection —
+  // one step at a time, matching how "Back" already layers.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (comparePicking) {
+        setComparePicking(false);
+        setCompareA(null);
+        return;
+      }
+      if (compareA || compareB) {
+        setCompareA(null);
+        setCompareB(null);
+        return;
+      }
+      if (focusMode) {
+        exitFocus();
+        return;
+      }
+      if (selectedId) {
+        setSelectedId(null);
+        setSelectionHistory([]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparePicking, compareA, compareB, focusMode, selectedId]);
 
   function applyPatch(patch: GraphPatch) {
     if (patch.kind === "addNodes") {
@@ -201,6 +356,10 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
     } else if (patch.kind === "updateNode") {
       setNodes((prev) => prev.map((n) => (n.id === patch.id ? { ...n, ...patch.patch } : n)));
     }
+  }
+
+  function handleActivity(state: BrainState | null, detail: string | null) {
+    setActivity(state ? { state, detail } : null);
   }
 
   // --- pan / pinch-zoom / node-drag -------------------------------------
@@ -269,6 +428,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       if (!movedRef.current) {
         setSelectedId(null);
         setSelectionHistory([]);
+        setFocusMode(false);
       }
       panStart.current = null;
     }
@@ -296,6 +456,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
 
   function onNodePointerDown(e: React.PointerEvent, node: BrainNode) {
     e.stopPropagation();
+    if (focusMode) return; // focus layout is deterministic; dragging is disabled while it's active
     const origin = resolved.get(node.id) ?? { x: 0, y: 0 };
     const startX = e.clientX;
     const startY = e.clientY;
@@ -336,8 +497,27 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
     });
   }
 
-  const compact = viewport.scale < LOD_THRESHOLD;
+  function nodeLOD(node: BrainNode): NodeLOD {
+    if (focusMode && node.id === selectedId) return "focus";
+    if (viewport.scale < OVERVIEW_MAX) return "overview";
+    return "explore";
+  }
+
   const isGraphPerspective = perspective !== "ACTIVITY";
+  const isComparing = Boolean(compareNodeA && compareNodeB);
+
+  const focusedLabels = useMemo(() => {
+    if (!selectedNode) return [];
+    const names = [selectedNode.label];
+    for (const id of neighborIds) {
+      const n = nodes.find((x) => x.id === id);
+      if (n) names.push(n.label);
+    }
+    return names.slice(0, 6);
+  }, [selectedNode, neighborIds, nodes]);
+
+  const pinnedNodes = useMemo(() => nodes.filter((n) => pinnedIds.has(n.id)), [nodes, pinnedIds]);
+  const displayState = activity ?? brain;
 
   return (
     <div className="flex h-full min-h-[520px] w-full flex-col overflow-hidden">
@@ -349,9 +529,46 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
               ← Back
             </button>
           ) : null}
-          <BrainStateBadge state={brain.state} detail={brain.detail} />
+          {focusMode ? (
+            <button type="button" onClick={exitFocus} className="text-xs text-muted-foreground hover:text-foreground">
+              Exit focus
+            </button>
+          ) : null}
+          <BrainStateBadge state={displayState.state} detail={displayState.detail} />
         </div>
       </div>
+
+      {pinnedNodes.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-1.5 sm:px-4">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Pinned</span>
+          {pinnedNodes.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => selectNode(n)}
+              className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground"
+            >
+              📌 {n.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {comparePicking ? (
+        <div className="flex items-center justify-between gap-2 border-b border-border bg-accent-muted/40 px-3 py-1.5 text-xs text-accent sm:px-4">
+          <span>Click another opportunity to compare with &quot;{selectedNode?.label}&quot;.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setComparePicking(false);
+              setCompareA(null);
+            }}
+            className="font-medium hover:underline"
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      ) : null}
 
       <div className="relative flex flex-1 overflow-hidden">
         {isGraphPerspective ? (
@@ -365,20 +582,17 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
           >
             {filtered.length === 0 ? (
               <div className="flex h-full items-center justify-center">
-                <EmptyState
-                  title={emptyTitle(perspective)}
-                  description={emptyDescription(perspective)}
-                />
+                <EmptyState title={emptyTitle(perspective)} description={emptyDescription(perspective)} />
               </div>
             ) : (
               <div
-                className="absolute left-0 top-0"
+                className="absolute left-0 top-0 transition-transform duration-500 ease-out"
                 style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`, transformOrigin: "0 0" }}
               >
                 <svg className="pointer-events-none absolute overflow-visible" style={{ left: 0, top: 0 }}>
                   {visibleEdges.map((edge) => {
-                    const from = resolved.get(edge.from);
-                    const to = resolved.get(edge.to);
+                    const from = displayPositions.get(edge.from);
+                    const to = displayPositions.get(edge.to);
                     if (!from || !to) return null;
                     const dimmed = selectedId ? edge.from !== selectedId && edge.to !== selectedId : false;
                     return (
@@ -394,9 +608,15 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                       />
                     );
                   })}
+                  {pullApartItems.length > 0 && selectedId && displayPositions.get(selectedId)
+                    ? annotationConnectors(displayPositions.get(selectedId)!, pullApartItems, 165, "var(--core-thinking)")
+                    : null}
+                  {memoryAnnotations.length > 0 && selectedId && displayPositions.get(selectedId)
+                    ? annotationConnectors(displayPositions.get(selectedId)!, memoryAnnotations, 190, "var(--core-listening)")
+                    : null}
                 </svg>
                 {filtered.map((node) => {
-                  const p = resolved.get(node.id) ?? { x: 0, y: 0 };
+                  const p = displayPositions.get(node.id) ?? { x: 0, y: 0 };
                   return (
                     <NodeCard
                       key={node.id}
@@ -404,18 +624,29 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                       x={p.x}
                       y={p.y}
                       selected={node.id === selectedId}
-                      dimmed={selectedId != null && node.id !== selectedId && !neighborIds.has(node.id)}
-                      compact={compact}
+                      dimmed={focusMode ? false : selectedId != null && node.id !== selectedId && !neighborIds.has(node.id)}
+                      pinned={pinnedIds.has(node.id)}
+                      lod={nodeLOD(node)}
+                      relationshipCount={relationshipCounts.get(node.id) ?? 0}
                       onSelect={selectNode}
+                      onFocusRequest={focusNode}
                       onPointerDownNode={onNodePointerDown}
                     />
                   );
                 })}
+                {selectedId && displayPositions.get(selectedId) ? (
+                  <>
+                    <OrbitAnnotations center={displayPositions.get(selectedId)!} items={pullApartItems} radius={165} colorVar="var(--core-thinking)" />
+                    <OrbitAnnotations center={displayPositions.get(selectedId)!} items={memoryAnnotations} radius={190} colorVar="var(--core-listening)" />
+                  </>
+                ) : null}
               </div>
             )}
 
             <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1 text-[10px] text-muted">
-              <p>{filtered.length} objects in view · drag to pan · pinch/scroll to zoom</p>
+              <p>
+                {filtered.length} objects in view · drag to pan · pinch/scroll to zoom · double-click to focus
+              </p>
             </div>
             <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
               <button
@@ -443,51 +674,105 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
         )}
 
         {/* Desktop inspector: side panel. Mobile: bottom sheet. */}
-        {selectedNode ? (
+        {selectedNode || isComparing ? (
           <>
             <div
               data-testid="brain-inspector"
               className="hidden w-[340px] shrink-0 border-l border-border bg-[var(--surface-solid)]/90 backdrop-blur-md lg:block"
             >
-              <InspectorPanel
-                node={selectedNode}
-                nodes={nodes}
-                edges={edges}
-                events={events}
-                onClose={() => setSelectedId(null)}
-                onFocus={() => recenterOn(selectedNode.id)}
-                onSelectNode={(id) => {
-                  const target = nodes.find((n) => n.id === id);
-                  if (target) selectNode(target);
-                }}
-                onGraphPatch={applyPatch}
-              />
-            </div>
-
-            {mobileSheetOpen ? (
-              <div
-                data-testid="brain-inspector"
-                className="fixed inset-x-0 bottom-0 z-40 max-h-[75vh] rounded-t-2xl border-t border-border bg-[var(--surface-solid)] shadow-2xl lg:hidden"
-              >
-                <div className="flex justify-center pb-1 pt-2">
-                  <span className="h-1 w-10 rounded-full bg-border" />
-                </div>
+              {isComparing && compareNodeA && compareNodeB ? (
+                <CompareView
+                  a={compareNodeA}
+                  b={compareNodeB}
+                  onClose={() => {
+                    setCompareA(null);
+                    setCompareB(null);
+                  }}
+                  onActivity={handleActivity}
+                />
+              ) : selectedNode ? (
                 <InspectorPanel
                   node={selectedNode}
                   nodes={nodes}
                   edges={edges}
                   events={events}
+                  perspectiveLabel={perspectiveLabel(perspective)}
+                  focusedLabels={focusedLabels}
+                  isPinned={pinnedIds.has(selectedNode.id)}
+                  canCompare={nodes.some((n) => n.type === "OPPORTUNITY" && n.id !== selectedNode.id)}
                   onClose={() => {
                     setSelectedId(null);
-                    setMobileSheetOpen(false);
+                    setFocusMode(false);
                   }}
-                  onFocus={() => recenterOn(selectedNode.id)}
+                  onFocus={enterFocusForSelected}
                   onSelectNode={(id) => {
                     const target = nodes.find((n) => n.id === id);
                     if (target) selectNode(target);
                   }}
                   onGraphPatch={applyPatch}
+                  onTogglePin={() => togglePin(selectedNode.id)}
+                  onStartCompare={() => {
+                    setCompareA(selectedNode.id);
+                    setComparePicking(true);
+                  }}
+                  onActivity={handleActivity}
+                  onMemoryAnnotations={(memories: MemoryAnnotation[]) =>
+                    setMemoryAnnotations(memories.map((m) => ({ id: m.id, label: "Memory", value: m.content })))
+                  }
                 />
+              ) : null}
+            </div>
+
+            {mobileSheetOpen ? (
+              <div
+                data-testid="brain-inspector"
+                className="fixed inset-x-0 bottom-16 z-40 max-h-[calc(75vh-4rem)] rounded-t-2xl border-t border-border bg-[var(--surface-solid)] shadow-2xl lg:hidden"
+              >
+                <div className="flex justify-center pb-1 pt-2">
+                  <span className="h-1 w-10 rounded-full bg-border" />
+                </div>
+                {isComparing && compareNodeA && compareNodeB ? (
+                  <CompareView
+                    a={compareNodeA}
+                    b={compareNodeB}
+                    onClose={() => {
+                      setCompareA(null);
+                      setCompareB(null);
+                    }}
+                    onActivity={handleActivity}
+                  />
+                ) : selectedNode ? (
+                  <InspectorPanel
+                    node={selectedNode}
+                    nodes={nodes}
+                    edges={edges}
+                    events={events}
+                    perspectiveLabel={perspectiveLabel(perspective)}
+                    focusedLabels={focusedLabels}
+                    isPinned={pinnedIds.has(selectedNode.id)}
+                    canCompare={nodes.some((n) => n.type === "OPPORTUNITY" && n.id !== selectedNode.id)}
+                    onClose={() => {
+                      setSelectedId(null);
+                      setFocusMode(false);
+                      setMobileSheetOpen(false);
+                    }}
+                    onFocus={enterFocusForSelected}
+                    onSelectNode={(id) => {
+                      const target = nodes.find((n) => n.id === id);
+                      if (target) selectNode(target);
+                    }}
+                    onGraphPatch={applyPatch}
+                    onTogglePin={() => togglePin(selectedNode.id)}
+                    onStartCompare={() => {
+                      setCompareA(selectedNode.id);
+                      setComparePicking(true);
+                    }}
+                    onActivity={handleActivity}
+                    onMemoryAnnotations={(memories: MemoryAnnotation[]) =>
+                      setMemoryAnnotations(memories.map((m) => ({ id: m.id, label: "Memory", value: m.content })))
+                    }
+                  />
+                ) : null}
               </div>
             ) : null}
           </>

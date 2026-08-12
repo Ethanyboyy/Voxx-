@@ -4,14 +4,17 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
+import type { BrainState } from "@/lib/brain/graph";
 
 interface AskMessage {
   id: string;
   role: "USER" | "ASSISTANT";
   content: string;
+  /** From the real chat context trace — never fabricated, just surfaced. */
+  memoriesUsed?: number;
 }
 
-const SUGGESTED_QUESTIONS = [
+const DEFAULT_QUESTIONS = [
   "Explain why this is ranked the way it is.",
   "What assumptions are driving this?",
   "What would make this fail?",
@@ -24,8 +27,24 @@ const SUGGESTED_QUESTIONS = [
  * /api/conversations path Chat itself uses, so the reply is a genuine model
  * response with genuine memory retrieval, and the conversation it creates
  * shows up in Chat history too (nothing parallel or fake).
+ *
+ * `visualContext` carries what the Brain workspace itself knows right now
+ * (perspective, what's focused) so VOX can answer "what am I missing?"
+ * questions with awareness of what the user is actually looking at.
  */
-export function AskVoxPanel({ contextText, contextLabel }: { contextText: string; contextLabel: string }) {
+export function AskVoxPanel({
+  contextText,
+  contextLabel,
+  visualContext,
+  suggestedQuestions,
+  onActivity,
+}: {
+  contextText: string;
+  contextLabel: string;
+  visualContext?: string;
+  suggestedQuestions?: string[];
+  onActivity?: (state: BrainState | null, detail: string | null) => void;
+}) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AskMessage[]>([]);
   const [input, setInput] = useState("");
@@ -52,11 +71,13 @@ export function AskVoxPanel({ contextText, contextLabel }: { contextText: string
     setError(null);
     setInput("");
 
-    const fullMessage = `[Context: ${contextText}]\n\n${trimmed}`;
+    const contextBlock = [contextText, visualContext].filter(Boolean).join("\n");
+    const fullMessage = `[Context: ${contextBlock}]\n\n${trimmed}`;
     const userMsg: AskMessage = { id: nextId("local"), role: "USER", content: trimmed };
     const assistantMsg: AskMessage = { id: nextId("pending"), role: "ASSISTANT", content: "" };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setSending(true);
+    onActivity?.("thinking", `Answering about ${contextLabel}`);
 
     try {
       const conversation = await ensureConversation();
@@ -70,6 +91,7 @@ export function AskVoxPanel({ contextText, contextLabel }: { contextText: string
         const body = await res.json().catch(() => ({ error: "Ask VOX failed." }));
         setError(body.error ?? "Ask VOX failed.");
         setMessages((prev) => prev.filter((m) => m.id !== assistantMsg.id));
+        onActivity?.("error", body.error ?? "Ask VOX failed.");
         return;
       }
 
@@ -91,16 +113,23 @@ export function AskVoxPanel({ contextText, contextLabel }: { contextText: string
               prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content + event.text } : m))
             );
           } else if (event.type === "message_stop") {
-            setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, id: event.messageId } : m)));
+            const memoriesUsed: number | undefined = event.context?.memoriesUsed?.length;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMsg.id ? { ...m, id: event.messageId, memoriesUsed } : m))
+            );
           } else if (event.type === "error") {
             setError(event.message);
+            onActivity?.("error", event.message);
           }
         }
       }
+      onActivity?.(null, null);
     } finally {
       setSending(false);
     }
   }
+
+  const questions = suggestedQuestions ?? DEFAULT_QUESTIONS;
 
   return (
     <div className="flex flex-col gap-2">
@@ -108,7 +137,7 @@ export function AskVoxPanel({ contextText, contextLabel }: { contextText: string
 
       {messages.length === 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {SUGGESTED_QUESTIONS.map((q) => (
+          {questions.map((q) => (
             <button
               key={q}
               type="button"
@@ -122,14 +151,20 @@ export function AskVoxPanel({ contextText, contextLabel }: { contextText: string
       ) : (
         <div className="flex max-h-56 flex-col gap-2 overflow-y-auto scrollbar-thin pr-1">
           {messages.map((m) => (
-            <div
-              key={m.id}
-              className={cn(
-                "max-w-[92%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs",
-                m.role === "USER" ? "self-end bg-accent-muted text-accent" : "self-start bg-surface-hover text-foreground"
-              )}
-            >
-              {m.content || (sending ? "…" : "")}
+            <div key={m.id} className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
+              <div
+                className={cn(
+                  "max-w-[92%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs",
+                  m.role === "USER" ? "bg-accent-muted text-accent" : "bg-surface-hover text-foreground"
+                )}
+              >
+                {m.content || (sending ? "…" : "")}
+              </div>
+              {m.role === "ASSISTANT" && m.memoriesUsed ? (
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  🔎 {m.memoriesUsed} relevant memor{m.memoriesUsed === 1 ? "y" : "ies"} retrieved
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

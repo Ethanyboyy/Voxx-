@@ -1,11 +1,11 @@
-import type { BrainNode } from "@/lib/brain/graph";
+import type { BrainNode, BrainEdge } from "@/lib/brain/graph";
 
 export interface Point {
   x: number;
   y: number;
 }
 
-function polar(cx: number, cy: number, radius: number, angleDeg: number): Point {
+export function polar(cx: number, cy: number, radius: number, angleDeg: number): Point {
   const rad = (angleDeg * Math.PI) / 180;
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 }
@@ -14,6 +14,12 @@ function polar(cx: number, cy: number, radius: number, angleDeg: number): Point 
 function spreadAngle(index: number, count: number, fromDeg: number, toDeg: number): number {
   if (count <= 1) return (fromDeg + toDeg) / 2;
   return fromDeg + ((toDeg - fromDeg) * index) / (count - 1);
+}
+
+/** Spreads `count` items evenly around a full circle, starting at the top. */
+export function spreadAngleFull(index: number, count: number): number {
+  if (count <= 0) return -90;
+  return -90 + (360 * index) / count;
 }
 
 function groupBy<T, K extends string>(items: T[], key: (item: T) => K | null | undefined): Record<string, T[]> {
@@ -118,5 +124,46 @@ function gridPoint(originX: number, originY: number, index: number, columns: num
 export function layoutGrid(nodes: BrainNode[], originX: number, originY: number, columns = 4, gap = 170): Map<string, Point> {
   const pos = new Map<string, Point>();
   nodes.forEach((n, i) => pos.set(n.id, gridPoint(originX, originY, i, columns, gap)));
+  return pos;
+}
+
+/**
+ * Focus layout: the selected node moves to the world origin, its direct
+ * neighbors ring tightly around it, and everything else recedes to a far
+ * outer ring — at roughly the same angle from center it held in the normal
+ * layout, so the reorganization still feels spatially coherent rather than
+ * random. This is what makes "double-click to focus" feel like the
+ * workspace reorganizing around the selection instead of just a camera pan.
+ */
+export function layoutFocus(
+  nodes: BrainNode[],
+  edges: BrainEdge[],
+  selectedId: string,
+  normalPositions: Map<string, Point>
+): Map<string, Point> {
+  const pos = new Map<string, Point>();
+  pos.set(selectedId, { x: 0, y: 0 });
+
+  const neighborIds = new Set<string>();
+  for (const e of edges) {
+    if (e.from === selectedId) neighborIds.add(e.to);
+    if (e.to === selectedId) neighborIds.add(e.from);
+  }
+
+  const RING1 = 260;
+  const neighbors = nodes.filter((n) => n.id !== selectedId && neighborIds.has(n.id));
+  neighbors.forEach((n, i) => {
+    pos.set(n.id, polar(0, 0, RING1, spreadAngleFull(i, neighbors.length)));
+  });
+
+  const RING2 = 620;
+  const selectedNormal = normalPositions.get(selectedId) ?? { x: 0, y: 0 };
+  const others = nodes.filter((n) => n.id !== selectedId && !neighborIds.has(n.id));
+  others.forEach((n) => {
+    const np = normalPositions.get(n.id) ?? { x: 0, y: 0 };
+    const angleDeg = (Math.atan2(np.y - selectedNormal.y, np.x - selectedNormal.x) * 180) / Math.PI;
+    pos.set(n.id, polar(0, 0, RING2, angleDeg));
+  });
+
   return pos;
 }
