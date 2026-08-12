@@ -25,3 +25,32 @@ jobs:
 
       - name: Recent logs
         run: timeout 25 flyctl logs --app "$APP_NAME" --no-tail || true
+
+      # Read-only: table row counts and enum-column value distributions only
+      # (status/priority/confidence/effort/risk/category) — never touches
+      # encrypted or free-text columns (content/title/description/etc).
+      - name: Production data shape (read-only, no content)
+        run: |
+          flyctl ssh console --app "$APP_NAME" -C "node -e \"
+            const D = require('better-sqlite3');
+            const db = new D('/data/prod.db', { readonly: true });
+            const tables = ['User','Objective','Opportunity','Project','Task','ResearchItem','Proposal','Connection','Memory','AgentRun','AgentStep','BrainGroup','BrainView'];
+            for (const t of tables) {
+              try { console.log(t, db.prepare('SELECT COUNT(*) c FROM ' + t).get().c); }
+              catch (e) { console.log(t, 'ERR', e.message); }
+            }
+            const groups = [
+              ['Opportunity', 'confidence, effort, risk, status'],
+              ['Task', 'status, priority'],
+              ['AgentRun', 'status'],
+              ['Proposal', 'status'],
+              ['Memory', 'category, confidence'],
+              ['ResearchItem', 'confidence'],
+              ['Project', 'status'],
+              ['Connection', 'status'],
+            ];
+            for (const [t, cols] of groups) {
+              try { console.log('---', t, cols, '---'); console.log(JSON.stringify(db.prepare('SELECT ' + cols + ', COUNT(*) c FROM ' + t + ' GROUP BY ' + cols).all())); }
+              catch (e) { console.log(t, 'GROUP ERR', e.message); }
+            }
+          \"" || true
