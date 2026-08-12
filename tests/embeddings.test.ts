@@ -10,13 +10,13 @@ describe("LocalEmbeddingProvider", () => {
   });
 
   it("is deterministic — same text always produces the same vector", async () => {
-    const a = await provider.embed("Ethan owns a Pokemon card shop");
-    const b = await provider.embed("Ethan owns a Pokemon card shop");
+    const a = await provider.embed("Ethan owns a small online shop");
+    const b = await provider.embed("Ethan owns a small online shop");
     expect(a).toEqual(b);
   });
 
   it("produces an L2-normalized vector for non-empty text", async () => {
-    const vector = await provider.embed("some reasonably long piece of text about trading cards");
+    const vector = await provider.embed("some reasonably long piece of text about retail inventory");
     const magnitude = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0));
     expect(magnitude).toBeCloseTo(1, 5);
   });
@@ -27,8 +27,8 @@ describe("LocalEmbeddingProvider", () => {
   });
 
   it("ranks a topically similar sentence above an unrelated one", async () => {
-    const query = await provider.embed("Pokemon trading card shop revenue growth");
-    const related = await provider.embed("The Pokemon card shop had a strong month for revenue");
+    const query = await provider.embed("online shop revenue growth");
+    const related = await provider.embed("The online shop had a strong month for revenue");
     const unrelated = await provider.embed("I want to try a new pasta recipe this weekend");
 
     const simRelated = cosineSimilarity(query, related);

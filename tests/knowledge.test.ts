@@ -29,7 +29,7 @@ describe("knowledge graph — baseline nodes and connections", () => {
 
   it("connects two nodes and both directions are queryable", async () => {
     const a = await createNode({ userId, label: "Ethan", type: "PERSON" });
-    const b = await createNode({ userId, label: "Pokemon Shop", type: "ORGANIZATION" });
+    const b = await createNode({ userId, label: "Online Shop", type: "ORGANIZATION" });
     const connection = await createConnection({ userId, fromNodeId: a.id, toNodeId: b.id, relation: "owns" });
     expect(connection?.relation).toBe("owns");
 
@@ -62,7 +62,7 @@ describe("knowledge graph — linking first-class records", () => {
   });
 
   it("ensureNodeForEntity is idempotent per (userId, entityType, entityId)", async () => {
-    const project = await createProject({ userId, name: "Pokemon Shop" });
+    const project = await createProject({ userId, name: "Online Shop" });
     const first = await ensureNodeForEntity(userId, "PROJECT", project.id, project.name);
     const second = await ensureNodeForEntity(userId, "PROJECT", project.id, project.name);
     expect(second.id).toBe(first.id);

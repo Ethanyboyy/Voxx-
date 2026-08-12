@@ -16,7 +16,7 @@ describe("semantic memory retrieval", () => {
   });
 
   it("computes and caches an embedding when a memory is created", async () => {
-    const memory = await createMemory({ userId, content: "Ethan owns a Pokemon trading card shop", category: "FACT" });
+    const memory = await createMemory({ userId, content: "Ethan owns a online shop", category: "FACT" });
     const row = await db.memoryEmbedding.findUnique({ where: { memoryId: memory.id } });
     expect(row).not.toBeNull();
     expect(row?.dimensions).toBeGreaterThan(0);
@@ -32,12 +32,12 @@ describe("semantic memory retrieval", () => {
 
   it("ranks semantically relevant memories above unrelated ones", async () => {
     const user = await createTestUser();
-    await createMemory({ userId: user.id, content: "Ethan runs a Pokemon trading card shop", category: "FACT" });
+    await createMemory({ userId: user.id, content: "Ethan runs a online shop", category: "FACT" });
     await createMemory({ userId: user.id, content: "Ethan enjoys cooking pasta on weekends", category: "PREFERENCE" });
 
-    const results = await getSemanticMemories(user.id, "how is the Pokemon card business doing?", 5);
+    const results = await getSemanticMemories(user.id, "how is the online shop business doing?", 5);
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].content).toContain("Pokemon");
+    expect(results[0].content).toContain("online shop");
   });
 
   it("re-embeds a memory when its content is updated", async () => {

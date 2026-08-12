@@ -34,20 +34,20 @@ describe("full cognitive loop integration", () => {
     const user = await createTestUser();
 
     // --- Setup: a project and a memory relevant to it -----------------------
-    const project = await createProject({ userId: user.id, name: "Pokemon Shop Expansion" });
+    const project = await createProject({ userId: user.id, name: "Online Shop Expansion" });
     const memory = await createMemory({
       userId: user.id,
-      content: "The Pokemon Shop is considering opening a second location downtown",
+      content: "The Online Shop is considering opening a second location downtown",
       category: "FACT",
       confidence: "HIGH",
     });
 
     // --- MEMORY: semantic retrieval surfaces it for a related query ---------
-    const semanticMatches = await getSemanticMemories(user.id, "should the Pokemon shop expand to a new location?", 5);
+    const semanticMatches = await getSemanticMemories(user.id, "should the online shop expand to a new location?", 5);
     expect(semanticMatches.some((m) => m.id === memory.id)).toBe(true);
 
     // --- RESEARCH: a real (mock-provider) research query is run and persisted
-    const researchItems = await runResearch(user.id, "average cost to open a second retail trading card location");
+    const researchItems = await runResearch(user.id, "average cost to open a second retail location");
     expect(researchItems.length).toBeGreaterThan(0);
 
     // --- KNOWLEDGE GRAPH: connect the project, the memory, and the research -

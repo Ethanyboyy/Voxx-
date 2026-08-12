@@ -14,16 +14,16 @@ describe("memory service", () => {
   it("creates a memory and stores content encrypted at rest", async () => {
     const memory = await createMemory({
       userId,
-      content: "Ethan owns a Pokemon card shop",
+      content: "Ethan owns a online shop",
       category: "FACT",
       confidence: "HIGH",
     });
 
-    expect(memory.content).toBe("Ethan owns a Pokemon card shop");
+    expect(memory.content).toBe("Ethan owns a online shop");
     expect(memory.confidence).toBe("HIGH");
 
     const raw = await db.memory.findUniqueOrThrow({ where: { id: memory.id } });
-    expect(raw.content).not.toBe("Ethan owns a Pokemon card shop");
+    expect(raw.content).not.toBe("Ethan owns a online shop");
     expect(raw.content.split(":").length).toBe(3); // iv:authTag:ciphertext
   });
 

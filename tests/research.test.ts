@@ -14,7 +14,7 @@ describe("research engine", () => {
 
   it("mock provider never fabricates results and marks them low-confidence", async () => {
     const provider = getResearchProvider();
-    const results = await provider.search("best pokemon card grading service");
+    const results = await provider.search("best online shop customer service tools");
     expect(results.length).toBeGreaterThan(0);
     for (const result of results) {
       expect(result.confidence).toBe("LOW");
@@ -23,10 +23,10 @@ describe("research engine", () => {
   });
 
   it("persists ResearchItem rows preserving source, title, relevance, confidence, retrieval time", async () => {
-    const items = await runResearch(userId, "customer acquisition strategies for a trading card shop");
+    const items = await runResearch(userId, "customer acquisition strategies for a small online shop");
     expect(items.length).toBeGreaterThan(0);
     for (const item of items) {
-      expect(item.query).toBe("customer acquisition strategies for a trading card shop");
+      expect(item.query).toBe("customer acquisition strategies for a small online shop");
       expect(item.provider).toBe("mock");
       expect(item.title).toBeTruthy();
       expect(item.confidence).toBeDefined();

@@ -25,9 +25,9 @@ describe("projects, goals, tasks", () => {
   });
 
   it("creates a project with sensible defaults", async () => {
-    const project = await createProject({ userId, name: "Pokemon Shop" });
+    const project = await createProject({ userId, name: "Online Shop" });
     expect(project.status).toBe("ACTIVE");
-    expect(project.name).toBe("Pokemon Shop");
+    expect(project.name).toBe("Online Shop");
   });
 
   it("lists only the owning user's projects and supports status filtering", async () => {

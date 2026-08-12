@@ -19,13 +19,13 @@ describe("chat context assembly", () => {
   });
 
   it("ranks by semantic relevance and records exactly what fed the prompt in the trace", async () => {
-    await createMemory({ userId, content: "Ethan runs a Pokemon trading card shop", category: "FACT" });
+    await createMemory({ userId, content: "Ethan runs a online shop", category: "FACT" });
     await createMemory({ userId, content: "Ethan enjoys long distance running", category: "PREFERENCE" });
 
-    const { prompt, trace } = await buildSystemPrompt(userId, "how is the Pokemon card business doing?");
-    expect(prompt).toContain("Pokemon");
+    const { prompt, trace } = await buildSystemPrompt(userId, "how is the online shop business doing?");
+    expect(prompt).toContain("online shop");
     expect(trace.memoriesUsed.length).toBeGreaterThan(0);
-    expect(trace.memoriesUsed[0].content).toContain("Pokemon");
+    expect(trace.memoriesUsed[0].content).toContain("online shop");
     expect(trace.memoriesUsed[0].similarity).toBeGreaterThan(0);
   });
 
