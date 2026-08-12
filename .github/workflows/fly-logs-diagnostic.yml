@@ -1,0 +1,27 @@
+name: VOX Fly.io logs (diagnostic)
+
+# Temporary, read-only diagnostic workflow — does not deploy or modify
+# anything on Fly. Dispatched manually to pull recent server logs when
+# something is broken in production and the error needs to be seen
+# directly rather than guessed at.
+on:
+  workflow_dispatch:
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP_NAME: vox-ethansly04
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: App status
+        run: flyctl status --app "$APP_NAME"
+
+      - name: Machine list
+        run: flyctl machines list --app "$APP_NAME"
+
+      - name: Recent logs
+        run: timeout 25 flyctl logs --app "$APP_NAME" --no-tail || true
