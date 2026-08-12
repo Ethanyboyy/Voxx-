@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { SVGProps } from "react";
+import type { ReactElement, SVGProps } from "react";
 import { cn } from "@/lib/utils/cn";
 
 function VoxLogoMark(props: SVGProps<SVGSVGElement>) {
@@ -151,27 +151,61 @@ const IconBarChart = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 16.5V10M9.3 16.5V3.5M14.7 16.5V7.5" stroke="currentColor" strokeLinecap="round" />
   </Icon>
 );
+const IconCompass = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="7.2" stroke="currentColor" />
+    <path d="m12.7 7.3-1.6 4-4 1.6 1.6-4Z" stroke="currentColor" strokeLinejoin="round" />
+  </Icon>
+);
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Home", icon: IconHome },
-  { href: "/chat", label: "Chat", icon: IconChat },
-  { href: "/memory", label: "Memory", icon: IconMemory },
-  { href: "/goals", label: "Goals", icon: IconTarget },
-  { href: "/projects", label: "Projects", icon: IconFolder },
-  { href: "/tasks", label: "Tasks", icon: IconChecklist },
-  { href: "/finance", label: "Finance", icon: IconDollar },
-  { href: "/content", label: "Content", icon: IconSparklePen },
-  { href: "/graph", label: "Knowledge", icon: IconGraph },
-  { href: "/agents", label: "Automations", icon: IconBolt },
-  { href: "/analytics", label: "Analytics", icon: IconBarChart },
-  { href: "/connections", label: "Integrations", icon: IconPlug },
-  { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
-  { href: "/cognition", label: "Observations", icon: IconEye },
-  { href: "/proposals", label: "Proposals", icon: IconCheck },
-  { href: "/experiments", label: "Laboratory", icon: IconFlask },
-  { href: "/research", label: "Research", icon: IconSearch },
-  { href: "/activity", label: "Activity", icon: IconPulse },
-  { href: "/settings", label: "Settings", icon: IconGear },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: (p: SVGProps<SVGSVGElement>) => ReactElement;
+  hero?: boolean;
+}
+
+const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
+  {
+    group: "VOX",
+    items: [
+      { href: "/dashboard", label: "Home", icon: IconHome },
+      { href: "/chat", label: "Chat", icon: IconChat },
+      { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
+    ],
+  },
+  {
+    group: "Intelligence",
+    items: [
+      { href: "/objectives", label: "Objectives", icon: IconCompass },
+      { href: "/memory", label: "Memory", icon: IconMemory },
+      { href: "/graph", label: "Knowledge", icon: IconGraph },
+      { href: "/cognition", label: "Observations", icon: IconEye },
+      { href: "/research", label: "Research", icon: IconSearch },
+      { href: "/experiments", label: "Laboratory", icon: IconFlask },
+      { href: "/analytics", label: "Analytics", icon: IconBarChart },
+    ],
+  },
+  {
+    group: "Execution",
+    items: [
+      { href: "/goals", label: "Goals", icon: IconTarget },
+      { href: "/projects", label: "Projects", icon: IconFolder },
+      { href: "/tasks", label: "Tasks", icon: IconChecklist },
+      { href: "/finance", label: "Finance", icon: IconDollar },
+      { href: "/content", label: "Content", icon: IconSparklePen },
+      { href: "/proposals", label: "Proposals", icon: IconCheck },
+      { href: "/agents", label: "Automations", icon: IconBolt },
+    ],
+  },
+  {
+    group: "System",
+    items: [
+      { href: "/connections", label: "Integrations", icon: IconPlug },
+      { href: "/activity", label: "Activity", icon: IconPulse },
+      { href: "/settings", label: "Settings", icon: IconGear },
+    ],
+  },
 ];
 
 export function Sidebar({
@@ -198,35 +232,42 @@ export function Sidebar({
         <span className="text-lg font-bold text-foreground">VOX</span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || pathname?.startsWith(item.href + "/");
-          const ItemIcon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={cn(
-                "mb-1 flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:py-2",
-                active
-                  ? "bg-accent-muted text-accent shadow-[0_0_16px_-8px_var(--accent)]"
-                  : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
-                item.hero && !active && "text-foreground"
-              )}
-              aria-current={active ? "page" : undefined}
-            >
-              <span className="flex items-center gap-2.5">
-                <ItemIcon className={active ? "text-accent" : "text-muted-foreground"} />
-                {item.label}
-              </span>
-              {item.href === "/proposals" && pendingProposalCount > 0 ? (
-                <span className="rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">
-                  {pendingProposalCount}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
+        {NAV_GROUPS.map((group) => (
+          <div key={group.group} className="mb-3">
+            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {group.group}
+            </p>
+            {group.items.map((item) => {
+              const active = pathname === item.href || pathname?.startsWith(item.href + "/");
+              const ItemIcon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "mb-1 flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:py-2",
+                    active
+                      ? "bg-accent-muted text-accent shadow-[0_0_16px_-8px_var(--accent)]"
+                      : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                    item.hero && !active && "text-foreground"
+                  )}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <ItemIcon className={active ? "text-accent" : "text-muted-foreground"} />
+                    {item.label}
+                  </span>
+                  {item.href === "/proposals" && pendingProposalCount > 0 ? (
+                    <span className="rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold text-accent-foreground">
+                      {pendingProposalCount}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </div>
       {userEmail ? (
         <div className="mt-2 flex items-center gap-2.5 border-t border-border px-2 pt-3">

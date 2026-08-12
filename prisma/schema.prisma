@@ -69,6 +69,8 @@ model User {
   agentRuns             AgentRun[]
   notifications         Notification[]
   notificationPreference NotificationPreference?
+  objectives            Objective[]
+  opportunities         Opportunity[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -859,6 +861,100 @@ model AgentStep {
   completedAt   DateTime?
 
   @@unique([runId, order])
+}
+
+// ---------------------------------------------------------------------------
+// Objective & Opportunity engine — the intelligence loop
+// ---------------------------------------------------------------------------
+//
+// An Objective is a real, user-declared outcome VOX is helping pursue (e.g.
+// "generate $25,000"). It is not a Goal (Goal is a lightweight personal
+// target attached to a Project) — an Objective carries strategy notes,
+// explicit assumptions, and an optional numeric target, and is the anchor
+// chat/dashboard use to answer "what is VOX currently helping me do." VOX
+// never marks an Objective's progress or invents currentValue — progress is
+// only ever what the user records via updateObjective(), same non-fabrication
+// rule as Memory confidence.
+//
+// An Opportunity is a concrete, evaluated option toward an Objective —
+// value/effort/confidence/risk/next-action, always attached to exactly one
+// Objective. Nothing here executes anything: Opportunity.nextAction is text,
+// and turning it into real work still goes through Task/Proposal/AgentRun
+// like everything else.
+
+enum ObjectiveStatus {
+  ACTIVE
+  PAUSED
+  ACHIEVED
+  ABANDONED
+}
+
+model Objective {
+  id          String          @id @default(uuid())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  title       String
+  description String?
+  /// Free-text strategy notes — human- or VOX-authored, never fabricated progress.
+  strategy    String?
+  /// JSON string[] of explicit assumptions the strategy depends on.
+  assumptions String?
+  /// Optional numeric target, e.g. 25000. Null when the objective isn't a number to hit.
+  targetValue Float?
+  /// Unit for targetValue, e.g. "USD". Null unless targetValue is set.
+  targetUnit  String?
+  /// Optional numeric progress toward targetValue. Only ever set by explicit
+  /// user input via updateObjective() — never inferred or auto-incremented.
+  currentValue Float?
+  targetDate  DateTime?
+  status      ObjectiveStatus @default(ACTIVE)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  opportunities Opportunity[]
+}
+
+enum OpportunityStatus {
+  IDEA
+  EVALUATING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+}
+
+enum EffortLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Opportunity {
+  id          String            @id @default(uuid())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  objective   Objective         @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  objectiveId String
+  title       String
+  description String?
+  /// Honest estimate only — left null rather than guessed when there's no basis.
+  estimatedValue Float?
+  effort      EffortLevel?
+  confidence  Confidence        @default(LOW)
+  risk        RiskLevel?
+  /// The single concrete next step, in the user's or VOX's own words — not a status label.
+  nextAction  String?
+  /// JSON string[] — reasoning/evidence behind the estimate, so it stays inspectable.
+  evidence    String?
+  status      OpportunityStatus @default(IDEA)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 // ---------------------------------------------------------------------------

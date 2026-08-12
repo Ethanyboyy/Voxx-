@@ -76,6 +76,12 @@ before making structural changes. These rules apply to every change, not just Ph
 - `src/lib/embeddings/` — provider-agnostic embedding abstraction (local + Voyage)
 - `src/lib/memory/` — memory CRUD, semantic retrieval, relations/supersession,
   contradiction detection
+- `src/lib/objectives/` — Objective/Opportunity CRUD and `getNextBestAction()`,
+  a transparent re-ranking of the user's own recorded value/effort/confidence/
+  risk data. Never fabricates a value, an opportunity, or progress —
+  `Objective.currentValue` only ever changes via explicit `updateObjective()`
+  input. `chat/service.ts#buildSystemPrompt` and the dashboard Command Center
+  both read from here so the active objective is real, shared state.
 - `src/lib/cognition/` — observations, hypotheses, pattern detection, cognitive
   profile, and the proposal engine (`proposals.ts`)
 - `src/lib/knowledge/`, `src/lib/permissions/`, `src/lib/observability/` — domain services

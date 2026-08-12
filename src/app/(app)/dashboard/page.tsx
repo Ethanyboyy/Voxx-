@@ -13,6 +13,8 @@ import { listConnections } from "@/lib/connections/service";
 import { listPatterns } from "@/lib/cognition/patterns";
 import { listConversations } from "@/lib/chat/service";
 import { getAIProvider } from "@/lib/ai";
+import { getActiveObjective, getNextBestAction } from "@/lib/objectives/service";
+import { listRecentEvents } from "@/lib/observability/events";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
@@ -39,6 +41,9 @@ export default async function DashboardPage() {
     connections,
     patterns,
     conversations,
+    activeObjective,
+    nextBestAction,
+    recentEvents,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
@@ -53,6 +58,9 @@ export default async function DashboardPage() {
     listConnections(user.id),
     listPatterns(user.id),
     listConversations(user.id),
+    getActiveObjective(user.id),
+    getNextBestAction(user.id),
+    listRecentEvents(user.id, 4),
   ]);
 
   const displayName = user.name?.trim() || user.email.split("@")[0];
@@ -93,6 +101,72 @@ export default async function DashboardPage() {
             New Chat
           </Link>
         </div>
+      </div>
+
+      {/* Command Center — what VOX is actually doing right now, no fabricated state */}
+      <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
+        <Link href="/objectives" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
+          <p className="text-xs text-muted-foreground">Current Objective</p>
+          {activeObjective ? (
+            <>
+              <p className="mt-1 truncate text-sm font-semibold text-foreground">{activeObjective.title}</p>
+              <p className="mt-1 text-xs text-muted">
+                {activeObjective.targetValue != null
+                  ? `${activeObjective.currentValue ?? 0} / ${activeObjective.targetValue} ${activeObjective.targetUnit ?? ""}`
+                  : "In progress"}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-muted">None set — create one to focus VOX.</p>
+          )}
+        </Link>
+
+        <Link href="/objectives" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
+          <p className="text-xs text-muted-foreground">Next Best Action</p>
+          {nextBestAction?.action ? (
+            <>
+              <p className="mt-1 text-sm font-semibold text-foreground line-clamp-2">{nextBestAction.action}</p>
+              {nextBestAction.opportunity ? (
+                <p className="mt-1 truncate text-xs text-muted">{nextBestAction.opportunity.title}</p>
+              ) : null}
+            </>
+          ) : nextBestAction?.opportunity ? (
+            <p className="mt-1 text-sm text-muted">
+              &quot;{nextBestAction.opportunity.title}&quot; is the top opportunity — no next action set yet.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted">
+              {activeObjective ? "No opportunities evaluated yet." : "Set an objective first."}
+            </p>
+          )}
+        </Link>
+
+        <Link href="/proposals" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
+          <p className="text-xs text-muted-foreground">Pending Approval</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {pendingProposals.length > 0
+              ? `${pendingProposals.length} proposal${pendingProposals.length === 1 ? "" : "s"} waiting`
+              : "Nothing waiting"}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted">
+            {pendingProposals[0]?.suggestedAction ?? "VOX asks before acting."}
+          </p>
+        </Link>
+
+        <Link href="/activity" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
+          <p className="text-xs text-muted-foreground">Recent Activity</p>
+          {recentEvents.length > 0 ? (
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {recentEvents.slice(0, 2).map((e) => (
+                <li key={e.id} className="truncate text-xs text-foreground">
+                  {humanizeEventType(e.type)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-muted">Nothing recorded yet.</p>
+          )}
+        </Link>
       </div>
 
       {/* stat row — every number here is a real, live count */}
@@ -420,6 +494,10 @@ function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString();
 }
 
+
+function humanizeEventType(type: string): string {
+  return type.replace(/[._]/g, " ");
+}
 
 function priorityRank(priority: string): number {
   return { HIGH: 2, MEDIUM: 1, LOW: 0 }[priority] ?? 0;

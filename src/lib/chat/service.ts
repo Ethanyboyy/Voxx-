@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { decryptField, encryptField } from "@/lib/security/crypto";
 import { getSemanticMemories, listMemories } from "@/lib/memory/service";
+import { getActiveObjective, getNextBestAction } from "@/lib/objectives/service";
 import { logger } from "@/lib/observability/logger";
 import type { ChatMessageInput } from "@/lib/ai/types";
 import type { Confidence } from "@/generated/prisma/enums";
@@ -125,7 +126,11 @@ export interface SystemPromptResult {
  * topically similar right now.
  */
 export async function buildSystemPrompt(userId: string, query: string): Promise<SystemPromptResult> {
-  const semantic = query.trim() ? await getSemanticMemories(userId, query, 8) : [];
+  const [semantic, activeObjective, nextBestAction] = await Promise.all([
+    query.trim() ? getSemanticMemories(userId, query, 8) : Promise.resolve([]),
+    getActiveObjective(userId),
+    getNextBestAction(userId),
+  ]);
   const includedIds = new Set(semantic.map((m) => m.id));
 
   const confirmed = (await listMemories(userId, { confidence: "CONFIRMED" }))
@@ -135,16 +140,30 @@ export async function buildSystemPrompt(userId: string, query: string): Promise<
 
   const selected = [...semantic, ...confirmed];
 
+  const objectiveSection = activeObjective
+    ? `\n\nActive objective: "${activeObjective.title}"${activeObjective.description ? ` — ${activeObjective.description}` : ""}. ${
+        activeObjective.strategy ? `Strategy so far: ${activeObjective.strategy}. ` : "No strategy has been recorded yet. "
+      }${
+        activeObjective.targetValue != null
+          ? `Progress: ${activeObjective.currentValue ?? 0} / ${activeObjective.targetValue} ${activeObjective.targetUnit ?? ""}. `
+          : ""
+      }${
+        nextBestAction?.action
+          ? `Current top next action: ${nextBestAction.action}.`
+          : "No next action has been set yet — help identify a concrete one instead of assuming progress."
+      } Never claim progress on this objective, revenue earned, or work done that isn't backed by what's actually recorded.`
+    : "";
+
   if (selected.length === 0) {
     return {
-      prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context: none yet — this is early in getting to know the user.`,
+      prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context: none yet — this is early in getting to know the user.${objectiveSection}`,
       trace: { memoriesUsed: [], assumptions: [] },
     };
   }
 
   const lines = selected.map((m) => `- [${m.category}, ${m.confidence}] ${m.content}`);
   return {
-    prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context about the user:\n${lines.join("\n")}`,
+    prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context about the user:\n${lines.join("\n")}${objectiveSection}`,
     trace: {
       memoriesUsed: selected.map((m) => ({
         id: m.id,

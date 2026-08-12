@@ -15,6 +15,7 @@ const COMMANDS: Command[] = [
   { id: "dashboard", label: "Go Home", href: "/dashboard" },
   { id: "chat", label: "Talk to VOX", href: "/chat" },
   { id: "memory", label: "Open Memory", href: "/memory" },
+  { id: "objectives", label: "Open Objectives", href: "/objectives" },
   { id: "goals", label: "Open Goals", href: "/goals" },
   { id: "projects", label: "Open Projects", href: "/projects" },
   { id: "tasks", label: "Open Tasks", href: "/tasks" },
