@@ -1,4 +1,4 @@
-import { listObjectives, listOpportunities, scoreOpportunity } from "@/lib/objectives/service";
+import { listObjectives, listOpportunities, scoreOpportunity, explainOpportunityScore } from "@/lib/objectives/service";
 import { listProjects, listTasks } from "@/lib/projects/service";
 import { listProposals } from "@/lib/cognition/proposals";
 import { listConnections } from "@/lib/connections/service";
@@ -21,7 +21,8 @@ export type BrainNodeType =
   | "RESEARCH"
   | "PROPOSAL"
   | "CONNECTION"
-  | "MEMORY";
+  | "MEMORY"
+  | "AGENT_RUN";
 
 export interface BrainNode {
   /** `${type}:${entityId}` — unique across the whole graph. */
@@ -58,7 +59,7 @@ const MEMORY_LIMIT = 24;
 const RESEARCH_LIMIT = 40;
 
 export async function getBrainGraph(userId: string): Promise<BrainGraph> {
-  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research] =
+  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research, agentRuns] =
     await Promise.all([
       listObjectives(userId),
       listOpportunities(userId),
@@ -68,6 +69,7 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
       listConnections(userId),
       listMemories(userId, { confidence: "CONFIRMED" }),
       listResearchItems(userId, RESEARCH_LIMIT),
+      listAgentRuns(userId, 10),
     ]);
 
   const nodes: BrainNode[] = [];
@@ -130,6 +132,7 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
         projectId: op.projectId,
         rankScore: scoreOpportunity(op),
         isNextBestAction: topOpportunityIdByObjective.get(op.objectiveId) === op.id,
+        scoreBreakdown: explainOpportunityScore(op),
       },
     });
     edges.push({ id: nextEdgeId(), from: `OBJECTIVE:${op.objectiveId}`, to: nodeId, relation: "targets" });
@@ -243,6 +246,28 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
       updatedAt: m.updatedAt.toISOString(),
       meta: { category: m.category, confidence: m.confidence },
     });
+  }
+
+  for (const run of agentRuns) {
+    const nodeId = `AGENT_RUN:${run.id}`;
+    nodes.push({
+      id: nodeId,
+      entityId: run.id,
+      type: "AGENT_RUN",
+      label: run.objective,
+      status: run.status,
+      updatedAt: run.updatedAt.toISOString(),
+      meta: {
+        currentStep: run.currentStep,
+        stepCount: run.steps.length,
+        result: run.result,
+        error: run.error,
+        projectId: run.projectId,
+      },
+    });
+    if (run.projectId) {
+      edges.push({ id: nextEdgeId(), from: `PROJECT:${run.projectId}`, to: nodeId, relation: "executed_by" });
+    }
   }
 
   return {

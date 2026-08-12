@@ -323,6 +323,27 @@ export const promoteOpportunitySchema = z.object({
   projectName: z.string().min(1).max(200).optional(),
 });
 
+export const createBrainGroupSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional(),
+  memberIds: z.array(z.string().min(1)).min(1).max(200),
+  color: z.string().max(40).optional(),
+});
+
+export const updateBrainGroupSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  description: z.string().max(2000).optional(),
+  memberIds: z.array(z.string().min(1)).max(200).optional(),
+  color: z.string().max(40).nullable().optional(),
+  collapsed: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+});
+
+export const saveBrainViewSchema = z.object({
+  name: z.string().min(1).max(120),
+  state: z.record(z.string(), z.unknown()),
+});
+
 export const updateOpportunitySchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(5000).optional(),

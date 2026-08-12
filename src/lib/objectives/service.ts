@@ -394,6 +394,42 @@ export function scoreOpportunity(o: OpportunityDTO): number {
   return (value / effortWeight) * confidenceWeight * (1 - riskPenalty);
 }
 
+export interface OpportunityScoreBreakdown {
+  score: number;
+  value: number;
+  valueIsAssumedDefault: boolean;
+  effort: EffortLevel | null;
+  effortWeight: number;
+  confidence: Confidence;
+  confidenceWeight: number;
+  risk: RiskLevel | null;
+  riskPenalty: number;
+}
+
+/**
+ * The exact same formula and weight tables as scoreOpportunity(), just with
+ * every intermediate factor exposed — this is what the Brain's "Why?" panel
+ * renders, so the ranking is never a black box. Never recomputes the score
+ * differently than scoreOpportunity() does; this is that function with its
+ * work shown.
+ */
+export function explainOpportunityScore(o: OpportunityDTO): OpportunityScoreBreakdown {
+  const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
+  const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
+  const confidenceWeight = CONFIDENCE_WEIGHT[o.confidence];
+  return {
+    score: scoreOpportunity(o),
+    value: o.estimatedValue ?? 1,
+    valueIsAssumedDefault: o.estimatedValue == null,
+    effort: o.effort,
+    effortWeight,
+    confidence: o.confidence,
+    confidenceWeight,
+    risk: o.risk,
+    riskPenalty,
+  };
+}
+
 export interface NextBestAction {
   objective: ObjectiveDTO;
   opportunity: OpportunityDTO | null;

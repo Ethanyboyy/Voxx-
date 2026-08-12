@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { AskVoxPanel } from "@/components/brain/AskVoxPanel";
+import { trustColor, trustLabel } from "@/components/brain/trust";
 import type { BrainNode, BrainEdge, BrainState } from "@/lib/brain/graph";
 
 interface ActivityEvent {
@@ -69,6 +70,13 @@ function buildContextText(node: BrainNode, objectiveTitle: string | null, projec
       return `Connection "${node.label}" (status: ${node.status}).`;
     case "MEMORY":
       return `Memory: "${node.label}" (confidence: ${node.meta.confidence}).`;
+    case "AGENT_RUN": {
+      const step = node.meta.currentStep as number | null;
+      const count = node.meta.stepCount as number | null;
+      return `Agent run "${node.label}" (status: ${node.status}).${
+        step != null && count != null ? ` Step ${step} of ${count}.` : ""
+      }${node.meta.result ? ` Result: ${node.meta.result}.` : ""}${node.meta.error ? ` Error: ${node.meta.error}.` : ""}`;
+    }
     default:
       return node.label;
   }
@@ -97,6 +105,8 @@ export function InspectorPanel({
   onStartCompare,
   onActivity,
   onMemoryAnnotations,
+  onToggleAttention,
+  attentionActive,
 }: {
   node: BrainNode;
   nodes: BrainNode[];
@@ -114,6 +124,8 @@ export function InspectorPanel({
   onStartCompare: () => void;
   onActivity: (state: BrainState | null, detail: string | null) => void;
   onMemoryAnnotations: (memories: MemoryAnnotation[]) => void;
+  onToggleAttention?: () => void;
+  attentionActive?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +136,7 @@ export function InspectorPanel({
   const [relevantMemories, setRelevantMemories] = useState<
     { id: string; content: string; confidence: string; similarity: number }[] | null
   >(null);
+  const [showWhy, setShowWhy] = useState(false);
 
   const byNodeId = new Map(nodes.map((n) => [n.id, n]));
   const objective =
@@ -310,6 +323,78 @@ export function InspectorPanel({
     }
   }
 
+  async function approveProposalAction() {
+    setBusy("approve");
+    setError(null);
+    try {
+      const res = await fetch(`/api/proposals/${node.entityId}/approve`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't approve proposal.");
+        return;
+      }
+      onGraphPatch({ kind: "updateNode", id: node.id, patch: { status: data.proposal.status } });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function denyProposalAction() {
+    setBusy("deny");
+    setError(null);
+    try {
+      const res = await fetch(`/api/proposals/${node.entityId}/deny`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't dismiss proposal.");
+        return;
+      }
+      onGraphPatch({ kind: "updateNode", id: node.id, patch: { status: data.proposal.status } });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resumeAgentRunAction() {
+    setBusy("resume");
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${node.entityId}/approve`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't resume agent run.");
+        return;
+      }
+      onGraphPatch({
+        kind: "updateNode",
+        id: node.id,
+        patch: { status: data.run.status, meta: { ...node.meta, currentStep: data.run.currentStep, error: data.run.error } },
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelAgentRunAction() {
+    setBusy("cancel");
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${node.entityId}/cancel`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Couldn't cancel agent run.");
+        return;
+      }
+      onGraphPatch({ kind: "updateNode", id: node.id, patch: { status: data.run.status } });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const contextText = buildContextText(node, (objective?.label as string) ?? null, (project?.label as string) ?? null);
   const visualContext = `Brain perspective: ${perspectiveLabel}. Currently focused on: ${focusedLabels.join(", ") || node.label}.`;
 
@@ -371,12 +456,21 @@ export function InspectorPanel({
         <div className="grid grid-cols-2 gap-2 text-xs">
           <Field label="Value" value={node.meta.estimatedValue != null ? String(node.meta.estimatedValue) : "Not set"} />
           <Field label="Effort" value={(node.meta.effort as string) ?? "Not set"} />
-          <Field label="Confidence" value={node.meta.confidence as string} />
+          <TrustField label="Confidence" confidence={node.meta.confidence as string} />
           <Field label="Risk" value={(node.meta.risk as string) ?? "Not set"} />
           <div className="col-span-2">
             <Field label="Next action" value={(node.meta.nextAction as string) || "Not set"} />
           </div>
         </div>
+      ) : null}
+
+      {node.type === "OPPORTUNITY" && node.meta.scoreBreakdown ? (
+        <WhyRankedPanel
+          breakdown={node.meta.scoreBreakdown as ScoreBreakdown}
+          isNextBestAction={Boolean(node.meta.isNextBestAction)}
+          open={showWhy}
+          onToggle={() => setShowWhy((v) => !v)}
+        />
       ) : null}
 
       {node.type === "TASK" ? (
@@ -393,11 +487,49 @@ export function InspectorPanel({
             label="Provider"
             value={node.meta.provider === "mock" ? "mock — no live source" : (node.meta.provider as string)}
           />
+          {node.meta.confidence ? <TrustField label="Confidence" confidence={node.meta.confidence as string} /> : null}
           {node.meta.summary ? <Field label="Finding" value={node.meta.summary as string} /> : null}
           {node.meta.sourceUrl ? (
             <a href={node.meta.sourceUrl as string} target="_blank" rel="noreferrer" className="text-accent">
               Open source →
             </a>
+          ) : null}
+        </div>
+      ) : null}
+
+      {node.type === "MEMORY" ? (
+        <div className="flex flex-col gap-2 text-xs">
+          <Field label="Category" value={((node.meta.category as string) ?? "not set").toLowerCase().replace(/_/g, " ")} />
+          <TrustField
+            label="Confidence"
+            confidence={node.meta.confidence as string}
+            category={(node.meta.category as string | null) ?? null}
+          />
+        </div>
+      ) : null}
+
+      {node.type === "PROPOSAL" ? (
+        <div className="flex flex-col gap-2 text-xs">
+          <Field label="Observation" value={(node.meta.observation as string) || "Not recorded."} />
+          <Field label="Implication" value={(node.meta.implication as string) || "Not recorded."} />
+          <Field label="Confidence" value={((node.meta.confidence as string) ?? "unknown").toLowerCase()} />
+        </div>
+      ) : null}
+
+      {node.type === "AGENT_RUN" ? (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {node.meta.currentStep != null && node.meta.stepCount != null ? (
+            <Field label="Progress" value={`step ${node.meta.currentStep} / ${node.meta.stepCount}`} />
+          ) : null}
+          {node.meta.result ? (
+            <div className="col-span-2">
+              <Field label="Result" value={node.meta.result as string} />
+            </div>
+          ) : null}
+          {node.meta.error ? (
+            <div className="col-span-2">
+              <Field label="Error" value={node.meta.error as string} />
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -488,6 +620,12 @@ export function InspectorPanel({
           </Button>
         ) : null}
 
+        {node.type === "OBJECTIVE" && onToggleAttention ? (
+          <Button size="sm" variant="secondary" onClick={onToggleAttention}>
+            {attentionActive ? "Exit attention" : "Attention"}
+          </Button>
+        ) : null}
+
         {node.type === "OBJECTIVE" ? (
           <Link href="/objectives" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
             Open in Objectives
@@ -495,9 +633,39 @@ export function InspectorPanel({
         ) : null}
 
         {node.type === "PROPOSAL" ? (
-          <Link href="/proposals" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-            Open in Proposals
-          </Link>
+          <>
+            {node.status === "PROPOSED" ? (
+              <>
+                <Button size="sm" disabled={busy === "approve"} onClick={approveProposalAction}>
+                  {busy === "approve" ? "Approving…" : "Approve"}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={busy === "deny"} onClick={denyProposalAction}>
+                  {busy === "deny" ? "Dismissing…" : "Dismiss"}
+                </Button>
+              </>
+            ) : null}
+            <Link href="/proposals" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+              Open in Proposals
+            </Link>
+          </>
+        ) : null}
+
+        {node.type === "AGENT_RUN" ? (
+          <>
+            {node.status === "WAITING_FOR_PERMISSION" ? (
+              <Button size="sm" disabled={busy === "resume"} onClick={resumeAgentRunAction}>
+                {busy === "resume" ? "Resuming…" : "Resume"}
+              </Button>
+            ) : null}
+            {node.status === "RUNNING" || node.status === "WAITING" || node.status === "PLANNING" ? (
+              <Button size="sm" variant="ghost" disabled={busy === "cancel"} onClick={cancelAgentRunAction}>
+                {busy === "cancel" ? "Cancelling…" : "Cancel"}
+              </Button>
+            ) : null}
+            <Link href="/agents" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+              Open in Agents
+            </Link>
+          </>
         ) : null}
 
         {node.type === "CONNECTION" ? (
@@ -574,6 +742,96 @@ function Field({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-muted-foreground">{label}</p>
       <p className="truncate text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function TrustField({ label, confidence, category }: { label: string; confidence: string; category?: string | null }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className="flex items-center gap-1.5 text-foreground">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: trustColor(confidence, category) }} />
+        {trustLabel(confidence, category)}
+      </p>
+    </div>
+  );
+}
+
+interface ScoreBreakdown {
+  score: number;
+  value: number;
+  valueIsAssumedDefault: boolean;
+  effort: string | null;
+  effortWeight: number;
+  confidence: string;
+  confidenceWeight: number;
+  risk: string | null;
+  riskPenalty: number;
+}
+
+/**
+ * Renders scoreOpportunity()'s exact factors — never a re-derived or
+ * approximated explanation. Every number here is the same one the ranking
+ * itself used, so this can never disagree with why something is "next".
+ */
+function WhyRankedPanel({
+  breakdown,
+  isNextBestAction,
+  open,
+  onToggle,
+}: {
+  breakdown: ScoreBreakdown;
+  isNextBestAction: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-foreground"
+      >
+        <span>
+          Why this ranking? {isNextBestAction ? <span className="text-accent">— next best action</span> : null}
+        </span>
+        <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-2 border-t border-border px-3 py-2 text-xs">
+          <p className="font-mono text-muted-foreground">
+            score = (value ÷ effort weight) × confidence weight × (1 − risk penalty)
+          </p>
+          <p className="font-mono text-foreground">
+            {fmt(breakdown.score)} = ({fmt(breakdown.value)} ÷ {fmt(breakdown.effortWeight)}) × {fmt(breakdown.confidenceWeight)} ×
+            (1 − {fmt(breakdown.riskPenalty)})
+          </p>
+          <ul className="flex flex-col gap-1 text-muted-foreground">
+            <li>
+              Value: <span className="text-foreground">{fmt(breakdown.value)}</span>
+              {breakdown.valueIsAssumedDefault ? " (no estimated value recorded — defaulted to 1)" : ""}
+            </li>
+            <li>
+              Effort: <span className="text-foreground">{breakdown.effort?.toLowerCase() ?? "not set (assumed medium)"}</span> → weight{" "}
+              {fmt(breakdown.effortWeight)}
+            </li>
+            <li>
+              Confidence: <span className="text-foreground">{breakdown.confidence.toLowerCase()}</span> → weight{" "}
+              {fmt(breakdown.confidenceWeight)}
+            </li>
+            <li>
+              Risk: <span className="text-foreground">{breakdown.risk?.toLowerCase() ?? "not set (assumed medium)"}</span> → penalty{" "}
+              {fmt(breakdown.riskPenalty)}
+            </li>
+          </ul>
+          <p className="text-muted-foreground">
+            This is a re-ranking of the value/effort/confidence/risk you recorded on this opportunity — VOX does not
+            invent any of these numbers.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

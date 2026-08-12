@@ -71,6 +71,8 @@ model User {
   notificationPreference NotificationPreference?
   objectives            Objective[]
   opportunities         Opportunity[]
+  brainGroups           BrainGroup[]
+  brainViews            BrainView[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -1011,4 +1013,47 @@ model NotificationPreference {
   minPriority     NotificationPriority @default(LOW)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Brain workspace — persistent organization (Phase: Cognitive OS overhaul)
+// ---------------------------------------------------------------------------
+//
+// Real, durable user organization of the spatial workspace — not decorative
+// rectangles. A group's members are descriptive references ("TYPE:entityId",
+// the same id shape BrainNode.id uses), not foreign keys, because membership
+// spans many unrelated entity tables (Objective, Opportunity, Project, Task,
+// ResearchItem, ...) and Prisma has no polymorphic relation — same rationale
+// as Event.subjectId. Deleting a group never deletes its members.
+
+model BrainGroup {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  /// JSON string[] of "TYPE:entityId" Brain node ids.
+  memberIds   String
+  /// Optional accent color (CSS color value) for the group's visual boundary.
+  color       String?
+  collapsed   Boolean  @default(false)
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// A saved Brain configuration (perspective + filters + camera + pinned/group
+/// state) the user can return to by name, e.g. "My Main Objective". Purely a
+/// snapshot of UI state the user already controls — never a new data source.
+model BrainView {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  /// JSON blob: { perspective, density, pinnedIds, viewport, attentionObjectiveId }
+  state       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, name])
 }
