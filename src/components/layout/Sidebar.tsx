@@ -157,6 +157,15 @@ const IconCompass = (p: SVGProps<SVGSVGElement>) => (
     <path d="m12.7 7.3-1.6 4-4 1.6 1.6-4Z" stroke="currentColor" strokeLinejoin="round" />
   </Icon>
 );
+const IconSpider = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="10" cy="10" r="2.4" stroke="currentColor" />
+    <path
+      d="M10 2.5V7M10 13v4.5M2.5 10H7M13 10h4.5M4.6 4.6 7.5 7.5M12.5 12.5l2.9 2.9M15.4 4.6 12.5 7.5M7.5 12.5l-2.9 2.9"
+      stroke="currentColor"
+    />
+  </Icon>
+);
 
 interface NavItem {
   href: string;
@@ -173,6 +182,10 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
       { href: "/chat", label: "Chat", icon: IconChat },
       { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
     ],
+  },
+  {
+    group: "Laboratory",
+    items: [{ href: "/lab", label: "Spider-Man Lab", icon: IconSpider, hero: true }],
   },
   {
     group: "Intelligence",

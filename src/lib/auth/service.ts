@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySessionByToken } from "@/lib/auth/session";
 import { recordEvent } from "@/lib/observability/events";
+import { seedLabForUser } from "@/lib/lab/seedForUser";
+import { logger } from "@/lib/observability/logger";
 
 export class AuthError extends Error {}
 
@@ -34,6 +36,20 @@ export async function registerFirstUser(email: string, password: string, name?: 
     });
   });
   await recordEvent({ userId: user.id, type: "auth.user_registered" });
+
+  // Best-effort: populate the new account's Spider-Man Laboratory starter
+  // catalog (fictional suit/gadget designs — see prisma/seed.ts). Never
+  // blocks account creation on failure; logged so a partial seed is visible
+  // rather than silently missing.
+  try {
+    await seedLabForUser(user.id);
+  } catch (error) {
+    logger.error("lab.seed_for_user_failed", {
+      userId: user.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return user;
 }
 

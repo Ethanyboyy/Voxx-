@@ -73,6 +73,17 @@ model User {
   opportunities         Opportunity[]
   brainGroups           BrainGroup[]
   brainViews            BrainView[]
+
+  labProjects         LabProject[]
+  labSuits            LabSuit[]
+  labGadgets          LabGadget[]
+  labWebProfiles      LabWebProfile[]
+  labSimulations      LabSimulation[]
+  labScenarios        LabScenario[]
+  labExperiments      LabExperiment[]
+  labTrainingSessions LabTrainingSession[]
+  labTutorialProgress LabTutorialProgress[]
+  labDesignNotes      LabDesignNote[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -1056,4 +1067,623 @@ model BrainView {
   updatedAt   DateTime @updatedAt
 
   @@unique([userId, name])
+}
+
+// =============================================================================
+// SPIDER-MAN LABORATORY — personal R&D lab: suits, gadgets, materials,
+// simulations, experiments, training. Entirely separate domain from the VOX
+// cognitive-OS models above (fictional design/engineering sandbox content,
+// not claims about the user's real life — see prisma/seed.ts for why that
+// distinction matters here). Every model is prefixed `Lab` to avoid any
+// collision with existing VOX models (Project, Experiment, Component, ...).
+// See ARCHITECTURE.md "Spider-Man Laboratory" section for the full map.
+// =============================================================================
+
+/// Source/confidence classification for lab engineering claims — distinct
+/// from the cognitive `Confidence` enum above (that's about memory certainty;
+/// this is about whether a number is real data, a model output, a conceptual
+/// assumption, or simply not yet known). Always shown in Engineering/Everything
+/// mode; never silently upgraded.
+enum LabConfidence {
+  VERIFIED
+  ESTIMATED
+  HYPOTHETICAL
+  UNKNOWN
+}
+
+enum LabDesignStatus {
+  ACTIVE
+  EXPERIMENTAL
+  PREFERRED
+  ARCHIVED
+}
+
+enum LabProjectStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum LabExperimentStatus {
+  PLANNED
+  RUNNING
+  COMPLETED
+  FAILED
+  ABANDONED
+}
+
+enum LabSimulationStatus {
+  DRAFT
+  COMPLETED
+  FAILED
+}
+
+enum LabTrainingCategory {
+  MOVEMENT
+  AGILITY
+  BALANCE
+  REACTION
+  OBSTACLE_NAVIGATION
+  DEFENSIVE_POSITIONING
+  SITUATIONAL_AWARENESS
+  DE_ESCALATION
+  EMERGENCY_ESCAPE
+  SPARRING
+}
+
+enum LabTutorialCategory {
+  SUIT_TECHNOLOGY
+  MATERIALS
+  PHYSICS
+  ENGINEERING
+  MOVEMENT
+  DEFENSIVE_AWARENESS
+  SIMULATION
+  EQUIPMENT_OPERATION
+  LABORATORY_SAFETY
+}
+
+enum LabScenarioEnvironment {
+  ROOFTOP
+  WAREHOUSE
+  URBAN_STREET
+  INDUSTRIAL_FACILITY
+  FOREST
+  TRAINING_ARENA
+  LABORATORY
+}
+
+enum LabScenarioObjectiveType {
+  NAVIGATION
+  RESCUE
+  ESCAPE
+  TIMED_TRAVERSAL
+  EQUIPMENT_TEST
+  ENVIRONMENTAL_TEST
+  TRAINING
+}
+
+enum LabDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERIMENTAL
+}
+
+// ---------------------------------------------------------------------------
+// Projects — organizes suits/gadgets/web profiles/simulations/experiments
+// ---------------------------------------------------------------------------
+
+model LabProject {
+  id          String           @id @default(uuid())
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  status      LabProjectStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  suits       LabSuit[]
+  gadgets     LabGadget[]
+  webProfiles LabWebProfile[]
+  simulations LabSimulation[]
+  experiments LabExperiment[]
+}
+
+// ---------------------------------------------------------------------------
+// Suit Bay
+// ---------------------------------------------------------------------------
+
+model LabSuit {
+  id          String          @id @default(uuid())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  project     LabProject?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
+  codename    String
+  designation String          @default("MK-I")
+  /// Intended-use archetype, e.g. "Stealth", "Combat", "Recon", "Utility", "Experimental".
+  archetype   String
+  description String?
+  colorPrimary   String       @default("#a855f7")
+  colorSecondary String       @default("#0a0616")
+  status      LabDesignStatus @default(ACTIVE)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  versions        LabSuitVersion[] @relation("SuitVersions")
+  currentVersion   LabSuitVersion? @relation("SuitCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId String?         @unique
+  components      LabComponent[]
+  simulations     LabSimulation[]
+  experiments     LabExperiment[]
+}
+
+/// One snapshot in a suit's design history. Components live on the parent
+/// LabSuit (not versioned individually) — each version snapshots metadata +
+/// a full stats block, which is enough to diff/compare versions meaningfully
+/// without doubling the component-tree storage. Documented simplification;
+/// see NEXT DEVELOPMENT FRONTIER in the build report.
+model LabSuitVersion {
+  id         String    @id @default(uuid())
+  suit       LabSuit   @relation("SuitVersions", fields: [suitId], references: [id], onDelete: Cascade)
+  suitId     String
+  label      String
+  note       String?
+  archived   Boolean   @default(false)
+  parent     LabSuitVersion?  @relation("SuitVersionLineage", fields: [parentId], references: [id], onDelete: SetNull)
+  parentId   String?
+  children   LabSuitVersion[] @relation("SuitVersionLineage")
+  createdAt  DateTime  @default(now())
+
+  stats        LabSuitStats?
+  currentOfSuit LabSuit?      @relation("SuitCurrentVersion")
+
+  @@unique([suitId, label])
+}
+
+model LabSuitStats {
+  id             String         @id @default(uuid())
+  version        LabSuitVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId      String         @unique
+  stealth                  Int   // 0-100
+  durability               Int   // 0-100
+  mobility                 Int   // 0-100
+  stretchiness             Int   // 0-100
+  weightKg                 Float
+  thermalLoadC             Float
+  protection               Int   // 0-100
+  environmentalResistance  Int   // 0-100
+  manufacturingComplexity  Int   // 0-100
+  estimatedBuildHours      Float
+  estimatedCostUsd         Float
+  flexibility              Int   // 0-100
+  impactResistance         Int   // 0-100
+  visibility               Int   // 0-100 (higher = more visible/less stealthy)
+  noiseProfile             Int   // 0-100 (higher = louder)
+  sensorCapacity           Int   // 0-100
+  energyRequirementW       Float
+  maintenanceComplexity    Int   // 0-100
+  confidence               LabConfidence @default(ESTIMATED)
+}
+
+// ---------------------------------------------------------------------------
+// Component hierarchy — shared by suits AND gadgets (Fallout-style inspection)
+// ---------------------------------------------------------------------------
+
+model LabComponent {
+  id          String        @id @default(uuid())
+  parent      LabComponent? @relation("ComponentTree", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId    String?
+  children    LabComponent[] @relation("ComponentTree")
+  suit        LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId      String?
+  gadget      LabGadget?    @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
+  gadgetId    String?
+  name        String
+  description String?
+  material    LabMaterial?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  materialId  String?
+  massKg      Float?
+  notes       String?
+  confidence  LabConfidence @default(ESTIMATED)
+  order       Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Engineering Bay — gadgets
+// ---------------------------------------------------------------------------
+
+model LabGadget {
+  id          String          @id @default(uuid())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  project     LabProject?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
+  name        String
+  category    String
+  description String?
+  status      LabDesignStatus @default(ACTIVE)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  versions         LabGadgetVersion[] @relation("GadgetVersions")
+  currentVersion   LabGadgetVersion?  @relation("GadgetCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId String?            @unique
+  components       LabComponent[]
+  simulationLinks  LabSimulationGadget[]
+}
+
+model LabGadgetVersion {
+  id        String    @id @default(uuid())
+  gadget    LabGadget @relation("GadgetVersions", fields: [gadgetId], references: [id], onDelete: Cascade)
+  gadgetId  String
+  label     String
+  note      String?
+  archived  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  stats          LabGadgetStats?
+  currentOfGadget LabGadget?     @relation("GadgetCurrentVersion")
+
+  @@unique([gadgetId, label])
+}
+
+model LabGadgetStats {
+  id                      String         @id @default(uuid())
+  version                 LabGadgetVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId               String         @unique
+  massKg                  Float
+  powerRequirementW       Float
+  batteryLifeHours        Float
+  durability              Int // 0-100
+  sensorAccuracy          Int // 0-100
+  rangeM                  Float
+  manufacturingComplexity Int // 0-100
+  estimatedCostUsd        Float
+  reliability             Int // 0-100
+  confidence              LabConfidence @default(ESTIMATED)
+}
+
+// ---------------------------------------------------------------------------
+// Materials database
+// ---------------------------------------------------------------------------
+
+model LabMaterial {
+  id                       String        @id @default(uuid())
+  /// Null for the shared seed catalog; set for a user-authored custom material.
+  userId                   String?
+  name                     String
+  category                 String
+  densityGCm3              Float
+  tensileStrengthMpa       Float
+  elasticityPercent        Float
+  abrasionResistance       Int   // 0-100
+  temperatureResistanceC   Float
+  moistureResistance       Int   // 0-100
+  costPerKgUsd             Float
+  notes                    String?
+  confidence               LabConfidence @default(ESTIMATED)
+  createdAt                DateTime      @default(now())
+
+  components LabComponent[]
+}
+
+// ---------------------------------------------------------------------------
+// Web Lab — theoretical web-system research (see safety framing in
+// ARCHITECTURE.md: simulation never implies real-world validation)
+// ---------------------------------------------------------------------------
+
+model LabWebProfile {
+  id          String      @id @default(uuid())
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  project     LabProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
+  name        String
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  material   LabWebMaterial?
+  deployment LabWebDeployment?
+  attachment LabWebAttachment?
+  loadModels LabWebLoadModel[]
+  simulations LabSimulation[]
+}
+
+model LabWebMaterial {
+  id                     String        @id @default(uuid())
+  profile                LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId              String        @unique
+  densityGCm3            Float
+  tensileStrengthMpa     Float
+  elasticityPercent      Float
+  abrasionResistance     Int // 0-100
+  temperatureResistanceC Float
+  moistureResistance     Int // 0-100
+  storageVolumeCm3       Float
+  massG                  Float
+  confidence             LabConfidence @default(HYPOTHETICAL)
+}
+
+model LabWebDeployment {
+  id                       String        @id @default(uuid())
+  profile                  LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId                String        @unique
+  deploymentSpeedMs        Float
+  lineLengthM              Float
+  cartridgeSizeCm3         Float
+  systemMassG              Float
+  energyRequirementJ       Float
+  deploymentReliabilityPct Int // 0-100
+  confidence               LabConfidence @default(HYPOTHETICAL)
+}
+
+model LabWebAttachment {
+  id                              String        @id @default(uuid())
+  profile                         LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId                       String        @unique
+  attachmentType                  String
+  theoreticalHoldingStrengthN     Float
+  environmentalAssumptions        String
+  geometry                        String
+  structuralAssumptions           String
+  estimatedFailureProbabilityPct  Float
+  confidence                      LabConfidence @default(HYPOTHETICAL)
+}
+
+/// A single theoretical load calculation for a web profile under an assumed
+/// scenario. Always HYPOTHETICAL/ESTIMATED — this system never certifies a
+/// design as validated for real human load-bearing use (see SECURITY.md-style
+/// framing in ARCHITECTURE.md for the Web Lab).
+model LabWebLoadModel {
+  id               String        @id @default(uuid())
+  profile          LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId        String
+  label            String
+  userMassKg       Float
+  equipmentMassKg  Float
+  swingRadiusM     Float
+  velocityMs       Float
+  staticLoadN      Float
+  dynamicLoadN     Float
+  accelerationMs2  Float
+  forceN           Float
+  tensionN         Float
+  safetyMarginPct  Float
+  confidence       LabConfidence @default(HYPOTHETICAL)
+  createdAt        DateTime      @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Simulation Center
+// ---------------------------------------------------------------------------
+
+model LabScenario {
+  id              String                   @id @default(uuid())
+  /// Null for seed scenarios; set for a user-generated custom scenario
+  /// (Scenario Generator).
+  user            User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String?
+  name            String
+  environment     LabScenarioEnvironment
+  objectiveType   LabScenarioObjectiveType
+  difficulty      LabDifficulty
+  description     String?
+  timeOfDay       String   @default("day")
+  precipitation   String   @default("none")
+  windMs          Float    @default(0)
+  temperatureC    Float    @default(18)
+  fogPercent      Int      @default(0)
+  gravityMs2      Float    @default(9.81)
+  surfaceType     String   @default("concrete")
+  elevationM      Float    @default(0)
+  obstacleCount   Int      @default(0)
+  isCustom        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  simulations      LabSimulation[]
+  trainingSessions LabTrainingSession[]
+}
+
+model LabSimulation {
+  id                    String       @id @default(uuid())
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String
+  project               LabProject?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId             String?
+  name                  String
+  scenario              LabScenario  @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
+  scenarioId            String
+  suit                  LabSuit?     @relation(fields: [suitId], references: [id], onDelete: SetNull)
+  suitId                String?
+  webProfile            LabWebProfile? @relation(fields: [webProfileId], references: [id], onDelete: SetNull)
+  webProfileId          String?
+  userMassKg            Float        @default(75)
+  reactionTimeMs         Float       @default(250)
+  skillLevel             Int         @default(50) // 0-100
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  gadgets LabSimulationGadget[]
+  runs    LabSimulationRun[]
+}
+
+model LabSimulationGadget {
+  simulation   LabSimulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  simulationId String
+  gadget       LabGadget     @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
+  gadgetId     String
+
+  @@id([simulationId, gadgetId])
+}
+
+/// One executed run of a LabSimulation. `telemetry` is a JSON time-series
+/// (list of {t, position, velocity, accelerationMs2, forceN, thermalLoadC,
+/// fatiguePercent} samples) — genuinely variable-length experimental output,
+/// which is the documented case where JSON is preferable to one row per
+/// sample (see CLAUDE.md project layout notes).
+model LabSimulationRun {
+  id                 String               @id @default(uuid())
+  simulation         LabSimulation        @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  simulationId       String
+  status             LabSimulationStatus  @default(DRAFT)
+  seed               Int
+  durationS          Float
+  telemetry          String               // JSON array of samples
+  peakVelocityMs     Float?
+  peakForceN         Float?
+  peakThermalLoadC   Float?
+  fatigueEstimatePct Float?
+  warnings           String?              // JSON string[]
+  summary            String?
+  startedAt          DateTime             @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime             @default(now())
+
+  experiments LabExperiment[]
+}
+
+// ---------------------------------------------------------------------------
+// Experiments
+// ---------------------------------------------------------------------------
+
+model LabExperiment {
+  id               String               @id @default(uuid())
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  project          LabProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId        String?
+  code             String
+  title            String
+  hypothesis       String
+  objective        String?
+  /// JSON array of {name, value, unit} — flexible experimental variables.
+  variables        String?
+  equipmentNotes   String?
+  environmentNotes String?
+  expectedOutcome  String?
+  status           LabExperimentStatus  @default(PLANNED)
+  suit             LabSuit?             @relation(fields: [suitId], references: [id], onDelete: SetNull)
+  suitId           String?
+  simulationRun    LabSimulationRun?    @relation(fields: [simulationRunId], references: [id], onDelete: SetNull)
+  simulationRunId  String?
+  confidence       LabConfidence        @default(HYPOTHETICAL)
+  nextIteration    String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  results LabExperimentResult[]
+
+  @@unique([userId, code])
+}
+
+model LabExperimentResult {
+  id           String        @id @default(uuid())
+  experiment   LabExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  experimentId String
+  outcome      String
+  learnings    String?
+  confidence   LabConfidence @default(ESTIMATED)
+  createdAt    DateTime      @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Training Center
+// ---------------------------------------------------------------------------
+
+model LabTrainingModule {
+  id                     String              @id @default(uuid())
+  name                   String
+  category               LabTrainingCategory
+  difficulty             LabDifficulty
+  description            String
+  objective              String
+  durationMinutesEstimate Int
+  createdAt              DateTime            @default(now())
+
+  sessions LabTrainingSession[]
+}
+
+model LabTrainingSession {
+  id                       String            @id @default(uuid())
+  user                     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                   String
+  module                   LabTrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId                 String
+  scenario                 LabScenario?      @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  scenarioId               String?
+  reactionTimeMs           Float?
+  completionTimeS          Float?
+  movementEfficiencyPercent Float?
+  staminaUsedPercent       Float?
+  balanceScore             Float?
+  accuracyPercent          Float?
+  decisionQualityPercent   Float?
+  defensiveSuccessPercent  Float?
+  mistakes                 Int?
+  score                    Int               // 0-100 composite
+  notes                    String?
+  startedAt                DateTime          @default(now())
+  completedAt              DateTime?
+  createdAt                DateTime          @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Tutorials
+// ---------------------------------------------------------------------------
+
+model LabTutorial {
+  id               String               @id @default(uuid())
+  title            String
+  category         LabTutorialCategory
+  difficulty       LabDifficulty
+  lesson           String
+  demonstration    String?
+  exercisePrompt   String?
+  /// JSON array of {question, options: string[], answerIndex}.
+  quiz             String?
+  prerequisite     LabTutorial?         @relation("TutorialPrereq", fields: [prerequisiteId], references: [id], onDelete: SetNull)
+  prerequisiteId   String?
+  unlocks          LabTutorial[]        @relation("TutorialPrereq")
+  createdAt        DateTime             @default(now())
+
+  progress LabTutorialProgress[]
+}
+
+model LabTutorialProgress {
+  id          String      @id @default(uuid())
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  tutorial    LabTutorial @relation(fields: [tutorialId], references: [id], onDelete: Cascade)
+  tutorialId  String
+  completed   Boolean     @default(false)
+  score       Int?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@unique([userId, tutorialId])
+}
+
+// ---------------------------------------------------------------------------
+// Design notes — free-text annotations attachable to any lab entity
+// ---------------------------------------------------------------------------
+
+/// `subjectType`/`subjectId` are descriptive-only (e.g. "LabSuit"/id), not a
+/// foreign key — same convention as Event.subjectId, so a note survives its
+/// subject's deletion and one model covers every annotatable entity without
+/// a polymorphic relation Prisma can't express.
+model LabDesignNote {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  subjectType String
+  subjectId   String
+  content     String
+  createdAt   DateTime @default(now())
 }

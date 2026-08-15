@@ -1,0 +1,127 @@
+import { db } from "@/lib/db";
+import { recordEvent } from "@/lib/observability/events";
+import type { LabConfidence, LabExperimentStatus } from "@/generated/prisma/enums";
+
+export interface CreateExperimentInput {
+  userId: string;
+  projectId?: string;
+  code: string;
+  title: string;
+  hypothesis: string;
+  objective?: string;
+  variables?: { name: string; value: string; unit?: string }[];
+  equipmentNotes?: string;
+  environmentNotes?: string;
+  expectedOutcome?: string;
+  suitId?: string;
+  simulationRunId?: string;
+  confidence?: LabConfidence;
+}
+
+export async function createExperiment(input: CreateExperimentInput) {
+  const experiment = await db.labExperiment.create({
+    data: {
+      userId: input.userId,
+      projectId: input.projectId,
+      code: input.code,
+      title: input.title,
+      hypothesis: input.hypothesis,
+      objective: input.objective,
+      variables: input.variables ? JSON.stringify(input.variables) : undefined,
+      equipmentNotes: input.equipmentNotes,
+      environmentNotes: input.environmentNotes,
+      expectedOutcome: input.expectedOutcome,
+      suitId: input.suitId,
+      simulationRunId: input.simulationRunId,
+      confidence: input.confidence ?? "HYPOTHETICAL",
+    },
+  });
+
+  await recordEvent({
+    userId: input.userId,
+    type: "lab.experiment.created",
+    payload: { code: experiment.code, title: experiment.title },
+    subjectType: "LabExperiment",
+    subjectId: experiment.id,
+  });
+
+  return experiment;
+}
+
+export async function listExperiments(userId: string, status?: LabExperimentStatus) {
+  return db.labExperiment.findMany({
+    where: { userId, status },
+    include: { suit: true, results: true },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getExperiment(userId: string, id: string) {
+  return db.labExperiment.findFirst({
+    where: { id, userId },
+    include: {
+      suit: { include: { currentVersion: { include: { stats: true } } } },
+      simulationRun: true,
+      results: { orderBy: { createdAt: "desc" } },
+      project: true,
+    },
+  });
+}
+
+export interface UpdateExperimentInput {
+  status?: LabExperimentStatus;
+  nextIteration?: string;
+  expectedOutcome?: string;
+}
+
+export async function updateExperiment(userId: string, id: string, updates: UpdateExperimentInput) {
+  const existing = await db.labExperiment.findFirst({ where: { id, userId } });
+  if (!existing) return null;
+  const experiment = await db.labExperiment.update({ where: { id }, data: updates });
+
+  if (updates.status === "FAILED") {
+    await recordEvent({
+      userId,
+      type: "lab.experiment.failed",
+      payload: { code: experiment.code, title: experiment.title },
+      subjectType: "LabExperiment",
+      subjectId: id,
+    });
+  } else if (updates.status === "COMPLETED") {
+    await recordEvent({
+      userId,
+      type: "lab.experiment.completed",
+      payload: { code: experiment.code, title: experiment.title },
+      subjectType: "LabExperiment",
+      subjectId: id,
+    });
+  }
+  return experiment;
+}
+
+export interface AddExperimentResultInput {
+  outcome: string;
+  learnings?: string;
+  confidence?: LabConfidence;
+}
+
+export async function addExperimentResult(userId: string, experimentId: string, input: AddExperimentResultInput) {
+  const experiment = await db.labExperiment.findFirst({ where: { id: experimentId, userId } });
+  if (!experiment) return null;
+
+  const result = await db.labExperimentResult.create({
+    data: {
+      experimentId,
+      outcome: input.outcome,
+      learnings: input.learnings,
+      confidence: input.confidence ?? "ESTIMATED",
+    },
+  });
+
+  return result;
+}
+
+export async function nextExperimentCode(userId: string) {
+  const count = await db.labExperiment.count({ where: { userId } });
+  return `EXP-${String(count + 1).padStart(3, "0")}`;
+}
