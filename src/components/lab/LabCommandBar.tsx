@@ -111,7 +111,7 @@ export function LabCommandBar() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="glass-panel flex items-center gap-2 px-3 py-1.5 text-xs text-muted hover:text-foreground"
+        className="vox-press glass-panel flex items-center gap-2 px-3 py-1.5 text-xs text-muted transition-colors hover:text-foreground"
       >
         <span aria-hidden="true">◎</span>
         <span>Ask the laboratory…</span>
@@ -123,7 +123,7 @@ export function LabCommandBar() {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-24" onClick={() => setOpen(false)}>
       <div
-        className="glass-panel-strong lab-corner-frame w-full max-w-xl overflow-hidden"
+        className="glass-panel-strong lab-corner-frame vox-panel-in w-full max-w-xl overflow-hidden shadow-[var(--shadow-ambient-lg)]"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -143,7 +143,7 @@ export function LabCommandBar() {
                 router.push(r.href);
                 setOpen(false);
               }}
-              className={cn("flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-surface-hover")}
+              className={cn("flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-surface-hover")}
             >
               <span className="text-foreground">{r.title}</span>
               <span className="lab-mono text-[10px] uppercase text-muted-foreground">{r.category}</span>
