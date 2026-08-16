@@ -14,9 +14,10 @@ export default async function ConnectionsPage() {
   const connectionProposals = proposals.filter((p) => p.actionType === "connection.propose");
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connections</h1>
-      <p className="mt-1 max-w-2xl text-sm text-muted">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <p className="vox-eyebrow">Trust boundary</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Connections</h1>
+      <p className="mt-1.5 max-w-2xl text-sm text-muted">
         The trust boundary for everything outside VOX. Nothing here is connected to a real account —
         every connection below is scaffolding: proposing, approving, and granting access all work, but
         no real credentials exist yet, so every connect attempt ends in &quot;not configured&quot; rather

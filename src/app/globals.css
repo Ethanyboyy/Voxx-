@@ -34,6 +34,20 @@
   --glass-blur: 22px;
   --radius-panel: 20px;
 
+  /* Quiet-luxury elevation: soft ambient shadows carry depth, not neon
+     bloom. A hairline highlight (inset) plus a wide, low-opacity ambient
+     shadow reads as material thickness rather than a glow effect. */
+  --shadow-ambient-xs: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.5);
+  --shadow-ambient-sm: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+  --shadow-ambient-md: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset, 0 20px 48px -20px rgba(0, 0, 0, 0.6);
+  --shadow-ambient-lg: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset, 0 36px 80px -28px rgba(0, 0, 0, 0.65);
+  --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
   --core-idle: #a78bfa;
   --core-listening: #38bdf8;
   --core-thinking: #c084fc;
@@ -72,6 +86,11 @@
   --glass-bg: rgba(255, 255, 255, 0.6);
   --glass-bg-strong: rgba(255, 255, 255, 0.85);
   --glass-border: rgba(124, 58, 237, 0.16);
+
+  --shadow-ambient-xs: 0 1px 0 0 rgba(255, 255, 255, 0.6) inset, 0 6px 16px -10px rgba(28, 20, 40, 0.16);
+  --shadow-ambient-sm: 0 1px 0 0 rgba(255, 255, 255, 0.7) inset, 0 10px 28px -14px rgba(28, 20, 40, 0.18);
+  --shadow-ambient-md: 0 1px 0 0 rgba(255, 255, 255, 0.7) inset, 0 20px 48px -20px rgba(28, 20, 40, 0.16);
+  --shadow-ambient-lg: 0 1px 0 0 rgba(255, 255, 255, 0.8) inset, 0 36px 80px -28px rgba(28, 20, 40, 0.18);
 
   --core-idle: #8b5cf6;
   --core-listening: #0284c7;
@@ -155,9 +174,7 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-panel);
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
-    0 20px 60px -30px rgba(168, 85, 247, 0.35);
+  box-shadow: var(--shadow-ambient-sm);
 }
 
 .glass-panel-strong {
@@ -166,6 +183,54 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-ambient-md);
+}
+
+/* ---------- Luxury motion & typography (VOX 2.0 experience layer) ---------- */
+
+/* Subtle hover lift for interactive surfaces — cards, list rows, nav items.
+   Depth communicated by shadow + a 1px rise, never by a glow effect. */
+.vox-lift {
+  transition: transform 0.28s var(--ease-luxury), box-shadow 0.28s var(--ease-luxury), border-color 0.28s var(--ease-luxury);
+}
+.vox-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-ambient-md);
+  border-color: var(--border-strong);
+}
+
+/* Tactile press feedback for buttons and tappable rows. */
+.vox-press {
+  transition: transform 0.12s var(--ease-luxury);
+}
+.vox-press:active {
+  transform: scale(0.98);
+}
+
+/* Small caps section label — replaces ad-hoc uppercase/tracking-wide combos
+   scattered per page with one consistent editorial mark. */
+.vox-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Display headline — tighter tracking and line-height than body copy for a
+   more considered, editorial hierarchy at hero/section-title scale. */
+.vox-headline {
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vox-lift,
+  .vox-press {
+    transition: none !important;
+  }
 }
 
 .glow-border {

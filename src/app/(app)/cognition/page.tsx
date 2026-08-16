@@ -16,8 +16,9 @@ export default async function CognitionPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Cognition</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="vox-eyebrow">Cognition</p>
+      <h1 className="vox-headline mt-1 text-2xl text-foreground">Observed patterns, not diagnoses</h1>
+      <p className="mt-1.5 text-sm text-muted">
         Observed behavior and derived hypotheses — never diagnoses. Estimates and trends are explicit inferences,
         clearly separated from raw observation counts.
       </p>

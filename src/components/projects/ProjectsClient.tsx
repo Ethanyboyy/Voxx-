@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -14,6 +14,13 @@ interface ProjectItem {
   description: string | null;
   status: string;
 }
+
+const STATUS_TONE: Record<string, "neutral" | "accent" | "success" | "warning" | "danger"> = {
+  ACTIVE: "accent",
+  PAUSED: "warning",
+  COMPLETED: "success",
+  ARCHIVED: "neutral",
+};
 
 export function ProjectsClient({ initialProjects }: { initialProjects: ProjectItem[] }) {
   const [projects, setProjects] = useState(initialProjects);
@@ -41,7 +48,10 @@ export function ProjectsClient({ initialProjects }: { initialProjects: ProjectIt
   return (
     <div className="mt-6 flex flex-col gap-6">
       <Card>
-        <CardContent className="flex flex-col gap-3 pt-5">
+        <CardHeader>
+          <CardTitle>New project</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
           <Textarea
             value={description}
@@ -62,11 +72,11 @@ export function ProjectsClient({ initialProjects }: { initialProjects: ProjectIt
           {projects.map((p) => (
             <li key={p.id}>
               <Link href={`/projects/${p.id}`}>
-                <Card className="h-full transition-colors hover:bg-surface-hover">
+                <Card className="vox-lift vox-press h-full">
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-medium text-foreground">{p.name}</p>
-                      <Badge>{p.status.toLowerCase()}</Badge>
+                      <Badge tone={STATUS_TONE[p.status] ?? "neutral"}>{p.status.toLowerCase()}</Badge>
                     </div>
                     {p.description ? <p className="mt-1 text-sm text-muted">{p.description}</p> : null}
                   </CardContent>

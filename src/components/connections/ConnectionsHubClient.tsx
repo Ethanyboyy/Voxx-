@@ -187,7 +187,7 @@ export function ConnectionsHubClient({
   return (
     <div className="mt-6 flex flex-col gap-8">
       <section>
-        <h2 className="text-sm font-semibold text-foreground">Suggested Connections</h2>
+        <p className="vox-eyebrow">Suggested Connections</p>
         {proposals.length === 0 ? (
           <div className="mt-2">
             <EmptyState
@@ -199,11 +199,11 @@ export function ConnectionsHubClient({
           <ul className="mt-2 flex flex-col gap-2">
             {proposals.map((proposal) => (
               <li key={proposal.id}>
-                <Card>
+                <Card className="vox-lift">
                   <CardContent className="flex flex-col gap-2 pt-4">
                     <p className="text-sm text-foreground">{proposal.suggestedAction}</p>
                     <p className="text-xs text-muted">{proposal.observation}</p>
-                    <div className="flex items-center gap-2">
+                    <div className="mt-1 flex items-center gap-2">
                       <Button size="sm" onClick={() => handleApproveProposal(proposal)} disabled={busyService === proposal.id}>
                         Approve Connection
                       </Button>
@@ -222,13 +222,13 @@ export function ConnectionsHubClient({
 
       {Object.entries(grouped).map(([category, categoryEntries]) => (
         <section key={category}>
-          <h2 className="text-sm font-semibold text-foreground">{CATEGORY_LABELS[category] ?? category}</h2>
+          <p className="vox-eyebrow">{CATEGORY_LABELS[category] ?? category}</p>
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {categoryEntries.map((entry) => {
               const service = entry.catalog.service;
               const busy = busyService === service;
               return (
-                <Card key={service}>
+                <Card key={service} className="vox-lift">
                   <CardHeader>
                     <CardTitle>{entry.catalog.displayName}</CardTitle>
                     <Badge tone={STATUS_TONE[entry.status] ?? "neutral"}>{entry.status.toLowerCase().replace(/_/g, " ")}</Badge>
@@ -237,7 +237,7 @@ export function ConnectionsHubClient({
                     <p className="text-sm text-muted">{entry.catalog.description}</p>
                     {entry.catalog.notes ? <p className="text-xs text-warning">{entry.catalog.notes}</p> : null}
                     {!entry.isConfigured ? (
-                      <p className="text-xs text-muted">
+                      <p className="text-xs text-muted-foreground">
                         Not configured — no real credentials are set for this service yet.
                       </p>
                     ) : null}

@@ -86,14 +86,14 @@ export default async function DashboardPage() {
         <MountainHero />
         <div className="relative flex h-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="vox-headline text-2xl sm:text-3xl">
               {greeting()}, {displayName}.
             </h1>
             <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
           </div>
           <Link
             href="/chat"
-            className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)]"
+            className="vox-press flex items-center gap-2 rounded-lg bg-gradient-to-br from-accent to-accent-2 px-4 py-2 text-sm font-medium text-accent-foreground shadow-[var(--shadow-ambient-xs)] transition-[box-shadow,filter] duration-200 ease-[var(--ease-luxury)] hover:shadow-[var(--shadow-ambient-sm)] hover:brightness-110"
           >
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path d="M10 3.5v13M3.5 10h13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -105,11 +105,11 @@ export default async function DashboardPage() {
 
       {/* Command Center — what VOX is actually doing right now, no fabricated state */}
       <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
-        <Link href="/objectives" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
-          <p className="text-xs text-muted-foreground">Current Objective</p>
+        <Link href="/objectives" className="vox-lift glass-panel block px-4 py-3.5">
+          <p className="vox-eyebrow">Current Objective</p>
           {activeObjective ? (
             <>
-              <p className="mt-1 truncate text-sm font-semibold text-foreground">{activeObjective.title}</p>
+              <p className="mt-1.5 truncate text-sm font-semibold text-foreground">{activeObjective.title}</p>
               <p className="mt-1 text-xs text-muted">
                 {activeObjective.targetValue != null
                   ? `${activeObjective.currentValue ?? 0} / ${activeObjective.targetValue} ${activeObjective.targetUnit ?? ""}`
@@ -117,33 +117,33 @@ export default async function DashboardPage() {
               </p>
             </>
           ) : (
-            <p className="mt-1 text-sm text-muted">None set — create one to focus VOX.</p>
+            <p className="mt-1.5 text-sm text-muted">None set — create one to focus VOX.</p>
           )}
         </Link>
 
-        <Link href="/objectives" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
-          <p className="text-xs text-muted-foreground">Next Best Action</p>
+        <Link href="/objectives" className="vox-lift glass-panel block px-4 py-3.5">
+          <p className="vox-eyebrow">Next Best Action</p>
           {nextBestAction?.action ? (
             <>
-              <p className="mt-1 text-sm font-semibold text-foreground line-clamp-2">{nextBestAction.action}</p>
+              <p className="mt-1.5 text-sm font-semibold text-foreground line-clamp-2">{nextBestAction.action}</p>
               {nextBestAction.opportunity ? (
                 <p className="mt-1 truncate text-xs text-muted">{nextBestAction.opportunity.title}</p>
               ) : null}
             </>
           ) : nextBestAction?.opportunity ? (
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1.5 text-sm text-muted">
               &quot;{nextBestAction.opportunity.title}&quot; is the top opportunity — no next action set yet.
             </p>
           ) : (
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1.5 text-sm text-muted">
               {activeObjective ? "No opportunities evaluated yet." : "Set an objective first."}
             </p>
           )}
         </Link>
 
-        <Link href="/proposals" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
-          <p className="text-xs text-muted-foreground">Pending Approval</p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
+        <Link href="/proposals" className="vox-lift glass-panel block px-4 py-3.5">
+          <p className="vox-eyebrow">Pending Approval</p>
+          <p className="mt-1.5 text-sm font-semibold text-foreground">
             {pendingProposals.length > 0
               ? `${pendingProposals.length} proposal${pendingProposals.length === 1 ? "" : "s"} waiting`
               : "Nothing waiting"}
@@ -153,10 +153,10 @@ export default async function DashboardPage() {
           </p>
         </Link>
 
-        <Link href="/activity" className="glass-panel block px-4 py-3.5 hover:border-[var(--border-strong)]">
-          <p className="text-xs text-muted-foreground">Recent Activity</p>
+        <Link href="/activity" className="vox-lift glass-panel block px-4 py-3.5">
+          <p className="vox-eyebrow">Recent Activity</p>
           {recentEvents.length > 0 ? (
-            <ul className="mt-1 flex flex-col gap-0.5">
+            <ul className="mt-1.5 flex flex-col gap-0.5">
               {recentEvents.slice(0, 2).map((e) => (
                 <li key={e.id} className="truncate text-xs text-foreground">
                   {humanizeEventType(e.type)}
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-sm text-muted">Nothing recorded yet.</p>
+            <p className="mt-1.5 text-sm text-muted">Nothing recorded yet.</p>
           )}
         </Link>
       </div>
@@ -240,7 +240,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Link href="/brain" className="block">
+        <Link href="/brain" className="vox-lift block">
           <GlassPanel variant="glow" className="flex h-full flex-col justify-between overflow-hidden p-5">
             <div>
               <p className="text-sm font-semibold text-foreground">Vox Mind</p>
@@ -259,16 +259,20 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="glass-panel mt-4 p-4">
-        <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
-          <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
-          <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
-          <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
-          <QuickAction href="/memory" label="New Note" icon={<IconNote />} />
-          <QuickAction href="/chat" label="New Chat" icon={<IconChatBubble />} />
-        </div>
-      </div>
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
+            <QuickAction href="/goals" label="New Goal" icon={<IconTarget />} />
+            <QuickAction href="/projects" label="New Project" icon={<IconFolderPlus />} />
+            <QuickAction href="/tasks" label="New Task" icon={<IconCheckSquare />} />
+            <QuickAction href="/memory" label="New Note" icon={<IconNote />} />
+            <QuickAction href="/chat" label="New Chat" icon={<IconChatBubble />} />
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
@@ -447,8 +451,8 @@ export default async function DashboardPage() {
 function StatCard({ label, value, sub, progress }: { label: string; value: string; sub: string; progress?: number | null }) {
   return (
     <div className="glass-panel px-4 py-3.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+      <p className="vox-eyebrow">{label}</p>
+      <p className="vox-headline mt-1.5 text-2xl">{value}</p>
       {progress != null ? (
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
           <div
@@ -466,7 +470,7 @@ function QuickAction({ href, label, icon }: { href: string; label: string; icon:
   return (
     <Link
       href={href}
-      className="flex items-center gap-2.5 rounded-xl border border-border bg-surface-hover/40 px-4 py-3.5 text-sm font-medium text-foreground hover:border-[var(--border-strong)] hover:bg-surface-hover"
+      className="vox-lift vox-press flex items-center gap-2.5 rounded-[var(--radius-md)] border border-border bg-surface-hover/40 px-4 py-3.5 text-sm font-medium text-foreground hover:bg-surface-hover"
     >
       <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-accent">{icon}</span>
       {label}

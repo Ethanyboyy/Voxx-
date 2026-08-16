@@ -203,7 +203,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               setListOpen(false);
             }}
             className={cn(
-              "truncate rounded-lg px-3 py-2.5 text-left text-sm sm:py-2",
+              "vox-press truncate rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-200 ease-[var(--ease-luxury)] sm:py-2",
               c.id === activeId ? "bg-accent-muted text-accent" : "text-muted-foreground hover:bg-surface-hover"
             )}
           >
@@ -244,7 +244,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             <button
               type="button"
               aria-label="Conversations"
-              className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-foreground md:hidden"
+              className="vox-press -ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-foreground hover:bg-surface-hover md:hidden"
               onClick={() => setListOpen(true)}
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -267,7 +267,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               }
               aria-pressed={voiceReplies}
               className={cn(
-                "flex h-9 w-9 items-center justify-center rounded-lg transition-colors disabled:opacity-30",
+                "vox-press flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-200 ease-[var(--ease-luxury)] disabled:opacity-30",
                 voiceReplies ? "bg-accent-muted text-accent" : "text-muted hover:bg-surface-hover hover:text-foreground"
               )}
             >
@@ -337,9 +337,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                     <div className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
                       <div
                         className={cn(
-                          "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
+                          "max-w-[85%] whitespace-pre-wrap rounded-[var(--radius-md)] px-4 py-2 text-sm",
                           m.role === "USER"
-                            ? "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[0_0_16px_-6px_var(--accent)]"
+                            ? "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[var(--shadow-ambient-xs)]"
                             : "glass-panel text-foreground"
                         )}
                       >
@@ -384,7 +384,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               aria-label={stt.listening ? "Stop listening" : "Voice input"}
               aria-pressed={stt.listening}
               className={cn(
-                "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-30",
+                "vox-press relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ease-[var(--ease-luxury)] disabled:opacity-30",
                 stt.listening
                   ? "bg-danger/15 text-danger"
                   : "text-muted hover:bg-surface-hover hover:text-foreground"

@@ -5,7 +5,7 @@ type Tone = "neutral" | "accent" | "success" | "warning" | "danger";
 
 const toneClasses: Record<Tone, string> = {
   neutral: "bg-surface-hover text-muted-foreground border border-border",
-  accent: "bg-accent-muted text-accent border border-[var(--border-strong)] shadow-[0_0_10px_-4px_var(--accent)]",
+  accent: "bg-accent-muted text-accent border border-[var(--border-strong)]",
   success: "bg-success/10 text-success border border-success/30",
   warning: "bg-warning/10 text-warning border border-warning/30",
   danger: "bg-danger-muted text-danger border border-danger/30",

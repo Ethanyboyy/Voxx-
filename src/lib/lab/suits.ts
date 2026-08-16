@@ -7,6 +7,7 @@ import type {
   LabMaskLensStyle,
   LabMaterialLanguage,
   LabPatternStyle,
+  LabRealityStatus,
   LabSilhouette,
 } from "@/generated/prisma/enums";
 
@@ -49,6 +50,14 @@ export interface CreateSuitInput {
   patternStyle?: LabPatternStyle;
   armorLevel?: LabArmorLevel;
   maskLensStyle?: LabMaskLensStyle;
+  /// Buildability/reality axis — see LabRealityStatus in schema.prisma.
+  /// Defaults to CONCEPT (most conservative) at the database level; never
+  /// inferred from stats/status here.
+  realityStatus?: LabRealityStatus;
+  /// Path to a real .glb/.gltf asset under public/models/suits/ — see
+  /// GltfSuitModel. Unset by default; the caller must point at a file that
+  /// actually exists on disk, never fabricated here.
+  modelUrl?: string;
   stats: SuitStatsInput;
   versionLabel?: string;
 }
@@ -69,6 +78,8 @@ export async function createSuit(input: CreateSuitInput) {
       patternStyle: input.patternStyle,
       armorLevel: input.armorLevel,
       maskLensStyle: input.maskLensStyle,
+      realityStatus: input.realityStatus,
+      modelUrl: input.modelUrl,
       status: input.status ?? "ACTIVE",
     },
   });
@@ -129,6 +140,8 @@ export interface UpdateSuitInput {
   patternStyle?: LabPatternStyle;
   armorLevel?: LabArmorLevel;
   maskLensStyle?: LabMaskLensStyle;
+  realityStatus?: LabRealityStatus;
+  modelUrl?: string | null;
   status?: LabDesignStatus;
   projectId?: string | null;
 }

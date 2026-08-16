@@ -12,9 +12,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   if (!project) notFound();
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{project.name}</h1>
-      {project.description ? <p className="mt-1 text-sm text-muted">{project.description}</p> : null}
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <p className="vox-eyebrow">Project</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">{project.name}</h1>
+      {project.description ? <p className="mt-1.5 text-sm text-muted">{project.description}</p> : null}
 
       <ProjectDetailClient
         projectId={project.id}

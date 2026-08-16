@@ -1244,6 +1244,27 @@ enum LabMaskLensStyle {
   MECHANICAL
 }
 
+/// Buildability/reality axis — deliberately separate from LabConfidence
+/// (evidence quality) and LabDesignStatus (workflow state). Answers "could
+/// this exist" not "how sure are we" or "what stage is it in". Defaults to
+/// the most conservative value (CONCEPT) so nothing is claimed real by
+/// omission — matches the "never silently upgrade" posture used for
+/// LabConfidence, applied to this axis instead.
+///  REAL          — a physical component/suit that has actually been built.
+///  BUILDABLE     — sourceable parts + a real fabrication path exist today.
+///  PROTOTYPE     — partially built or bench-tested, not yet a full suit.
+///  EXPERIMENTAL  — physically plausible but unproven / no build path yet.
+///  CONCEPT       — design-stage only, no claim of real-world buildability.
+///  NOT_CONNECTED — fictional/reference material with no real-world tie-in.
+enum LabRealityStatus {
+  REAL
+  BUILDABLE
+  PROTOTYPE
+  EXPERIMENTAL
+  CONCEPT
+  NOT_CONNECTED
+}
+
 model LabSuit {
   id          String          @id @default(uuid())
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1265,6 +1286,15 @@ model LabSuit {
   patternStyle     LabPatternStyle     @default(WEB_GEOMETRY)
   armorLevel       LabArmorLevel       @default(LIGHT)
   maskLensStyle    LabMaskLensStyle    @default(ANGULAR)
+  /// Buildability/reality status — see LabRealityStatus. Independent of
+  /// `status` (workflow state) and never inferred from it.
+  realityStatus LabRealityStatus @default(CONCEPT)
+  /// Path (under /public/models/suits/) to a real .glb/.gltf asset, e.g.
+  /// "/models/suits/mk-vii.glb". Null by default — every suit renders via
+  /// the procedural SuitRig visualization until a real 3D scan/model file is
+  /// actually placed on disk and this is set. Never fabricated or assumed;
+  /// see /public/models/suits/README.md.
+  modelUrl    String?
   status      LabDesignStatus @default(ACTIVE)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt

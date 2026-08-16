@@ -10,7 +10,7 @@ export default async function SuitBayPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Suit Bay</h1>
+      <h1 className="vox-headline text-2xl">Suit Bay</h1>
       <p className="mt-1 text-sm text-muted">Design, inspect, compare, and simulate suits.</p>
       <SuitBayClient
         initialSuits={suits.map((s) => ({
@@ -19,8 +19,15 @@ export default async function SuitBayPage() {
           designation: s.designation,
           archetype: s.archetype,
           status: s.status,
+          realityStatus: s.realityStatus,
+          modelUrl: s.modelUrl,
           colorPrimary: s.colorPrimary,
           colorSecondary: s.colorSecondary,
+          silhouette: s.silhouette,
+          materialLanguage: s.materialLanguage,
+          patternStyle: s.patternStyle,
+          armorLevel: s.armorLevel,
+          maskLensStyle: s.maskLensStyle,
           stats: s.currentVersion?.stats
             ? {
                 stealth: s.currentVersion.stats.stealth,

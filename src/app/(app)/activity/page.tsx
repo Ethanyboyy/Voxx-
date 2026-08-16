@@ -9,9 +9,10 @@ export default async function ActivityPage() {
   const events = await listRecentEvents(user.id, 100);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Activity</h1>
-      <p className="mt-1 text-sm text-muted">
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+      <p className="vox-eyebrow">Observability</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Activity</h1>
+      <p className="mt-1.5 text-sm text-muted">
         The append-only timeline of everything VOX has recorded — every consequential action and every notable
         domain event, in order.
       </p>

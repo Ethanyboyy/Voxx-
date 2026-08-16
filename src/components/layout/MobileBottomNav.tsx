@@ -47,7 +47,7 @@ export function MobileBottomNav({ onMore }: { onMore: () => void }) {
             key={tab.href}
             href={tab.href}
             className={cn(
-              "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
+              "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors duration-200 ease-[var(--ease-luxury)]",
               active ? "text-accent" : "text-muted-foreground"
             )}
             aria-current={active ? "page" : undefined}

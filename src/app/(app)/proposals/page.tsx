@@ -9,9 +9,10 @@ export default async function ProposalsPage() {
   const proposals = await listProposals(user.id);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Proposals</h1>
-      <p className="mt-1 text-sm text-muted">
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+      <p className="vox-eyebrow">Awaiting your call</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Proposals</h1>
+      <p className="mt-1.5 text-sm text-muted">
         What VOX has noticed and wants to do about it. Nothing here happens until you approve it — approving runs a
         real permission check, and every outcome is recorded.
       </p>

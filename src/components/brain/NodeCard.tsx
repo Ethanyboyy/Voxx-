@@ -141,9 +141,9 @@ export function NodeCard({
         if (e.key === "Enter" || e.key === " ") onSelect(node, e as unknown as React.MouseEvent);
       }}
       className={cn(
-        "absolute flex select-none flex-col justify-center rounded-xl border px-3 py-2 text-left shadow-lg backdrop-blur-md transition-[opacity,left,top,transform,box-shadow] duration-300 ease-out",
+        "absolute flex select-none flex-col justify-center rounded-[var(--radius-md)] border px-3 py-2 text-left backdrop-blur-md transition-[opacity,left,top,transform,box-shadow,border-color] duration-300 ease-[var(--ease-luxury)]",
         "bg-[color-mix(in_srgb,var(--surface-solid)_88%,transparent)]",
-        selected || multiSelected ? "z-30 border-[var(--border-strong)]" : "z-10 border-border"
+        selected || multiSelected ? "z-30 border-[var(--border-strong)]" : "z-10 border-border hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-ambient-sm)]"
       )}
       style={{
         left: x,
@@ -153,12 +153,12 @@ export function NodeCard({
         minHeight: compact ? 34 : focused ? 116 : isHero ? 92 : 66,
         opacity: dimmed ? 0.16 : hierarchyOpacity,
         boxShadow: selected
-          ? `0 0 0 1px ${accent}, 0 0 30px -4px ${accent}`
+          ? `0 0 0 1px ${accent}, var(--shadow-ambient-md)`
           : multiSelected
-            ? `0 0 0 1px var(--core-listening), 0 0 16px -6px var(--core-listening)`
+            ? `0 0 0 1px var(--core-listening), var(--shadow-ambient-md)`
             : isNBA
-              ? `0 0 18px -6px ${accent}`
-              : undefined,
+              ? `0 0 0 1px color-mix(in srgb, ${accent} 55%, transparent), var(--shadow-ambient-sm)`
+              : "var(--shadow-ambient-xs)",
         cursor: "pointer",
       }}
     >
@@ -180,7 +180,7 @@ export function NodeCard({
       {!compact ? (
         <div className="mb-0.5 flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} />
-          <span className="truncate text-[10px] font-semibold uppercase tracking-wide" style={{ color: accent }}>
+          <span className="vox-eyebrow truncate" style={{ color: accent }}>
             {TYPE_LABEL[node.type]}
           </span>
           {isNBA ? (

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
-import { HolographicPanel, LabSectionLabel, LabStatusBadge, StatBar, UnitStat, ConfidenceTag } from "@/components/lab/primitives";
+import { HolographicPanel, LabSectionLabel, LabStatusBadge, RealityStatusTag, StatBar, UnitStat, ConfidenceTag } from "@/components/lab/primitives";
 import { HolographicModel, type SuitLayer } from "@/components/lab/HolographicModel";
 import type {
   ArmorLevel,
@@ -55,6 +55,8 @@ export function SuitDetailClient({
     archetype: string;
     description: string | null;
     status: string;
+    realityStatus: string;
+    modelUrl: string | null;
     colorPrimary: string;
     colorSecondary: string;
     silhouette: Silhouette;
@@ -148,9 +150,10 @@ export function SuitDetailClient({
     <div className="vox-panel-in flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{suit.codename}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="vox-headline text-2xl">{suit.codename}</h1>
             <LabStatusBadge status={suit.status} />
+            <RealityStatusTag status={suit.realityStatus} />
           </div>
           <p className="mt-1 text-sm text-muted">
             {suit.designation} · {suit.archetype} · current {suit.currentVersionLabel}
@@ -191,6 +194,7 @@ export function SuitDetailClient({
             patternStyle={suit.patternStyle}
             armorLevel={suit.armorLevel}
             maskLensStyle={suit.maskLensStyle}
+            modelUrl={suit.modelUrl}
             visibleLayers={layers}
             className="mt-3"
           />

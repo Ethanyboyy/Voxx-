@@ -402,8 +402,8 @@ export function InspectorPanel({
     <div className="flex h-full flex-col gap-3 overflow-y-auto scrollbar-thin p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{node.type.toLowerCase()}</p>
-          <h3 className="mt-0.5 text-sm font-semibold text-foreground">{node.label}</h3>
+          <p className="vox-eyebrow">{node.type.toLowerCase()}</p>
+          <h3 className="vox-headline mt-0.5 text-sm">{node.label}</h3>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
@@ -537,7 +537,7 @@ export function InspectorPanel({
       {/* relationships */}
       {neighbors.length > 0 ? (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Connected to</p>
+          <p className="vox-eyebrow">Connected to</p>
           <div className="mt-1 flex flex-col gap-1">
             {neighbors.slice(0, 8).map((n) => (
               <button
@@ -556,7 +556,7 @@ export function InspectorPanel({
       {/* recorded change log — only real Events, never fabricated history */}
       {changeLog.length > 0 ? (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">History</p>
+          <p className="vox-eyebrow">History</p>
           <ol className="mt-1 flex flex-col gap-1 border-l border-border pl-3">
             {changeLog.map((e) => (
               <li key={e.id} className="text-xs text-muted-foreground">
@@ -579,7 +579,7 @@ export function InspectorPanel({
               Research
             </Button>
             {node.meta.projectId ? (
-              <Link href="/projects" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <Link href="/projects" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
                 Open project
               </Link>
             ) : (
@@ -608,7 +608,7 @@ export function InspectorPanel({
             <Button size="sm" variant="ghost" onClick={() => setShowTaskInput((s) => !s)}>
               New task
             </Button>
-            <Link href="/projects" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/projects" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
               Open in Projects
             </Link>
           </>
@@ -627,7 +627,7 @@ export function InspectorPanel({
         ) : null}
 
         {node.type === "OBJECTIVE" ? (
-          <Link href="/objectives" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/objectives" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
             Open in Objectives
           </Link>
         ) : null}
@@ -644,7 +644,7 @@ export function InspectorPanel({
                 </Button>
               </>
             ) : null}
-            <Link href="/proposals" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/proposals" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
               Open in Proposals
             </Link>
           </>
@@ -662,20 +662,20 @@ export function InspectorPanel({
                 {busy === "cancel" ? "Cancelling…" : "Cancel"}
               </Button>
             ) : null}
-            <Link href="/agents" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/agents" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
               Open in Agents
             </Link>
           </>
         ) : null}
 
         {node.type === "CONNECTION" ? (
-          <Link href="/connections" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/connections" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
             Open in Connections
           </Link>
         ) : null}
 
         {node.type === "MEMORY" ? (
-          <Link href="/memory" className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/memory" className="vox-press rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground">
             Open in Memory
           </Link>
         ) : null}
@@ -707,7 +707,7 @@ export function InspectorPanel({
 
       {relevantMemories ? (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Relevant memories</p>
+          <p className="vox-eyebrow">Relevant memories</p>
           {relevantMemories.length === 0 ? (
             <p className="mt-1 text-xs text-muted">Nothing relevant found in memory yet.</p>
           ) : (
@@ -733,8 +733,8 @@ export function InspectorPanel({
 
 function pinButtonClass(active: boolean): string {
   return active
-    ? "flex h-6 w-6 items-center justify-center rounded-full bg-accent-muted text-xs"
-    : "flex h-6 w-6 items-center justify-center rounded-full text-xs opacity-40 hover:opacity-100";
+    ? "vox-press flex h-6 w-6 items-center justify-center rounded-full bg-accent-muted text-xs"
+    : "vox-press flex h-6 w-6 items-center justify-center rounded-full text-xs opacity-40 transition-opacity duration-200 ease-[var(--ease-luxury)] hover:opacity-100";
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -788,11 +788,11 @@ function WhyRankedPanel({
 }) {
   const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   return (
-    <div className="rounded-lg border border-border">
+    <div className="rounded-[var(--radius-sm)] border border-border">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-foreground"
+        className="vox-press flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-foreground"
       >
         <span>
           Why this ranking? {isNextBestAction ? <span className="text-accent">— next best action</span> : null}

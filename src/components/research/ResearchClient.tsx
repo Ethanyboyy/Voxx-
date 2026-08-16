@@ -48,8 +48,13 @@ export function ResearchClient({ initialItems }: { initialItems: ResearchItem[] 
   return (
     <div className="mt-6 flex flex-col gap-6">
       <Card>
-        <CardContent className="flex gap-2 pt-5">
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What do you want VOX to research?" />
+        <CardContent className="flex flex-col gap-2 pt-5 sm:flex-row">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="What do you want VOX to research?"
+            className="flex-1"
+          />
           <Button onClick={handleRun} disabled={busy || !query.trim()}>
             {busy ? "Running..." : "Run research"}
           </Button>
@@ -58,26 +63,26 @@ export function ResearchClient({ initialItems }: { initialItems: ResearchItem[] 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
 
       {items.length === 0 ? (
-        <EmptyState title="No research run yet" />
+        <EmptyState title="No research run yet" description="Run a query above — every result keeps its source, confidence, and retrieval time." />
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
             <li key={item.id}>
-              <Card>
+              <Card className="vox-lift">
                 <CardContent className="pt-4">
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{item.title}</p>
-                      <p className="text-xs text-muted">query: {item.query}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">query: {item.query}</p>
                     </div>
                     <ConfidenceBadge confidence={item.confidence} />
                   </div>
-                  {item.summary ? <p className="mt-2 text-sm text-muted">{item.summary}</p> : null}
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted">
+                  {item.summary ? <p className="mt-2 text-sm leading-relaxed text-muted">{item.summary}</p> : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span>provider: {item.provider}</span>
                     <span>retrieved {new Date(item.retrievedAt).toLocaleString()}</span>
                     {item.sourceUrl ? (
-                      <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-accent">
+                      <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
                         source
                       </a>
                     ) : null}

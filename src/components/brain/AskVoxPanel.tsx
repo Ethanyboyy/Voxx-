@@ -133,7 +133,7 @@ export function AskVoxPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Ask VOX about this</p>
+      <p className="vox-eyebrow">Ask VOX about this</p>
 
       {messages.length === 0 ? (
         <div className="flex flex-wrap gap-1.5">
@@ -142,7 +142,7 @@ export function AskVoxPanel({
               key={q}
               type="button"
               onClick={() => send(q)}
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground"
+              className="vox-press rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:border-[var(--border-strong)] hover:text-foreground"
             >
               {q}
             </button>
@@ -154,7 +154,7 @@ export function AskVoxPanel({
             <div key={m.id} className={cn("flex flex-col", m.role === "USER" ? "items-end" : "items-start")}>
               <div
                 className={cn(
-                  "max-w-[92%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs",
+                  "max-w-[92%] whitespace-pre-wrap rounded-[var(--radius-sm)] px-2.5 py-1.5 text-xs",
                   m.role === "USER" ? "bg-accent-muted text-accent" : "bg-surface-hover text-foreground"
                 )}
               >

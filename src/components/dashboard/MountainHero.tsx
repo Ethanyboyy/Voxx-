@@ -8,7 +8,7 @@
  */
 export function MountainHero() {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl" aria-hidden="true">
+    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[var(--radius-panel)]" aria-hidden="true">
       <div
         className="absolute -right-8 -top-24 h-[420px] w-[420px] rounded-full blur-[70px]"
         style={{

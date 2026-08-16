@@ -5,8 +5,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export default function ContentPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Content</h1>
-      <p className="mt-1 text-sm text-muted">A content-creation workspace isn&apos;t built in VOX yet.</p>
+      <p className="vox-eyebrow">Execution</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Content</h1>
+      <p className="mt-1.5 text-sm text-muted">A content-creation workspace isn&apos;t built in VOX yet.</p>
 
       <GlassPanel className="mt-6 p-6">
         <EmptyState
@@ -17,10 +18,16 @@ export default function ContentPage() {
           In the meantime, Ideas and Memory can hold content concepts, and Chat can help draft text.
         </p>
         <div className="mt-3 flex gap-3">
-          <Link href="/projects" className="text-sm font-medium text-accent">
+          <Link
+            href="/projects"
+            className="vox-press text-sm font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+          >
             Open Projects →
           </Link>
-          <Link href="/chat" className="text-sm font-medium text-accent">
+          <Link
+            href="/chat"
+            className="vox-press text-sm font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+          >
             Open Chat →
           </Link>
         </div>

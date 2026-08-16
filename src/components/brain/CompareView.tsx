@@ -43,7 +43,7 @@ export function CompareView({
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto scrollbar-thin p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Compare</p>
+        <p className="vox-eyebrow">Compare</p>
         <button type="button" onClick={onClose} className="text-muted hover:text-foreground" aria-label="Close compare">
           ✕
         </button>
@@ -56,8 +56,8 @@ export function CompareView({
 
       <div className="flex flex-col gap-2">
         {ROWS.map((row) => (
-          <div key={row.key} className="rounded-lg border border-border p-2">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{row.label}</p>
+          <div key={row.key} className="rounded-[var(--radius-sm)] border border-border p-2">
+            <p className="vox-eyebrow">{row.label}</p>
             <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
               <p className="truncate text-foreground">{field(a, row.key)}</p>
               <p className="truncate text-foreground">{field(b, row.key)}</p>

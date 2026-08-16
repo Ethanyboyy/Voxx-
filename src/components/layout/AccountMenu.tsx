@@ -63,13 +63,13 @@ export function AccountMenu({ userEmail }: { userEmail: string }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent hover:brightness-110"
+        className="vox-press flex h-9 w-9 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
       >
         {initial}
       </button>
 
       {open ? (
-        <div role="menu" className="glass-panel-strong absolute right-0 z-50 mt-2 w-64 shadow-2xl">
+        <div role="menu" className="glass-panel-strong absolute right-0 z-50 mt-2 w-64 shadow-[var(--shadow-ambient-lg)]">
           <div className="border-b border-border px-4 py-3">
             <p className="truncate text-sm font-medium text-foreground">{userEmail}</p>
           </div>
@@ -77,7 +77,7 @@ export function AccountMenu({ userEmail }: { userEmail: string }) {
             type="button"
             role="menuitem"
             onClick={cycleTheme}
-            className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-foreground hover:bg-surface-hover"
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-hover"
           >
             <span>Appearance</span>
             <span className="text-muted">{theme === "light" ? "Light" : "Obsidian"}</span>
@@ -87,7 +87,7 @@ export function AccountMenu({ userEmail }: { userEmail: string }) {
             role="menuitem"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-surface-hover disabled:opacity-60"
+            className="w-full px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-surface-hover disabled:opacity-60"
           >
             {loggingOut ? "Signing out…" : "Sign out"}
           </button>

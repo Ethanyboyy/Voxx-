@@ -62,12 +62,12 @@ export function AppShell({
           <button
             type="button"
             aria-label="Open menu"
-            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-foreground md:hidden"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-[var(--radius-xs)] text-foreground transition-colors hover:bg-surface-hover md:hidden"
             onClick={() => setDrawerOpen(true)}
           >
             <MenuIcon />
           </button>
-          <span className="text-sm font-semibold text-foreground md:hidden">VOX</span>
+          <span className="vox-headline text-sm md:hidden">VOX</span>
           <div className="ml-auto flex items-center gap-2">
             <CommandPalette />
             <NotificationBell />

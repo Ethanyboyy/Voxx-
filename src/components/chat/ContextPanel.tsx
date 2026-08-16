@@ -31,7 +31,7 @@ export function ContextPanel({ trace }: { trace: ContextTrace }) {
         {open ? "Hide context" : `Context (${trace.memoriesUsed.length} ${trace.memoriesUsed.length === 1 ? "memory" : "memories"})`}
       </button>
       {open ? (
-        <div className="mt-2 max-w-md rounded-lg border border-border bg-surface p-3">
+        <div className="vox-panel-in mt-2 max-w-md rounded-[var(--radius-sm)] border border-border bg-surface p-3">
           {trace.memoriesUsed.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {trace.memoriesUsed.map((m) => (

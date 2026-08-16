@@ -62,7 +62,7 @@ export function ProposalsClient({ initialProposals }: { initialProposals: Propos
   return (
     <div className="mt-6 flex flex-col gap-8">
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Pending ({pending.length})</h2>
+        <p className="vox-eyebrow mb-3">Pending ({pending.length})</p>
         {pending.length === 0 ? (
           <EmptyState
             title="Nothing pending"
@@ -72,24 +72,24 @@ export function ProposalsClient({ initialProposals }: { initialProposals: Propos
           <ul className="flex flex-col gap-3">
             {pending.map((p) => (
               <li key={p.id}>
-                <Card>
+                <Card className="vox-lift">
                   <CardContent className="flex flex-col gap-2 pt-4">
                     <div className="flex items-center justify-between gap-2">
                       <Badge tone="accent">{p.actionType}</Badge>
                       <ConfidenceBadge confidence={p.confidence} />
                     </div>
-                    <p className="text-sm text-foreground">
+                    <p className="text-sm leading-relaxed text-foreground">
                       <span className="font-medium">Observed:</span> {p.observation}
                     </p>
                     {p.connection ? <p className="text-sm text-muted">{p.connection}</p> : null}
                     {p.implication ? <p className="text-sm text-muted">{p.implication}</p> : null}
                     <p className="text-sm font-medium text-accent">Suggested: {p.suggestedAction}</p>
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-muted-foreground">
                       Requires <span className="font-mono">{p.capability}</span> at {p.requiredLevel}
                     </p>
                     {errors[p.id] ? (
                       <p className="text-xs text-danger">
-                        {errors[p.id]} <Link href="/settings" className="underline">Go to Settings</Link>
+                        {errors[p.id]} <Link href="/settings" className="underline underline-offset-2">Go to Settings</Link>
                       </p>
                     ) : null}
                     <div className="mt-1 flex gap-2">
@@ -110,10 +110,10 @@ export function ProposalsClient({ initialProposals }: { initialProposals: Propos
 
       {resolved.length > 0 ? (
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-foreground">History</h2>
+          <p className="vox-eyebrow mb-3">History</p>
           <ul className="flex flex-col gap-2">
             {resolved.map((p) => (
-              <li key={p.id} className="rounded-lg border border-border p-3 text-sm">
+              <li key={p.id} className="vox-lift rounded-[var(--radius-sm)] border border-border p-3 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-foreground">{p.suggestedAction}</span>
                   <Badge

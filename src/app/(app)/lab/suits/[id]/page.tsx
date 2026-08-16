@@ -26,6 +26,8 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
         archetype: suit.archetype,
         description: suit.description,
         status: suit.status,
+        realityStatus: suit.realityStatus,
+        modelUrl: suit.modelUrl,
         colorPrimary: suit.colorPrimary,
         colorSecondary: suit.colorSecondary,
         silhouette: suit.silhouette,

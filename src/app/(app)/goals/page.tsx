@@ -11,8 +11,9 @@ export default async function GoalsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Goals</h1>
-      <p className="mt-1 text-sm text-muted">Every goal across every project, in one place.</p>
+      <p className="vox-eyebrow">Execution</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Goals</h1>
+      <p className="mt-1.5 text-sm text-muted">Every goal across every project, in one place.</p>
 
       <GoalsClient
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}

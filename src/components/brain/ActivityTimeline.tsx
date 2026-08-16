@@ -110,7 +110,7 @@ export function ActivityTimeline({
             type="button"
             onClick={() => setRange(r)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-xs",
+              "vox-press rounded-full border px-2.5 py-1 text-xs transition-colors duration-200 ease-[var(--ease-luxury)]",
               range === r ? "border-accent bg-accent-muted/40 text-accent" : "border-border text-muted-foreground hover:text-foreground"
             )}
           >

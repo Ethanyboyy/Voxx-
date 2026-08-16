@@ -12,8 +12,9 @@ export default async function AgentsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Agents</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="vox-eyebrow">Execution</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Agents</h1>
+      <p className="mt-1.5 text-sm text-muted">
         Give VOX an objective. It plans an ordered list of steps using its tool registry, then executes them one at a
         time — pausing whenever a step needs a permission you haven&apos;t granted yet. Nothing here ever bypasses
         the real permission check.

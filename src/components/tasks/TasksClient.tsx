@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea, Label } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/utils/cn";
@@ -124,21 +124,24 @@ export function TasksClient({ tasks: initialTasks, projects }: { tasks: TaskItem
     <div className="mt-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Open</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{openTasks.length}</p>
+          <p className="vox-eyebrow">Open</p>
+          <p className="vox-headline mt-1 text-2xl">{openTasks.length}</p>
         </div>
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Completed</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{doneTasks.length}</p>
+          <p className="vox-eyebrow">Completed</p>
+          <p className="vox-headline mt-1 text-2xl">{doneTasks.length}</p>
         </div>
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Total</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{tasks.length}</p>
+          <p className="vox-eyebrow">Total</p>
+          <p className="vox-headline mt-1 text-2xl">{tasks.length}</p>
         </div>
       </div>
 
       <Card className="mt-4">
-        <CardContent className="flex flex-col gap-2 pt-4 sm:flex-row">
+        <CardHeader>
+          <CardTitle>Add task</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -166,7 +169,7 @@ export function TasksClient({ tasks: initialTasks, projects }: { tasks: TaskItem
         ) : (
           <ul className="flex flex-col gap-2">
             {tasks.map((t) => (
-              <li key={t.id} className="rounded-lg border border-border p-3">
+              <li key={t.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
                 <div className="flex items-center gap-3">
                   <input type="checkbox" checked={t.status === "DONE"} onChange={() => toggleTask(t)} />
                   <div className="flex-1">

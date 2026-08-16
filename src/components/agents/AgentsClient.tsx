@@ -193,10 +193,10 @@ export function AgentsClient({
             const isDetailed = detailed[run.id] ?? false;
             const blocked = blockingStep(run);
             return (
-              <Card key={run.id}>
+              <Card key={run.id} className="vox-lift overflow-hidden">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 px-5 py-4 text-left"
+                  className="vox-press flex w-full items-center gap-3 px-5 py-4 text-left"
                   onClick={() => setExpanded((prev) => ({ ...prev, [run.id]: !isOpen }))}
                 >
                   <VoxCore state={RUN_STATUS_CORE[run.status]} size="sm" />
@@ -216,7 +216,7 @@ export function AgentsClient({
                     {run.result ? <p className="mb-3 text-sm text-foreground">{run.result}</p> : null}
 
                     {blocked ? (
-                      <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                      <div className="mb-4 rounded-[var(--radius-sm)] border border-warning/40 bg-warning/10 p-3">
                         <p className="text-sm font-medium text-foreground">
                           Waiting on permission: <code className="text-xs">{blocked.capability}</code> (requires{" "}
                           {blocked.requiredLevel})
@@ -236,17 +236,21 @@ export function AgentsClient({
                     ) : null}
 
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Steps</p>
+                      <p className="vox-eyebrow">Steps</p>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="text-xs font-medium text-accent"
+                          className="vox-press text-xs font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
                           onClick={() => setDetailed((prev) => ({ ...prev, [run.id]: !isDetailed }))}
                         >
                           {isDetailed ? "Simple view" : "Detailed view"}
                         </button>
                         {run.status === "RUNNING" || run.status === "WAITING_FOR_PERMISSION" || run.status === "PLANNING" ? (
-                          <button type="button" className="text-xs font-medium text-danger" onClick={() => cancelRun(run.id)}>
+                          <button
+                            type="button"
+                            className="vox-press text-xs font-medium text-danger transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+                            onClick={() => cancelRun(run.id)}
+                          >
                             Cancel run
                           </button>
                         ) : null}
@@ -255,7 +259,7 @@ export function AgentsClient({
 
                     <ol className="flex flex-col gap-2">
                       {run.steps.map((step) => (
-                        <li key={step.id} className="rounded-lg border border-border p-3">
+                        <li key={step.id} className="vox-lift rounded-[var(--radius-sm)] border border-border p-3">
                           <div className="flex items-center justify-between gap-2">
                             <span className={cn("text-sm text-foreground", step.status === "SKIPPED" && "line-through text-muted")}>
                               {step.order + 1}. {step.description}

@@ -6,7 +6,7 @@ type Size = "sm" | "md";
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[0_0_20px_-4px_var(--accent)] hover:shadow-[0_0_28px_-2px_var(--accent)] hover:brightness-110",
+    "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[var(--shadow-ambient-xs)] hover:shadow-[var(--shadow-ambient-sm)] hover:brightness-110",
   secondary: "glass-panel text-foreground hover:border-[var(--border-strong)] hover:bg-surface-hover",
   ghost: "text-foreground hover:bg-surface-hover",
   danger: "bg-danger text-white hover:opacity-90",
@@ -30,7 +30,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
+        "vox-press inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-[background-color,color,border-color,box-shadow,filter] duration-200 ease-[var(--ease-luxury)] disabled:opacity-50 disabled:pointer-events-none",
         variantClasses[variant],
         sizeClasses[size],
         className

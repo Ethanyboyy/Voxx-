@@ -149,11 +149,11 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
       {memories.length === 0 ? (
         <EmptyState title="No memories yet" description="Anything you tell VOX explicitly, or that it infers with your confirmation, shows up here." />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {memories.map((m) => (
             <li key={m.id}>
-              <Card>
-                <CardContent className="flex flex-col gap-2 pt-4">
+              <Card className={editingId === m.id ? undefined : "vox-lift"}>
+                <CardContent className="flex flex-col gap-3 pt-4">
                   {editingId === m.id ? (
                     <div className="flex flex-col gap-2">
                       <Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={2} />
@@ -168,12 +168,12 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm text-foreground">{m.content}</p>
+                      <p className="text-sm leading-relaxed text-foreground">{m.content}</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge>{m.category.toLowerCase()}</Badge>
                         <ConfidenceBadge confidence={m.confidence} />
                         <span className="text-xs text-muted">{new Date(m.createdAt).toLocaleDateString()}</span>
-                        <div className="ml-auto flex gap-2">
+                        <div className="ml-auto flex gap-1">
                           <Button size="sm" variant="ghost" onClick={() => checkContradictions(m.id)} disabled={checkingId === m.id}>
                             {checkingId === m.id ? "Checking..." : "Check for conflicts"}
                           </Button>
@@ -191,7 +191,7 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
                           {conflictStatus[m.id].includes("proposed") ? (
                             <>
                               {" — "}
-                              <Link href="/proposals" className="text-accent underline">
+                              <Link href="/proposals" className="text-accent underline underline-offset-2">
                                 review in Proposals
                               </Link>
                             </>

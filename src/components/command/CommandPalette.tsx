@@ -89,7 +89,7 @@ export function CommandPalette() {
         onClick={openPalette}
         aria-label="Search / command palette (⌘K)"
         title="What do you want VOX to do? (⌘K)"
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground hover:bg-surface-hover"
+        className="vox-press flex h-9 w-9 items-center justify-center rounded-[var(--radius-xs)] text-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-surface-hover"
       >
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <circle cx="8.7" cy="8.7" r="5.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -102,7 +102,7 @@ export function CommandPalette() {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-24 backdrop-blur-sm">
       <button type="button" aria-label="Close" className="absolute inset-0" onClick={() => setOpen(false)} />
-      <div className="glow-border relative w-full max-w-lg overflow-hidden rounded-xl glass-panel-strong shadow-2xl">
+      <div className="vox-panel-in glow-border relative w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] glass-panel-strong shadow-[var(--shadow-ambient-lg)]">
         <input
           ref={inputRef}
           value={query}
@@ -123,9 +123,9 @@ export function CommandPalette() {
             }
           }}
           placeholder="What do you want VOX to do?"
-          className="w-full border-b border-border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted focus:outline-none sm:text-sm"
+          className="w-full border-b border-border bg-transparent px-4 py-3.5 text-base text-foreground placeholder:text-muted focus:outline-none sm:text-sm"
         />
-        <div className="max-h-80 overflow-y-auto scrollbar-thin py-1">
+        <div className="max-h-80 overflow-y-auto scrollbar-thin p-1.5">
           {filtered.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted">No matches.</p>
           ) : (
@@ -136,7 +136,7 @@ export function CommandPalette() {
                 onClick={() => select(c)}
                 onMouseEnter={() => setActiveIndex(i)}
                 className={cn(
-                  "flex w-full items-center justify-between px-4 py-2.5 text-left text-sm",
+                  "flex w-full items-center justify-between rounded-[var(--radius-xs)] px-3.5 py-2.5 text-left text-sm transition-colors duration-150 ease-[var(--ease-luxury)]",
                   i === activeIndex ? "bg-accent-muted text-accent" : "text-foreground"
                 )}
               >

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -85,23 +85,26 @@ export function GoalsClient({ goals: initialGoals, projects }: { goals: GoalItem
     <div className="mt-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Total goals</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{goals.length}</p>
+          <p className="vox-eyebrow">Total goals</p>
+          <p className="vox-headline mt-1 text-2xl">{goals.length}</p>
         </div>
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Active</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{active}</p>
+          <p className="vox-eyebrow">Active</p>
+          <p className="vox-headline mt-1 text-2xl">{active}</p>
         </div>
         <div className="glass-panel px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">Achieved</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">
+          <p className="vox-eyebrow">Achieved</p>
+          <p className="vox-headline mt-1 text-2xl">
             {goals.length > 0 ? `${Math.round((achieved / goals.length) * 100)}%` : "—"}
           </p>
         </div>
       </div>
 
       <Card className="mt-4">
-        <CardContent className="flex flex-col gap-2 pt-4 sm:flex-row">
+        <CardHeader>
+          <CardTitle>Add goal</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -129,7 +132,10 @@ export function GoalsClient({ goals: initialGoals, projects }: { goals: GoalItem
         ) : (
           <ul className="flex flex-col gap-2">
             {goals.map((g) => (
-              <li key={g.id} className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center">
+              <li
+                key={g.id}
+                className="vox-lift glass-panel flex flex-col gap-2 rounded-[var(--radius-sm)] p-3 sm:flex-row sm:items-center"
+              >
                 <div className="flex-1">
                   <p className="text-sm text-foreground">{g.title}</p>
                   <p className="text-xs text-muted">

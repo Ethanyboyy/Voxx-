@@ -31,6 +31,42 @@ export function ConfidenceTag({ confidence, className }: { confidence: string; c
   );
 }
 
+const REALITY_STATUS_LABEL: Record<string, string> = {
+  REAL: "Real — built",
+  BUILDABLE: "Buildable today",
+  PROTOTYPE: "Prototype",
+  EXPERIMENTAL: "Experimental",
+  CONCEPT: "Concept",
+  NOT_CONNECTED: "Not connected",
+};
+
+const REALITY_STATUS_CLASS: Record<string, string> = {
+  REAL: "text-success border-success/40 bg-success/10",
+  BUILDABLE: "text-accent-blue border-[var(--accent-blue)]/40 bg-[var(--accent-blue)]/10",
+  PROTOTYPE: "text-accent border-[var(--border-strong)] bg-accent-muted",
+  EXPERIMENTAL: "text-warning border-warning/40 bg-warning/10",
+  CONCEPT: "text-muted-foreground border-border bg-surface-hover",
+  NOT_CONNECTED: "text-danger border-danger/40 bg-danger-muted",
+};
+
+/** Buildability/reality axis tag — a suit's honest answer to "could this
+ * exist," independent of ConfidenceTag (evidence quality) and
+ * LabStatusBadge (workflow state). Never decorative: always mirrors the
+ * record's real LabRealityStatus, defaulting to CONCEPT — see schema.prisma. */
+export function RealityStatusTag({ status, className }: { status: string; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "lab-mono inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+        REALITY_STATUS_CLASS[status] ?? REALITY_STATUS_CLASS.CONCEPT,
+        className
+      )}
+    >
+      {REALITY_STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
 export interface HolographicPanelProps extends HTMLAttributes<HTMLDivElement> {
   variant?: "default" | "strong" | "glow";
   corners?: boolean;

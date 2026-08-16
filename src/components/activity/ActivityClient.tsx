@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { GlassPanel } from "@/components/ui/GlassPanel";
+import { cn } from "@/lib/utils/cn";
 
 interface EventItem {
   id: string;
@@ -46,14 +49,12 @@ export function ActivityClient({ initialEvents }: { initialEvents: EventItem[] }
 
   return (
     <div className="mt-6">
-      <button
-        type="button"
-        onClick={refresh}
-        disabled={refreshing}
-        className="mb-4 text-sm font-medium text-accent disabled:opacity-50"
-      >
-        {refreshing ? "Refreshing…" : "Refresh"}
-      </button>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="vox-eyebrow">{events.length} recorded</p>
+        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing}>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Button>
+      </div>
 
       {events.length === 0 ? (
         <EmptyState title="No activity yet" description="Events accumulate here as VOX does things and notices things." />
@@ -61,27 +62,32 @@ export function ActivityClient({ initialEvents }: { initialEvents: EventItem[] }
         <div className="flex flex-col gap-6">
           {groups.map(([day, dayEvents]) => (
             <div key={day}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{day}</p>
-              <ol className="flex flex-col gap-2 border-l border-border pl-4">
+              <p className="vox-eyebrow mb-2">{day}</p>
+              <GlassPanel className="flex flex-col divide-y divide-border overflow-hidden p-0">
                 {dayEvents.map((e) => (
-                  <li key={e.id} className="relative">
-                    <span className="absolute -left-[1.1rem] top-1.5 h-2 w-2 rounded-full bg-accent" />
+                  <div key={e.id} className="relative flex flex-col gap-1.5 px-4 py-3 pl-6">
+                    <span
+                      className={cn(
+                        "absolute left-2 top-4 h-2 w-2 rounded-full",
+                        e.consequential ? "bg-warning" : "bg-accent"
+                      )}
+                    />
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{e.type}</span>
                       {e.consequential ? <Badge tone="warning">consequential</Badge> : null}
                       {e.subjectType ? <Badge tone="neutral">{e.subjectType}</Badge> : null}
-                      <span className="text-xs text-muted">
+                      <span className="ml-auto text-xs text-muted">
                         {new Date(e.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
                     {e.payload ? (
-                      <pre className="mt-1 max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                      <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
                         {formatPayload(e.payload)}
                       </pre>
                     ) : null}
-                  </li>
+                  </div>
                 ))}
-              </ol>
+              </GlassPanel>
             </div>
           ))}
         </div>

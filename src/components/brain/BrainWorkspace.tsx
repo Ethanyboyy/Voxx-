@@ -917,16 +917,24 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
 
   return (
     <div className="flex h-full min-h-[520px] w-full flex-col overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-[var(--surface-solid)]/70 px-3 py-2 backdrop-blur-md sm:px-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-[var(--surface-solid)]/70 px-3 py-2 shadow-[var(--shadow-ambient-xs)] backdrop-blur-md sm:px-4">
         <PerspectiveTabs value={perspective} onChange={setPerspective} />
         <div className="flex items-center gap-2">
           {selectionHistory.length > 0 || selectedId ? (
-            <button type="button" onClick={goBack} className="text-xs text-muted-foreground hover:text-foreground">
+            <button
+              type="button"
+              onClick={goBack}
+              className="vox-press text-xs text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground"
+            >
               ← Back
             </button>
           ) : null}
           {focusMode ? (
-            <button type="button" onClick={exitFocus} className="text-xs text-muted-foreground hover:text-foreground">
+            <button
+              type="button"
+              onClick={exitFocus}
+              className="vox-press text-xs text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground"
+            >
               Exit focus
             </button>
           ) : null}
@@ -934,7 +942,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
             <button
               type="button"
               onClick={() => setAttentionObjectiveId(null)}
-              className="rounded-full border border-accent/40 bg-accent-muted/40 px-2.5 py-0.5 text-xs text-accent hover:bg-accent-muted/60"
+              className="vox-press rounded-full border border-accent/40 bg-accent-muted/40 px-2.5 py-0.5 text-xs text-accent transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-accent-muted/60"
             >
               Attention mode · Exit
             </button>
@@ -945,7 +953,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                 key={d}
                 type="button"
                 onClick={() => changeDensity(d)}
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                className={`vox-press rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors duration-200 ease-[var(--ease-luxury)] ${
                   density === d ? "bg-accent-muted text-accent" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -956,14 +964,14 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
           <button
             type="button"
             onClick={openWhatMattersNow}
-            className="rounded-full border border-accent/40 bg-accent-muted/30 px-2.5 py-0.5 text-xs font-medium text-accent hover:bg-accent-muted/50"
+            className="vox-press rounded-full border border-accent/40 bg-accent-muted/30 px-2.5 py-0.5 text-xs font-medium text-accent transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-accent-muted/50"
           >
             What matters now
           </button>
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground"
+            className="vox-press rounded-[var(--radius-sm)] border border-border px-2 py-1 text-xs text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:border-[var(--border-strong)] hover:text-foreground"
             title="Search (/)"
           >
             🔍
@@ -971,7 +979,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground"
+            className="vox-press flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:border-[var(--border-strong)] hover:text-foreground"
             title="Keyboard shortcuts (?)"
           >
             ?
@@ -982,13 +990,13 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
 
       {pinnedNodes.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-1.5 sm:px-4">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Pinned</span>
+          <span className="vox-eyebrow">Pinned</span>
           {pinnedNodes.map((n) => (
             <button
               key={n.id}
               type="button"
               onClick={() => selectNode(n)}
-              className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground"
+              className="vox-press rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:border-[var(--border-strong)] hover:text-foreground"
             >
               📌 {n.label}
             </button>
@@ -998,7 +1006,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
 
       {groups.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-1.5 sm:px-4">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Groups</span>
+          <span className="vox-eyebrow">Groups</span>
           {groups.map((g) => (
             <div
               key={g.id}
@@ -1130,7 +1138,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                 {groupBoxes.map(({ group, minX, minY, width, height }) => (
                   <div
                     key={group.id}
-                    className="pointer-events-none absolute rounded-2xl border border-dashed"
+                    className="pointer-events-none absolute rounded-[var(--radius-lg)] border border-dashed"
                     style={{
                       left: minX,
                       top: minY,
@@ -1141,7 +1149,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                     }}
                   >
                     <span
-                      className="absolute -top-2.5 left-3 rounded-full border border-border bg-[var(--surface-solid)] px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                      className="absolute -top-2.5 left-3 rounded-full border border-border bg-[var(--surface-solid)] px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-[var(--shadow-ambient-xs)]"
                       style={{ color: group.color ?? undefined }}
                     >
                       {group.name}
@@ -1183,7 +1191,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                     role="button"
                     tabIndex={0}
                     onClick={() => patchGroup(group.id, { collapsed: false })}
-                    className="absolute flex select-none flex-col items-center justify-center rounded-xl border px-3 py-2 text-center shadow-lg backdrop-blur-md"
+                    className="vox-lift vox-press absolute flex select-none flex-col items-center justify-center rounded-[var(--radius-md)] border px-3 py-2 text-center shadow-[var(--shadow-ambient-sm)] backdrop-blur-md"
                     style={{
                       left: x,
                       top: y,
@@ -1216,7 +1224,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
               <button
                 type="button"
                 onClick={() => zoomBy(1.25)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-[var(--surface-solid)]/80 text-foreground backdrop-blur-md"
+                className="vox-press flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-[var(--surface-solid)]/80 text-foreground shadow-[var(--shadow-ambient-xs)] backdrop-blur-md transition-shadow duration-200 ease-[var(--ease-luxury)] hover:shadow-[var(--shadow-ambient-sm)]"
                 aria-label="Zoom in"
               >
                 +
@@ -1224,7 +1232,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
               <button
                 type="button"
                 onClick={() => zoomBy(0.8)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-[var(--surface-solid)]/80 text-foreground backdrop-blur-md"
+                className="vox-press flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border bg-[var(--surface-solid)]/80 text-foreground shadow-[var(--shadow-ambient-xs)] backdrop-blur-md transition-shadow duration-200 ease-[var(--ease-luxury)] hover:shadow-[var(--shadow-ambient-sm)]"
                 aria-label="Zoom out"
               >
                 −
@@ -1245,7 +1253,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
           <>
             <div
               data-testid="brain-inspector"
-              className="hidden w-[340px] shrink-0 border-l border-border bg-[var(--surface-solid)]/90 backdrop-blur-md lg:block"
+              className="hidden w-[340px] shrink-0 border-l border-border bg-[var(--surface-solid)]/90 shadow-[var(--shadow-ambient-lg)] backdrop-blur-md lg:block"
             >
               {isComparing && compareNodeA && compareNodeB ? (
                 <CompareView
@@ -1295,7 +1303,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
             {mobileSheetOpen ? (
               <div
                 data-testid="brain-inspector"
-                className="fixed inset-x-0 bottom-16 z-40 max-h-[calc(75vh-4rem)] rounded-t-2xl border-t border-border bg-[var(--surface-solid)] shadow-2xl lg:hidden"
+                className="fixed inset-x-0 bottom-16 z-40 max-h-[calc(75vh-4rem)] rounded-t-[var(--radius-lg)] border-t border-border bg-[var(--surface-solid)] shadow-[var(--shadow-ambient-lg)] lg:hidden"
               >
                 <div className="flex justify-center pb-1 pt-2">
                   <span className="h-1 w-10 rounded-full bg-border" />
@@ -1354,10 +1362,10 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
         <>
           <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)} onContextMenu={(e) => e.preventDefault()} />
           <div
-            className="fixed z-50 flex w-48 flex-col rounded-xl border border-border bg-[var(--surface-solid)] py-1.5 text-xs shadow-2xl backdrop-blur-md"
+            className="fixed z-50 flex w-48 flex-col rounded-[var(--radius-md)] border border-border bg-[var(--surface-solid)] py-1.5 text-xs shadow-[var(--shadow-ambient-md)] backdrop-blur-md"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
-            <p className="truncate px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="vox-eyebrow truncate px-3 py-1">
               {contextMenu.node.label}
             </p>
             <ContextMenuItem
@@ -1426,7 +1434,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       {searchOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24" onClick={() => setSearchOpen(false)}>
           <div
-            className="flex max-h-[60vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-[var(--surface-solid)] shadow-2xl"
+            className="flex max-h-[60vh] w-full max-w-md flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-[var(--surface-solid)] shadow-[var(--shadow-ambient-lg)]"
             onClick={(e) => e.stopPropagation()}
           >
             <input
@@ -1448,10 +1456,10 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                     key={n.id}
                     type="button"
                     onClick={() => goToNode(n)}
-                    className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-xs hover:bg-accent-muted/30"
+                    className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-xs transition-colors duration-150 ease-[var(--ease-luxury)] hover:bg-accent-muted/30"
                   >
                     <span className="truncate text-foreground">{n.label}</span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">{n.type.toLowerCase()}</span>
+                    <span className="vox-eyebrow shrink-0 text-[10px]">{n.type.toLowerCase()}</span>
                   </button>
                 ))
               )}
@@ -1463,7 +1471,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       {groupPrompt ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setGroupPrompt(null)}>
           <div
-            className="flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-border bg-[var(--surface-solid)] p-4 shadow-2xl"
+            className="flex w-full max-w-sm flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--surface-solid)] p-4 shadow-[var(--shadow-ambient-lg)]"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="text-sm font-semibold text-foreground">
@@ -1482,10 +1490,14 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                   setGroupPrompt(null);
                 }
               }}
-              className="rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none"
+              className="rounded-[var(--radius-sm)] border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-200 ease-[var(--ease-luxury)] focus-visible:border-[var(--border-strong)] focus-visible:ring-2 focus-visible:ring-focus-ring"
             />
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setGroupPrompt(null)} className="text-xs text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                onClick={() => setGroupPrompt(null)}
+                className="vox-press text-xs text-muted-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:text-foreground"
+              >
                 Cancel
               </button>
               <button
@@ -1495,7 +1507,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
                   setGroupPrompt(null);
                   clearMultiSelect();
                 }}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-[var(--accent-contrast,#fff)]"
+                className="vox-press rounded-[var(--radius-sm)] bg-accent px-3 py-1.5 text-xs font-medium text-[var(--accent-contrast,#fff)] shadow-[var(--shadow-ambient-xs)] transition-shadow duration-200 ease-[var(--ease-luxury)] hover:shadow-[var(--shadow-ambient-sm)]"
               >
                 Create group
               </button>
@@ -1507,7 +1519,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       {groupAskTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setGroupAskTarget(null)}>
           <div
-            className="flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border bg-[var(--surface-solid)] p-4 shadow-2xl"
+            className="flex w-full max-w-md flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--surface-solid)] p-4 shadow-[var(--shadow-ambient-lg)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1529,7 +1541,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       {matterOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMatterOpen(false)}>
           <div
-            className="flex max-h-[80vh] w-full max-w-lg flex-col gap-3 overflow-y-auto scrollbar-thin rounded-2xl border border-border bg-[var(--surface-solid)] p-4 shadow-2xl"
+            className="flex max-h-[80vh] w-full max-w-lg flex-col gap-3 overflow-y-auto scrollbar-thin rounded-[var(--radius-lg)] border border-border bg-[var(--surface-solid)] p-4 shadow-[var(--shadow-ambient-lg)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1633,7 +1645,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
       {helpOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setHelpOpen(false)}>
           <div
-            className="flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border bg-[var(--surface-solid)] p-4 shadow-2xl"
+            className="flex w-full max-w-md flex-col gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--surface-solid)] p-4 shadow-[var(--shadow-ambient-lg)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1645,7 +1657,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
               {SHORTCUTS.map(([key, desc]) => (
                 <Fragment key={key}>
-                  <span className="justify-self-start rounded border border-border px-1.5 py-0.5 font-mono text-foreground">{key}</span>
+                  <span className="justify-self-start rounded-[var(--radius-xs)] border border-border px-1.5 py-0.5 font-mono text-foreground">{key}</span>
                   <span className="text-muted-foreground">{desc}</span>
                 </Fragment>
               ))}
@@ -1660,7 +1672,7 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
 function MatterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="vox-eyebrow mb-1">{title}</p>
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
@@ -1671,7 +1683,7 @@ function MatterRow({ label, reason, onClick }: { label: string; reason: string; 
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-1.5 text-left hover:border-[var(--border-strong)]"
+      className="vox-press flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-border px-2.5 py-1.5 text-left transition-[border-color,box-shadow] duration-200 ease-[var(--ease-luxury)] hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-ambient-xs)]"
     >
       <span className="truncate text-foreground">{label}</span>
       <span className="shrink-0 text-muted-foreground">{reason}</span>
@@ -1681,7 +1693,11 @@ function MatterRow({ label, reason, onClick }: { label: string; reason: string; 
 
 function ContextMenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="px-3 py-1.5 text-left text-foreground hover:bg-accent-muted/30">
+    <button
+      type="button"
+      onClick={onClick}
+      className="px-3 py-1.5 text-left text-foreground transition-colors duration-150 ease-[var(--ease-luxury)] hover:bg-accent-muted/30"
+    >
       {children}
     </button>
   );

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea, Label } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -132,7 +132,10 @@ export function ObjectivesClient({
 
       {showCreate ? (
         <Card className="mt-3">
-          <CardContent className="flex flex-col gap-3 pt-4">
+          <CardHeader>
+            <CardTitle>New objective</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
             <div>
               <Label>Title</Label>
               <Input
@@ -200,7 +203,7 @@ export function ObjectivesClient({
                 ? Math.min(1, Math.max(0, o.currentValue / o.targetValue))
                 : null;
             return (
-              <Card key={o.id}>
+              <Card key={o.id} className="vox-lift">
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
@@ -337,14 +340,14 @@ function ObjectiveDetail({
     <div className="mt-4 border-t border-border pt-4">
       {objective.strategy ? (
         <div className="mb-3">
-          <p className="text-xs font-medium text-muted-foreground">Strategy</p>
+          <p className="vox-eyebrow">Strategy</p>
           <p className="mt-1 text-sm text-foreground">{objective.strategy}</p>
         </div>
       ) : null}
 
       {objective.assumptions.length > 0 ? (
         <div className="mb-3">
-          <p className="text-xs font-medium text-muted-foreground">Assumptions</p>
+          <p className="vox-eyebrow">Assumptions</p>
           <ul className="mt-1 list-inside list-disc text-sm text-foreground">
             {objective.assumptions.map((a, i) => (
               <li key={i}>{a}</li>
@@ -377,14 +380,14 @@ function ObjectiveDetail({
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Opportunities</p>
+        <p className="vox-eyebrow">Opportunities</p>
         <Button size="sm" variant="ghost" onClick={() => setShowAddOpportunity((s) => !s)}>
           {showAddOpportunity ? "Cancel" : "Add opportunity"}
         </Button>
       </div>
 
       {showAddOpportunity ? (
-        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-border p-3">
+        <div className="mt-2 flex flex-col gap-2 rounded-[var(--radius-sm)] border border-border p-3">
           <Input
             value={draft.title}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
@@ -438,7 +441,7 @@ function ObjectiveDetail({
           </p>
         ) : (
           opportunities.map((op) => (
-            <div key={op.id} className="rounded-lg border border-border p-3">
+            <div key={op.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">{op.title}</p>

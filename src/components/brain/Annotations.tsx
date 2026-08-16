@@ -36,7 +36,7 @@ export function OrbitAnnotations({
         return (
           <div
             key={item.id}
-            className="pointer-events-none absolute z-20 max-w-[150px] rounded-lg border px-2 py-1 backdrop-blur-sm transition-[left,top] duration-300 ease-out"
+            className="pointer-events-none absolute z-20 max-w-[150px] rounded-[var(--radius-sm)] border px-2 py-1 shadow-[var(--shadow-ambient-xs)] backdrop-blur-sm transition-[left,top] duration-300 ease-[var(--ease-luxury)]"
             style={{
               left: pos.x,
               top: pos.y,
@@ -45,7 +45,7 @@ export function OrbitAnnotations({
               background: "color-mix(in srgb, var(--surface-solid) 75%, transparent)",
             }}
           >
-            <p className="truncate text-[9px] font-semibold uppercase tracking-wide" style={{ color: colorVar }}>
+            <p className="vox-eyebrow truncate text-[9px]" style={{ color: colorVar }}>
               {item.label}
             </p>
             <p className="truncate text-[11px] text-foreground">{item.value}</p>

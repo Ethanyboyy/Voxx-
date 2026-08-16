@@ -10,8 +10,9 @@ export default async function MemoryPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Memory</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="vox-eyebrow">Memory</p>
+      <h1 className="vox-headline mt-1 text-2xl text-foreground">Everything VOX remembers</h1>
+      <p className="mt-1.5 text-sm text-muted">
         Everything VOX has stored about you. Inspect, edit, or delete anything — nothing here is hidden.
       </p>
       <MemoryClient

@@ -15,8 +15,9 @@ export default async function FinancePage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Finance</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="vox-eyebrow">Execution</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Finance</h1>
+      <p className="mt-1.5 text-sm text-muted">
         VOX doesn&apos;t have a financial account connected, so there&apos;s no real balance or net worth to show here —
         this page won&apos;t invent one. Connect a provider below and real numbers will appear once it&apos;s live.
       </p>
@@ -32,7 +33,7 @@ export default async function FinancePage() {
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {financial.map((c) => (
-          <GlassPanel key={c.catalog.service} className="flex items-center justify-between p-4">
+          <GlassPanel key={c.catalog.service} className="vox-lift flex items-center justify-between p-4">
             <div>
               <p className="text-sm font-medium text-foreground">{c.catalog.displayName}</p>
               <p className="text-xs text-muted">{c.catalog.category.replace(/_/g, " ").toLowerCase()}</p>
@@ -44,7 +45,10 @@ export default async function FinancePage() {
         ))}
       </div>
 
-      <Link href="/connections" className="mt-6 inline-block text-sm font-medium text-accent">
+      <Link
+        href="/connections"
+        className="vox-press mt-6 inline-block text-sm font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+      >
         Open Connections Hub to connect one →
       </Link>
     </div>

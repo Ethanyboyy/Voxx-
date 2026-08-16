@@ -55,8 +55,14 @@ export function NewSuitForm({
     designation: string;
     archetype: string;
     status: string;
+    realityStatus?: string;
     colorPrimary: string;
     colorSecondary: string;
+    silhouette?: string;
+    materialLanguage?: string;
+    patternStyle?: string;
+    armorLevel?: string;
+    maskLensStyle?: string;
   }) => void;
 }) {
   const [codename, setCodename] = useState("");

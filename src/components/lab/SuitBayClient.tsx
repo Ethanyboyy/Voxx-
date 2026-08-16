@@ -6,8 +6,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { HolographicPanel, LabStatusBadge } from "@/components/lab/primitives";
+import { HolographicPanel, LabStatusBadge, RealityStatusTag } from "@/components/lab/primitives";
+import { HolographicModel } from "@/components/lab/HolographicModel";
+import { LazyMount } from "@/components/lab/LazyMount";
 import { NewSuitForm } from "@/components/lab/NewSuitForm";
+import type {
+  ArmorLevel,
+  MaskLensStyle,
+  MaterialLanguage,
+  PatternStyle,
+  Silhouette,
+} from "@/components/lab/three/suitDesign";
 
 interface SuitListItem {
   id: string;
@@ -15,8 +24,15 @@ interface SuitListItem {
   designation: string;
   archetype: string;
   status: string;
+  realityStatus?: string;
+  modelUrl?: string | null;
   colorPrimary: string;
   colorSecondary: string;
+  silhouette?: string;
+  materialLanguage?: string;
+  patternStyle?: string;
+  armorLevel?: string;
+  maskLensStyle?: string;
   stats: { stealth: number; durability: number; mobility: number; weightKg: number; estimatedCostUsd: number } | null;
 }
 
@@ -85,8 +101,14 @@ export function SuitBayClient({
                 designation: suit.designation,
                 archetype: suit.archetype,
                 status: suit.status,
+                realityStatus: suit.realityStatus,
                 colorPrimary: suit.colorPrimary,
                 colorSecondary: suit.colorSecondary,
+                silhouette: suit.silhouette,
+                materialLanguage: suit.materialLanguage,
+                patternStyle: suit.patternStyle,
+                armorLevel: suit.armorLevel,
+                maskLensStyle: suit.maskLensStyle,
                 stats: null,
               },
               ...prev,
@@ -116,14 +138,33 @@ export function SuitBayClient({
               aria-pressed={selected.includes(s.id)}
             />
             <Link href={`/lab/suits/${s.id}`}>
-              <HolographicPanel corners className="h-full p-4 transition-colors hover:bg-surface-hover">
-                <div
-                  className="mb-3 h-20 w-full rounded-lg"
-                  style={{
-                    background: `linear-gradient(135deg, ${s.colorPrimary}33, ${s.colorSecondary}66)`,
-                    border: `1px solid ${s.colorPrimary}55`,
-                  }}
-                />
+              <HolographicPanel corners className="vox-lift h-full p-4">
+                <div className="mb-2 flex items-center justify-center overflow-hidden rounded-[var(--radius-sm)]" style={{ height: 140 }}>
+                  <LazyMount
+                    placeholder={
+                      <div
+                        className="h-full w-full rounded-[var(--radius-sm)]"
+                        style={{
+                          background: `linear-gradient(135deg, ${s.colorPrimary}33, ${s.colorSecondary}66)`,
+                          border: `1px solid ${s.colorPrimary}55`,
+                        }}
+                      />
+                    }
+                  >
+                    <HolographicModel
+                      colorPrimary={s.colorPrimary}
+                      colorSecondary={s.colorSecondary}
+                      silhouette={s.silhouette as Silhouette}
+                      materialLanguage={s.materialLanguage as MaterialLanguage}
+                      patternStyle={s.patternStyle as PatternStyle}
+                      armorLevel={s.armorLevel as ArmorLevel}
+                      maskLensStyle={s.maskLensStyle as MaskLensStyle}
+                      modelUrl={s.modelUrl}
+                      size={140}
+                      controls={false}
+                    />
+                  </LazyMount>
+                </div>
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold text-foreground">{s.codename}</p>
@@ -132,6 +173,9 @@ export function SuitBayClient({
                     </p>
                   </div>
                   <LabStatusBadge status={s.status} />
+                </div>
+                <div className="mt-2">
+                  <RealityStatusTag status={s.realityStatus ?? "CONCEPT"} />
                 </div>
                 {s.stats ? (
                   <div className="lab-mono mt-3 grid grid-cols-3 gap-1 text-[10px] text-muted">

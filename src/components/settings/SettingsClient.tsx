@@ -131,7 +131,12 @@ export function SettingsClient({
           <CardTitle>Account</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-foreground">{userEmail}</p>
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-muted text-sm font-semibold text-accent">
+              {userEmail.trim().charAt(0).toUpperCase() || "?"}
+            </span>
+            <p className="text-sm text-foreground">{userEmail}</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -140,32 +145,32 @@ export function SettingsClient({
           <CardTitle>System health</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="flex flex-col gap-2.5 text-sm">
-            <li className="flex items-center justify-between">
+          <ul className="flex flex-col gap-1 text-sm">
+            <li className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2">
               <span className="text-muted">AI model</span>
               <span className="flex items-center gap-2 text-foreground">
                 {aiProviderId} ({aiModel})
                 <HealthBadge ok={aiConfigured} onLabel="live" offLabel="mock — no ANTHROPIC_API_KEY set" />
               </span>
             </li>
-            <li className="flex items-center justify-between">
+            <li className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2">
               <span className="text-muted">Research</span>
               <span className="flex items-center gap-2 text-foreground">
                 {researchProviderId}
                 <HealthBadge ok={researchConfigured} onLabel="live web search" offLabel="mock" />
               </span>
             </li>
-            <li className="flex items-center justify-between">
+            <li className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2">
               <span className="text-muted">Database</span>
               <HealthBadge ok={dbReachable} onLabel="reachable" offLabel="unreachable" />
             </li>
-            <li className="flex items-center justify-between">
+            <li className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2">
               <span className="text-muted">Connections</span>
               <span className="text-foreground">
                 {connectionsConnected} / {connectionsTotal} connected
               </span>
             </li>
-            <li className="flex items-center justify-between">
+            <li className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2">
               <span className="text-muted">Voice (speech-to-text / text-to-speech)</span>
               <span className="text-xs text-muted">browser-dependent — see Chat</span>
             </li>
@@ -188,13 +193,14 @@ export function SettingsClient({
             VOX defaults to OBSERVE/ANALYZE for everything. Capabilities above that (RECOMMEND, ASK, ACT) are
             denied until you explicitly grant them here.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={capability}
               onChange={(e) => setCapability(e.target.value)}
               placeholder="capability key, e.g. integration.example.send"
+              className="flex-1"
             />
-            <Select value={level} onChange={(e) => setLevel(e.target.value)} className="w-auto">
+            <Select value={level} onChange={(e) => setLevel(e.target.value)} className="sm:w-auto">
               {LEVELS.map((l) => (
                 <option key={l} value={l}>
                   {l}
@@ -210,13 +216,14 @@ export function SettingsClient({
           ) : (
             <ul className="flex flex-col gap-2">
               {permissions.map((p) => (
-                <li key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                  <div>
+                <li
+                  key={p.id}
+                  className="vox-lift flex flex-col gap-2 rounded-[var(--radius-sm)] border border-border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-foreground">{p.capability}</span>
-                    <Badge className="ml-2">{p.level}</Badge>
-                    <Badge className="ml-2" tone={p.granted ? "success" : "danger"}>
-                      {p.granted ? "granted" : "revoked"}
-                    </Badge>
+                    <Badge>{p.level}</Badge>
+                    <Badge tone={p.granted ? "success" : "danger"}>{p.granted ? "granted" : "revoked"}</Badge>
                   </div>
                   {p.granted ? (
                     <Button size="sm" variant="ghost" onClick={() => revoke(p.capability)}>
@@ -239,16 +246,16 @@ export function SettingsClient({
             Controls the proactive-intelligence delivery layer — every notification VOX would send (patterns
             detected, agent runs finishing) is checked against these settings before it&apos;s ever created.
           </p>
-          <label className="flex items-center justify-between text-sm">
+          <label className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2 text-sm">
             <span className="text-foreground">Notifications enabled</span>
             <input
               type="checkbox"
               checked={notificationPref.enabled}
               onChange={(e) => saveNotificationPref({ enabled: e.target.checked })}
-              className="h-5 w-5"
+              className="h-5 w-5 accent-[var(--accent)]"
             />
           </label>
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2 text-sm">
             <span className="text-foreground">Minimum priority</span>
             <Select
               value={notificationPref.minPriority}
@@ -262,7 +269,7 @@ export function SettingsClient({
               ))}
             </Select>
           </div>
-          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 rounded-[var(--radius-xs)] px-2 py-2 -mx-2 text-sm sm:flex-row sm:items-center sm:justify-between">
             <span className="text-foreground">Quiet hours (0–23, overnight ranges supported)</span>
             <div className="flex items-center gap-2">
               <Input
@@ -304,9 +311,12 @@ export function SettingsClient({
           ) : (
             <ul className="flex flex-col gap-1 text-sm">
               {events.map((e) => (
-                <li key={e.id} className="flex justify-between">
+                <li
+                  key={e.id}
+                  className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 -mx-2 transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-surface-hover"
+                >
                   <span className="text-foreground">{e.type}</span>
-                  <span className="text-muted">{new Date(e.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-muted">{new Date(e.createdAt).toLocaleString()}</span>
                 </li>
               ))}
             </ul>
@@ -319,31 +329,42 @@ export function SettingsClient({
           <CardTitle>Your data</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div>
+          <div className="flex flex-col gap-1 rounded-[var(--radius-sm)] border border-border p-3.5">
             <p className="text-sm text-muted">Export everything VOX has stored in your Memory system as JSON.</p>
             {/* Plain anchor: this targets an API route (file download), not a page. */}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-            <a href="/api/memories/export" className="mt-1 inline-block text-sm font-medium text-accent">
+            <a
+              href="/api/memories/export"
+              className="vox-press mt-1 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+            >
               Download memory export
             </a>
           </div>
-          <div>
+          <div className="flex flex-col gap-1 rounded-[var(--radius-sm)] border border-border p-3.5">
             <p className="text-sm text-muted">
               Export everything — memories, projects, tasks, decisions, conversations, research, the knowledge
               graph, patterns, permissions, and agent runs — as one portable JSON document.
             </p>
-            <a href="/api/account/export" className="mt-1 inline-block text-sm font-medium text-accent">
+            <a
+              href="/api/account/export"
+              className="vox-press mt-1 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-accent transition-[filter] duration-200 ease-[var(--ease-luxury)] hover:brightness-110"
+            >
               Download full data export
             </a>
           </div>
-          <div className="rounded-lg border border-danger/30 p-4">
-            <p className="text-sm font-medium text-danger">Delete all data</p>
+          <div className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger-muted/40 p-4">
+            <p className="text-sm font-semibold text-danger">Delete all data</p>
             <p className="mt-1 text-sm text-muted">
               Permanently deletes your account and everything VOX has stored about you. This cannot be undone. Type
               DELETE to confirm.
             </p>
-            <div className="mt-2 flex gap-2">
-              <Input value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} placeholder="DELETE" />
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={confirmDelete}
+                onChange={(e) => setConfirmDelete(e.target.value)}
+                placeholder="DELETE"
+                className="sm:max-w-40"
+              />
               <Button variant="danger" size="sm" disabled={confirmDelete !== "DELETE" || deleting} onClick={deleteAllData}>
                 {deleting ? "Deleting..." : "Delete everything"}
               </Button>

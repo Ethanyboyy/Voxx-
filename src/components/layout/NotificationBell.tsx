@@ -74,7 +74,7 @@ export function NotificationBell() {
       <button
         type="button"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-        className="relative flex h-10 w-10 items-center justify-center rounded-lg text-foreground hover:bg-surface-hover"
+        className="relative flex h-10 w-10 items-center justify-center rounded-[var(--radius-xs)] text-foreground transition-colors hover:bg-surface-hover"
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />
@@ -86,7 +86,7 @@ export function NotificationBell() {
       </button>
 
       {open ? (
-        <div className="glass-panel-strong absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] shadow-2xl">
+        <div className="glass-panel-strong absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] shadow-[var(--shadow-ambient-lg)]">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <span className="text-sm font-semibold text-foreground">Notifications</span>
             {unreadCount > 0 ? (

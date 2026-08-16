@@ -28,9 +28,9 @@ export function PerspectiveTabs({ value, onChange }: { value: Perspective; onCha
           type="button"
           onClick={() => onChange(p.id)}
           className={cn(
-            "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+            "vox-press shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-[background-color,color,border-color,box-shadow] duration-200 ease-[var(--ease-luxury)]",
             value === p.id
-              ? "border-[var(--border-strong)] bg-accent-muted text-accent shadow-[0_0_14px_-6px_var(--accent)]"
+              ? "border-[var(--border-strong)] bg-accent-muted text-accent shadow-[var(--shadow-ambient-xs)]"
               : "border-border text-muted-foreground hover:text-foreground"
           )}
         >

@@ -79,13 +79,13 @@ export function CognitionClient({
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {dataDimensions.map((d) => (
-                <div key={d.dimension} className="rounded-lg border border-border p-3">
-                  <div className="flex items-center justify-between">
+                <div key={d.dimension} className="vox-lift rounded-[var(--radius-sm)] border border-border p-3.5">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-foreground">{d.dimension.toLowerCase().replace(/_/g, " ")}</span>
                     <ConfidenceBadge confidence={d.confidence} />
                   </div>
-                  {d.estimate ? <p className="mt-1 text-sm text-muted">{d.estimate}</p> : null}
-                  <p className="mt-1 text-xs text-muted">
+                  {d.estimate ? <p className="mt-1.5 text-sm text-muted">{d.estimate}</p> : null}
+                  <p className="mt-1.5 text-xs text-muted-foreground">
                     {d.observationCount} observation{d.observationCount === 1 ? "" : "s"} · trend: {d.trend}
                   </p>
                 </div>
@@ -93,7 +93,7 @@ export function CognitionClient({
             </div>
           )}
           {emptyDimensions.length > 0 ? (
-            <p className="mt-4 text-xs text-muted">
+            <p className="mt-4 text-xs text-muted-foreground">
               No data yet for: {emptyDimensions.map((d) => d.dimension.toLowerCase().replace(/_/g, " ")).join(", ")}.
             </p>
           ) : null}
@@ -111,15 +111,15 @@ export function CognitionClient({
           {patterns.length === 0 ? (
             <EmptyState title="No patterns detected" description="Run a scan once you have some projects, decisions, and ideas to look across." />
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-3">
               {patterns.map((p) => (
-                <li key={p.id} className="rounded-lg border border-border p-3">
+                <li key={p.id} className="vox-lift rounded-[var(--radius-sm)] border border-border p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <Badge tone="warning">{p.type.toLowerCase().replace(/_/g, " ")}</Badge>
                     <ConfidenceBadge confidence={p.confidence} />
                   </div>
-                  <p className="mt-2 text-sm text-foreground">{p.description}</p>
-                  <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                  <p className="mt-2 text-sm leading-relaxed text-foreground">{p.description}</p>
+                  <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
                     <span>Seen {p.occurrenceCount}×</span>
                     <Button size="sm" variant="ghost" onClick={() => handleDismiss(p.id)}>
                       Dismiss
@@ -140,11 +140,14 @@ export function CognitionClient({
           {hypotheses.length === 0 ? (
             <EmptyState title="No open hypotheses" />
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-1">
               {hypotheses.map((h) => (
-                <li key={h.id} className="flex items-center justify-between gap-2 text-sm">
+                <li
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 rounded-[var(--radius-xs)] px-2 py-2 text-sm transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-surface-hover"
+                >
                   <span className="text-foreground">{h.statement}</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Badge>{h.status.toLowerCase()}</Badge>
                     <ConfidenceBadge confidence={h.confidence} />
                   </div>

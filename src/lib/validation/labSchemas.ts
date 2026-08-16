@@ -49,6 +49,14 @@ export const labMaterialLanguageSchema = z.enum([
 export const labPatternStyleSchema = z.enum(["WEB_GEOMETRY", "GEOMETRIC", "ORGANIC", "TECHNICAL", "MINIMAL"]);
 export const labArmorLevelSchema = z.enum(["NONE", "LIGHT", "MODERATE", "EXPERIMENTAL"]);
 export const labMaskLensStyleSchema = z.enum(["NARROW", "WIDE", "ANGULAR", "ROUND", "MECHANICAL"]);
+export const labRealityStatusSchema = z.enum([
+  "REAL",
+  "BUILDABLE",
+  "PROTOTYPE",
+  "EXPERIMENTAL",
+  "CONCEPT",
+  "NOT_CONNECTED",
+]);
 export const labResearchCategorySchema = z.enum([
   "MATERIALS",
   "TEXTILES",
@@ -99,6 +107,8 @@ export const createSuitSchema = z.object({
   patternStyle: labPatternStyleSchema.optional(),
   armorLevel: labArmorLevelSchema.optional(),
   maskLensStyle: labMaskLensStyleSchema.optional(),
+  realityStatus: labRealityStatusSchema.optional(),
+  modelUrl: z.string().max(300).regex(/^\/models\/suits\//).optional(),
   status: labDesignStatusSchema.optional(),
   stats: suitStatsSchema,
   versionLabel: z.string().max(20).optional(),
@@ -116,6 +126,8 @@ export const updateSuitSchema = z.object({
   patternStyle: labPatternStyleSchema.optional(),
   armorLevel: labArmorLevelSchema.optional(),
   maskLensStyle: labMaskLensStyleSchema.optional(),
+  realityStatus: labRealityStatusSchema.optional(),
+  modelUrl: z.string().max(300).regex(/^\/models\/suits\//).nullable().optional(),
   status: labDesignStatusSchema.optional(),
   projectId: z.string().nullable().optional(),
 });

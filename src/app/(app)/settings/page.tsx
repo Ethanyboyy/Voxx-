@@ -32,9 +32,10 @@ export default async function SettingsPage() {
   const researchProvider = getResearchProvider();
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">System Configuration</h1>
-      <p className="mt-1 text-sm text-muted">Account, system health, permissions, and your data.</p>
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <p className="vox-eyebrow">Configuration</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">System Configuration</h1>
+      <p className="mt-1.5 text-sm text-muted">Account, system health, permissions, and your data.</p>
 
       <SettingsClient
         userEmail={user.email}

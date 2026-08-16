@@ -240,16 +240,14 @@ export function Sidebar({
       className={cn("glass-panel-strong flex h-full w-64 shrink-0 flex-col gap-1 rounded-none border-y-0 border-l-0 p-3 sm:w-60", className)}
       aria-label="Primary"
     >
-      <div className="mb-3 flex items-center gap-2 px-2 pt-1 pb-3">
+      <div className="mb-4 flex items-center gap-2.5 px-2 pt-1 pb-3">
         <VoxLogoMark />
-        <span className="text-lg font-bold text-foreground">VOX</span>
+        <span className="vox-headline text-lg text-foreground">VOX</span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {NAV_GROUPS.map((group) => (
-          <div key={group.group} className="mb-3">
-            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {group.group}
-            </p>
+          <div key={group.group} className="mb-4">
+            <p className="vox-eyebrow mb-1.5 px-3">{group.group}</p>
             {group.items.map((item) => {
               const active = pathname === item.href || pathname?.startsWith(item.href + "/");
               const ItemIcon = item.icon;
@@ -259,9 +257,9 @@ export function Sidebar({
                   href={item.href}
                   onClick={onNavigate}
                   className={cn(
-                    "mb-1 flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors sm:py-2",
+                    "mb-0.5 flex items-center justify-between rounded-[var(--radius-xs)] px-3 py-2.5 text-sm font-medium transition-[background-color,color] duration-200 ease-[var(--ease-luxury)] sm:py-2",
                     active
-                      ? "bg-accent-muted text-accent shadow-[0_0_16px_-8px_var(--accent)]"
+                      ? "bg-accent-muted text-accent"
                       : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
                     item.hero && !active && "text-foreground"
                   )}
