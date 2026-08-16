@@ -9,7 +9,7 @@ export default async function LabProjectsPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Projects</h1>
+      <h1 className="vox-headline text-2xl">Projects</h1>
       <p className="mt-1 text-sm text-muted">
         Group suits, gadgets, web systems, simulations, and experiments under a shared initiative.
       </p>

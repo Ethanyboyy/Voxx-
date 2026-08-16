@@ -10,7 +10,7 @@ export default async function TutorialsPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tutorials</h1>
+      <h1 className="vox-headline text-2xl">Tutorials</h1>
       <p className="mt-1 text-sm text-muted">
         Lesson-and-quiz walkthroughs of lab systems. Complete a tutorial&apos;s quiz to unlock what it gates.
       </p>

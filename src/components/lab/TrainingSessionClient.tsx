@@ -258,7 +258,7 @@ export function TrainingSessionClient({
           ← Training Center
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{trainingModule.name}</h1>
+          <h1 className="vox-headline text-2xl">{trainingModule.name}</h1>
           <span className="lab-mono rounded-full border border-border bg-surface-hover px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
             {CATEGORY_LABEL[trainingModule.category] ?? trainingModule.category}
           </span>

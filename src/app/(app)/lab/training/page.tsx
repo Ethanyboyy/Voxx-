@@ -10,7 +10,7 @@ export default async function TrainingCenterPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Training Center</h1>
+      <h1 className="vox-headline text-2xl">Training Center</h1>
       <p className="mt-1 text-sm text-muted">
         Reaction, movement, and awareness drills against simulated conditions — no combat instruction.
       </p>

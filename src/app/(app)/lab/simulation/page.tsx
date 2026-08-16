@@ -20,7 +20,7 @@ export default async function SimulationCenterPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Simulation Center</h1>
+      <h1 className="vox-headline text-2xl">Simulation Center</h1>
       <p className="mt-1 text-sm text-muted">
         Select a scenario, run a deterministic physics simulation, and see the telemetry. Running a simulation
         saves it — every run is persisted as history.

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/utils/cn";
@@ -124,8 +124,10 @@ export function GraphClient({
     <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.2fr]">
       <div className="flex flex-col gap-4">
         <Card>
-          <CardContent className="flex flex-col gap-2 pt-4">
-            <p className="text-xs font-medium text-muted-foreground">Add an entity</p>
+          <CardHeader>
+            <CardTitle>Add an entity</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
             <div className="flex gap-2">
               <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Label, e.g. a person's name" />
               <Select value={newType} onChange={(e) => setNewType(e.target.value)} className="w-36">
@@ -143,8 +145,10 @@ export function GraphClient({
         </Card>
 
         <Card>
-          <CardContent className="flex flex-col gap-2 pt-4">
-            <p className="text-xs font-medium text-muted-foreground">Connect two nodes</p>
+          <CardHeader>
+            <CardTitle>Connect two nodes</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <Select value={fromId} onChange={(e) => setFromId(e.target.value)}>
                 <option value="">from...</option>
@@ -178,14 +182,14 @@ export function GraphClient({
           <div className="flex flex-col gap-3">
             {Array.from(grouped.entries()).map(([type, items]) => (
               <div key={type}>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{type.toLowerCase()}</p>
+                <p className="vox-eyebrow mb-1.5">{type.toLowerCase()}</p>
                 <div className="flex flex-col gap-1">
                   {items.map((node) => (
                     <button
                       key={node.id}
                       onClick={() => selectNode(node.id)}
                       className={cn(
-                        "rounded-lg px-3 py-2 text-left text-sm",
+                        "vox-press rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm transition-colors duration-200 ease-[var(--ease-luxury)]",
                         node.id === selectedId ? "bg-accent-muted text-accent" : "text-foreground hover:bg-surface-hover"
                       )}
                     >
@@ -209,15 +213,17 @@ export function GraphClient({
           ) : (
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-foreground">{selectedNode.label}</h2>
+                <h2 className="vox-headline text-base">{selectedNode.label}</h2>
                 <Badge>{selectedNode.type.toLowerCase()}</Badge>
               </div>
-              {selectedNode.description ? <p className="mt-1 text-sm text-muted">{selectedNode.description}</p> : null}
+              {selectedNode.description ? <p className="mt-1.5 text-sm text-muted">{selectedNode.description}</p> : null}
               {linkedRecordLabel(selectedNode) ? (
-                <p className="mt-1 text-xs text-accent">{linkedRecordLabel(selectedNode)}</p>
+                <p className="mt-1.5 text-xs text-accent">{linkedRecordLabel(selectedNode)}</p>
               ) : null}
 
-              <p className="mt-4 text-xs font-medium text-muted-foreground">Connections ({connections.filter(c => c.fromNodeId === selectedNode.id || c.toNodeId === selectedNode.id).length})</p>
+              <p className="vox-eyebrow mt-5">
+                Connections ({connections.filter(c => c.fromNodeId === selectedNode.id || c.toNodeId === selectedNode.id).length})
+              </p>
               {loadingRelated ? (
                 <p className="mt-2 text-sm text-muted">Loading...</p>
               ) : related.length === 0 ? (
@@ -225,8 +231,11 @@ export function GraphClient({
               ) : (
                 <ul className="mt-2 flex flex-col gap-2">
                   {related.map((r) => (
-                    <li key={r.node.id} className="flex items-center justify-between rounded-lg border border-border p-2 text-sm">
-                      <button onClick={() => selectNode(r.node.id)} className="text-left text-foreground hover:underline">
+                    <li
+                      key={r.node.id}
+                      className="vox-lift flex items-center justify-between rounded-[var(--radius-sm)] border border-border p-2.5 text-sm"
+                    >
+                      <button onClick={() => selectNode(r.node.id)} className="vox-press text-left text-foreground hover:underline">
                         {r.node.label}
                       </button>
                       <span className="text-xs text-muted">

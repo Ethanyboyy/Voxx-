@@ -11,7 +11,7 @@ export default async function ResearchPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Research Engine</h1>
+      <h1 className="vox-headline text-2xl">Research Engine</h1>
       <p className="mt-1 text-sm text-muted">
         Track materials, physics, and engineering findings — real sources feeding real design decisions.
       </p>

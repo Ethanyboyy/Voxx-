@@ -12,7 +12,7 @@ export default async function SuitComparePage({ searchParams }: { searchParams: 
   if (idList.length < 2) {
     return (
       <div className="vox-panel-in">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Compare Suits</h1>
+        <h1 className="vox-headline text-2xl">Compare Suits</h1>
         <div className="mt-6">
           <EmptyState title="Select at least two suits" description="Go to Suit Bay and select suits to compare." />
         </div>

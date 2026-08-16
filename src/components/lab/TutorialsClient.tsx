@@ -60,7 +60,7 @@ export function TutorialsClient({ tutorials }: { tutorials: TutorialListItem[] }
                   corners
                   className={cn(
                     "h-full p-4 transition-colors",
-                    t.locked ? "opacity-50" : "hover:bg-surface-hover"
+                    t.locked ? "opacity-50" : "vox-lift hover:border-[var(--border-strong)] hover:bg-surface-hover"
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">

@@ -16,7 +16,7 @@ export default async function ExperimentsPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Experiments</h1>
+      <h1 className="vox-headline text-2xl">Experiments</h1>
       <p className="mt-1 text-sm text-muted">Hypothesis-driven iteration — plan, run, and record real outcomes.</p>
       <ExperimentsClient
         initialExperiments={experiments.map((e) => ({

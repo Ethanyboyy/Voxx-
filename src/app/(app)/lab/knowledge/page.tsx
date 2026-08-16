@@ -84,7 +84,7 @@ export default async function KnowledgePage() {
   return (
     <div className="vox-panel-in flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Data / Knowledge</h1>
+        <h1 className="vox-headline text-2xl">Data / Knowledge</h1>
         <p className="mt-1 text-sm text-muted">
           Every engineering figure in the Laboratory carries an explicit confidence level. Nothing here is
           silently upgraded from a guess to a fact.

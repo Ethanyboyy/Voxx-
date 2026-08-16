@@ -83,8 +83,8 @@ export function GadgetDetailClient({
     <div className="vox-panel-in flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{gadget.name}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="vox-headline text-2xl">{gadget.name}</h1>
             <LabStatusBadge status={gadget.status} />
           </div>
           <p className="mt-1 text-sm text-muted">

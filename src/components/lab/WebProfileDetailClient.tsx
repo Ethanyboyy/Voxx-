@@ -124,7 +124,7 @@ export function WebProfileDetailClient({
               ← Web Lab
             </Link>
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{profile.name}</h1>
+          <h1 className="vox-headline mt-1 text-2xl">{profile.name}</h1>
           {profile.description ? <p className="mt-2 max-w-2xl text-sm text-muted">{profile.description}</p> : null}
         </div>
       </div>

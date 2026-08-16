@@ -10,7 +10,7 @@ export default async function ScenarioGeneratorPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Scenario Generator</h1>
+      <h1 className="vox-headline text-2xl">Scenario Generator</h1>
       <p className="mt-1 text-sm text-muted">
         Seeded and custom environmental scenarios for simulations and training sessions.
       </p>

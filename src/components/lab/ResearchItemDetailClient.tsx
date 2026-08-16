@@ -147,7 +147,7 @@ export function ResearchItemDetailClient({ item }: { item: ResearchItemDetail })
             </p>
             <ConfidenceTag confidence={current.confidence} />
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{current.title}</h1>
+          <h1 className="vox-headline mt-1 text-2xl">{current.title}</h1>
           {current.project ? (
             <p className="mt-1 text-sm text-muted">
               Project:{" "}

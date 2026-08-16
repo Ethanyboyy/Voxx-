@@ -10,7 +10,7 @@ export default async function EngineeringBayPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Engineering Bay</h1>
+      <h1 className="vox-headline text-2xl">Engineering Bay</h1>
       <p className="mt-1 text-sm text-muted">Design, inspect, and iterate on gadgets.</p>
       <EngineeringBayClient
         initialGadgets={gadgets.map((g) => ({

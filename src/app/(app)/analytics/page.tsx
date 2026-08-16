@@ -4,7 +4,7 @@ import { listMemories } from "@/lib/memory/service";
 import { listPatterns } from "@/lib/cognition/patterns";
 import { listAgentRuns } from "@/lib/agents/service";
 import { listResearchItems } from "@/lib/research/service";
-import { GlassPanel } from "@/components/ui/GlassPanel";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 
 export default async function AnalyticsPage() {
   const user = await getCurrentUser();
@@ -52,8 +52,9 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analytics</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="vox-eyebrow">Insight</p>
+      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Analytics</h1>
+      <p className="mt-1.5 text-sm text-muted">
         Every number here is computed directly from your real data — nothing is a fabricated score. A metric shows
         &quot;not enough data&quot; rather than guessing when there isn&apos;t enough history behind it.
       </p>
@@ -70,41 +71,53 @@ export default async function AnalyticsPage() {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <GlassPanel className="p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Memory by confidence</p>
-          {memories.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">No memories yet.</p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-1.5">
-              {Object.entries(byConfidence).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{k.toLowerCase()}</span>
-                  <span className="text-foreground">{v}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </GlassPanel>
+        <Card>
+          <CardHeader>
+            <CardTitle>Memory by confidence</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {memories.length === 0 ? (
+              <p className="text-sm text-muted">No memories yet.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {Object.entries(byConfidence).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{k.toLowerCase()}</span>
+                    <span className="text-foreground">{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <GlassPanel className="p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Cognitive patterns</p>
-          <p className="mt-1 text-3xl font-semibold text-foreground">{activePatterns.length}</p>
-          <p className="text-xs text-muted">active of {patterns.length} detected total</p>
-        </GlassPanel>
+        <Card>
+          <CardHeader>
+            <CardTitle>Cognitive patterns</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="vox-headline text-3xl">{activePatterns.length}</p>
+            <p className="text-xs text-muted">active of {patterns.length} detected total</p>
+          </CardContent>
+        </Card>
 
-        <GlassPanel className="p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Projects &amp; research</p>
-          <div className="mt-2 flex flex-col gap-1.5 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Active projects</span>
-              <span className="text-foreground">{projects.filter((p) => p.status === "ACTIVE").length}</span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Projects &amp; research</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Active projects</span>
+                <span className="text-foreground">{projects.filter((p) => p.status === "ACTIVE").length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Research runs</span>
+                <span className="text-foreground">{research.length}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Research runs</span>
-              <span className="text-foreground">{research.length}</span>
-            </div>
-          </div>
-        </GlassPanel>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -112,10 +125,10 @@ export default async function AnalyticsPage() {
 
 function Metric({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="glass-panel px-4 py-3.5">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-      <p className="text-xs text-muted">{sub}</p>
+    <div className="vox-lift glass-panel px-4 py-3.5">
+      <p className="vox-eyebrow">{label}</p>
+      <p className="vox-headline mt-1.5 text-2xl">{value}</p>
+      <p className="mt-1 text-xs text-muted">{sub}</p>
     </div>
   );
 }

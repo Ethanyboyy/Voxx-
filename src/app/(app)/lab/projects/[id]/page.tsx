@@ -20,7 +20,7 @@ export default async function LabProjectDetailPage({ params }: { params: Promise
           ← Projects
         </Link>
         <div className="mt-1 flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{project.name}</h1>
+          <h1 className="vox-headline text-2xl">{project.name}</h1>
           <LabStatusBadge status={project.status} />
         </div>
         {project.description ? <p className="mt-2 max-w-2xl text-sm text-muted">{project.description}</p> : null}

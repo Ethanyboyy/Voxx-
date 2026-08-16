@@ -118,7 +118,7 @@ export function TrainingCenterClient({
                 const stats = progress.byCategory[m.category];
                 return (
                   <Link key={m.id} href={`/lab/training/${m.id}`}>
-                    <HolographicPanel corners className="h-full p-4 transition-colors hover:bg-surface-hover">
+                    <HolographicPanel corners className="vox-lift h-full p-4 transition-colors hover:border-[var(--border-strong)] hover:bg-surface-hover">
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-semibold text-foreground">{m.name}</p>
                         <DifficultyBadge difficulty={m.difficulty} />

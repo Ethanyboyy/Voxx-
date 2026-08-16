@@ -156,7 +156,7 @@ export function ExperimentDetailClient({ experiment }: { experiment: ExperimentD
             <p className="lab-mono text-xs text-muted-foreground">{experiment.code}</p>
             <LabStatusBadge status={status} />
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{experiment.title}</h1>
+          <h1 className="vox-headline mt-1 text-2xl">{experiment.title}</h1>
           {experiment.suit ? (
             <p className="mt-1 text-sm text-muted">
               Linked suit:{" "}

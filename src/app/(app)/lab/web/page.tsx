@@ -10,7 +10,7 @@ export default async function WebLabPage() {
 
   return (
     <div className="vox-panel-in">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">Web Lab</h1>
+      <h1 className="vox-headline text-2xl">Web Lab</h1>
       <p className="mt-1 text-sm text-muted">
         Theoretical web-shooter material, deployment, and attachment research — simulated only, never a real-world
         validation.

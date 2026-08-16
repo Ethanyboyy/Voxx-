@@ -117,7 +117,7 @@ export function ExperimentsClient({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {g.items.map((e) => (
                   <Link key={e.id} href={`/lab/experiments/${e.id}`}>
-                    <HolographicPanel corners className="h-full p-4 transition-colors hover:bg-surface-hover">
+                    <HolographicPanel corners className="vox-lift h-full p-4 transition-colors hover:border-[var(--border-strong)] hover:bg-surface-hover">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="lab-mono text-[10px] text-muted-foreground">{e.code}</p>

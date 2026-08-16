@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
@@ -58,7 +58,10 @@ export function ExperimentsClient({ initialExperiments }: { initialExperiments: 
   return (
     <div className="mt-6 flex flex-col gap-6">
       <Card>
-        <CardContent className="flex gap-2 pt-5">
+        <CardHeader>
+          <CardTitle>New experiment</CardTitle>
+        </CardHeader>
+        <CardContent className="flex gap-2">
           <Input value={hypothesis} onChange={(e) => setHypothesis(e.target.value)} placeholder="What are you testing?" />
           <Button size="sm" onClick={createExperiment} disabled={!hypothesis.trim()}>
             Start experiment
@@ -72,14 +75,14 @@ export function ExperimentsClient({ initialExperiments }: { initialExperiments: 
         <ul className="flex flex-col gap-3">
           {experiments.map((e) => (
             <li key={e.id}>
-              <Card>
+              <Card className="vox-lift">
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-medium text-foreground">{e.hypothesis}</p>
                     <Badge>{e.status.toLowerCase()}</Badge>
                   </div>
                   {e.results.length > 0 ? (
-                    <ul className="mt-3 flex flex-col gap-1">
+                    <ul className="mt-3 flex flex-col gap-1.5">
                       {e.results.map((r) => (
                         <li key={r.id} className="flex items-center justify-between text-sm">
                           <span className="text-muted">{r.outcome}</span>
