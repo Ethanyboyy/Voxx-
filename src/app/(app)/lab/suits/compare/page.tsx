@@ -35,6 +35,11 @@ export default async function SuitComparePage({ searchParams }: { searchParams: 
             archetype: s.archetype,
             colorPrimary: s.colorPrimary,
             colorSecondary: s.colorSecondary,
+            silhouette: s.silhouette,
+            materialLanguage: s.materialLanguage,
+            patternStyle: s.patternStyle,
+            armorLevel: s.armorLevel,
+            maskLensStyle: s.maskLensStyle,
             componentCount: s.components.length,
             stats: s.currentVersion!.stats!,
           }))}

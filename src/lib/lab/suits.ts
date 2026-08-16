@@ -1,6 +1,14 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
-import type { LabConfidence, LabDesignStatus } from "@/generated/prisma/enums";
+import type {
+  LabArmorLevel,
+  LabConfidence,
+  LabDesignStatus,
+  LabMaskLensStyle,
+  LabMaterialLanguage,
+  LabPatternStyle,
+  LabSilhouette,
+} from "@/generated/prisma/enums";
 
 export interface SuitStatsInput {
   stealth: number;
@@ -34,6 +42,13 @@ export interface CreateSuitInput {
   colorPrimary?: string;
   colorSecondary?: string;
   status?: LabDesignStatus;
+  /// Structured design-parameter vocabulary the 3D holographic render is
+  /// deterministically derived from — see LabSilhouette etc. in schema.prisma.
+  silhouette?: LabSilhouette;
+  materialLanguage?: LabMaterialLanguage;
+  patternStyle?: LabPatternStyle;
+  armorLevel?: LabArmorLevel;
+  maskLensStyle?: LabMaskLensStyle;
   stats: SuitStatsInput;
   versionLabel?: string;
 }
@@ -49,6 +64,11 @@ export async function createSuit(input: CreateSuitInput) {
       description: input.description,
       colorPrimary: input.colorPrimary ?? "#a855f7",
       colorSecondary: input.colorSecondary ?? "#0a0616",
+      silhouette: input.silhouette,
+      materialLanguage: input.materialLanguage,
+      patternStyle: input.patternStyle,
+      armorLevel: input.armorLevel,
+      maskLensStyle: input.maskLensStyle,
       status: input.status ?? "ACTIVE",
     },
   });
@@ -104,6 +124,11 @@ export interface UpdateSuitInput {
   description?: string;
   colorPrimary?: string;
   colorSecondary?: string;
+  silhouette?: LabSilhouette;
+  materialLanguage?: LabMaterialLanguage;
+  patternStyle?: LabPatternStyle;
+  armorLevel?: LabArmorLevel;
+  maskLensStyle?: LabMaskLensStyle;
   status?: LabDesignStatus;
   projectId?: string | null;
 }
@@ -179,6 +204,11 @@ export async function duplicateSuit(userId: string, id: string, newCodename: str
     description: source.description ?? undefined,
     colorPrimary: source.colorPrimary,
     colorSecondary: source.colorSecondary,
+    silhouette: source.silhouette,
+    materialLanguage: source.materialLanguage,
+    patternStyle: source.patternStyle,
+    armorLevel: source.armorLevel,
+    maskLensStyle: source.maskLensStyle,
     status: "EXPERIMENTAL",
     versionLabel: "v0.1",
     stats: {

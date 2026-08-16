@@ -57,6 +57,7 @@ export default async function SimulationDetailPage({ params }: { params: Promise
           peakThermalLoadC: r.peakThermalLoadC,
           fatigueEstimatePct: r.fatigueEstimatePct,
           warnings: r.warnings,
+          failureAnalysis: r.failureAnalysis,
           summary: r.summary,
           startedAt: r.startedAt.toISOString(),
           completedAt: r.completedAt ? r.completedAt.toISOString() : null,

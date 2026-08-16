@@ -142,6 +142,43 @@ export function generateSuitStats(archetype: Archetype, seedIndex: number) {
   };
 }
 
+export type SilhouetteEnum = "ATHLETIC" | "STREAMLINED" | "ARMORED" | "TACTICAL" | "LIGHTWEIGHT" | "STEALTH";
+export type MaterialLanguageEnum = "TEXTILE" | "CARBON_COMPOSITE" | "SYNTHETIC_FIBER" | "FLEXIBLE_POLYMER" | "EXPERIMENTAL_MATERIAL";
+export type PatternStyleEnum = "WEB_GEOMETRY" | "GEOMETRIC" | "ORGANIC" | "TECHNICAL" | "MINIMAL";
+export type ArmorLevelEnum = "NONE" | "LIGHT" | "MODERATE" | "EXPERIMENTAL";
+export type MaskLensStyleEnum = "NARROW" | "WIDE" | "ANGULAR" | "ROUND" | "MECHANICAL";
+
+export interface SuitDesign {
+  silhouette: SilhouetteEnum;
+  materialLanguage: MaterialLanguageEnum;
+  patternStyle: PatternStyleEnum;
+  armorLevel: ArmorLevelEnum;
+  maskLensStyle: MaskLensStyleEnum;
+}
+
+const DESIGN_BY_ARCHETYPE: Record<Archetype, { silhouette: SilhouetteEnum; materialLanguage: MaterialLanguageEnum; patterns: PatternStyleEnum[]; armor: ArmorLevelEnum[]; lenses: MaskLensStyleEnum[] }> = {
+  Stealth: { silhouette: "STEALTH", materialLanguage: "SYNTHETIC_FIBER", patterns: ["MINIMAL", "WEB_GEOMETRY"], armor: ["NONE", "LIGHT"], lenses: ["NARROW", "ANGULAR"] },
+  Combat: { silhouette: "ARMORED", materialLanguage: "CARBON_COMPOSITE", patterns: ["TECHNICAL", "GEOMETRIC"], armor: ["MODERATE", "EXPERIMENTAL"], lenses: ["ANGULAR", "MECHANICAL"] },
+  Recon: { silhouette: "STREAMLINED", materialLanguage: "SYNTHETIC_FIBER", patterns: ["GEOMETRIC", "TECHNICAL"], armor: ["LIGHT", "NONE"], lenses: ["WIDE", "ROUND"] },
+  Utility: { silhouette: "ATHLETIC", materialLanguage: "TEXTILE", patterns: ["WEB_GEOMETRY", "GEOMETRIC"], armor: ["LIGHT", "NONE"], lenses: ["ROUND", "WIDE"] },
+  Experimental: { silhouette: "TACTICAL", materialLanguage: "EXPERIMENTAL_MATERIAL", patterns: ["ORGANIC", "TECHNICAL"], armor: ["EXPERIMENTAL", "MODERATE"], lenses: ["MECHANICAL", "ANGULAR"] },
+  Aerial: { silhouette: "LIGHTWEIGHT", materialLanguage: "FLEXIBLE_POLYMER", patterns: ["ORGANIC", "WEB_GEOMETRY"], armor: ["NONE", "LIGHT"], lenses: ["ROUND", "WIDE"] },
+  Urban: { silhouette: "ATHLETIC", materialLanguage: "TEXTILE", patterns: ["WEB_GEOMETRY", "MINIMAL"], armor: ["LIGHT", "NONE"], lenses: ["ANGULAR", "ROUND"] },
+  Tactical: { silhouette: "TACTICAL", materialLanguage: "CARBON_COMPOSITE", patterns: ["TECHNICAL", "GEOMETRIC"], armor: ["MODERATE", "LIGHT"], lenses: ["MECHANICAL", "ANGULAR"] },
+};
+
+export function generateSuitDesign(archetype: Archetype, seedIndex: number): SuitDesign {
+  const rand = mulberry32(seedIndex * 4441 + 7);
+  const d = DESIGN_BY_ARCHETYPE[archetype];
+  return {
+    silhouette: d.silhouette,
+    materialLanguage: d.materialLanguage,
+    patternStyle: d.patterns[Math.floor(rand() * d.patterns.length)],
+    armorLevel: d.armor[Math.floor(rand() * d.armor.length)],
+    maskLensStyle: d.lenses[Math.floor(rand() * d.lenses.length)],
+  };
+}
+
 export interface SuitSpec {
   codename: string;
   archetype: Archetype;
@@ -171,6 +208,11 @@ const SUIT_NAMES: [string, Archetype][] = [
   ["Tactical Arachnid", "Tactical"], ["Urban Phantom", "Urban"], ["Night Sentinel", "Combat"], ["Hyper Velocity", "Aerial"],
   ["Widow-Inspired Concept", "Stealth"], ["Carbon Web", "Utility"], ["Eclipse-X", "Recon"], ["Spectral", "Recon"],
   ["Zero Point", "Experimental"], ["Arachnid Prime", "Tactical"], ["Laboratory Prototype", "Experimental"], ["Experimental Mk.60", "Experimental"],
+  ["Umbra", "Stealth"], ["Solstice", "Aerial"], ["Kinetic", "Utility"], ["Voidwalker", "Experimental"],
+  ["Prism", "Recon"], ["Talon", "Combat"], ["Meridian", "Tactical"], ["Ferro", "Combat"],
+  ["Halcyon", "Urban"], ["Obsidian-X", "Stealth"], ["Riptide", "Aerial"], ["Catalyst", "Experimental"],
+  ["Ember", "Utility"], ["Glacier", "Tactical"], ["Vantage", "Recon"], ["Wisp", "Stealth"],
+  ["Ironclad", "Combat"], ["Nightshade", "Stealth"], ["Aurora Strike", "Aerial"], ["Paragon", "Tactical"],
 ];
 
 export const SUIT_SPECS: SuitSpec[] = SUIT_NAMES.map(([codename, archetype], i) => {

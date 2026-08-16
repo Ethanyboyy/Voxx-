@@ -2,6 +2,13 @@
 
 import { HolographicPanel, LabSectionLabel } from "@/components/lab/primitives";
 import { HolographicModel } from "@/components/lab/HolographicModel";
+import type {
+  ArmorLevel,
+  MaskLensStyle,
+  MaterialLanguage,
+  PatternStyle,
+  Silhouette,
+} from "@/components/lab/three/suitDesign";
 
 interface CompareStats {
   stealth: number;
@@ -48,7 +55,20 @@ const ROWS: { key: keyof CompareStats; label: string; unit?: string; lowerIsBett
 export function SuitCompareClient({
   suits,
 }: {
-  suits: { id: string; codename: string; archetype: string; colorPrimary: string; colorSecondary: string; componentCount: number; stats: CompareStats }[];
+  suits: {
+    id: string;
+    codename: string;
+    archetype: string;
+    colorPrimary: string;
+    colorSecondary: string;
+    silhouette: Silhouette;
+    materialLanguage: MaterialLanguage;
+    patternStyle: PatternStyle;
+    armorLevel: ArmorLevel;
+    maskLensStyle: MaskLensStyle;
+    componentCount: number;
+    stats: CompareStats;
+  }[];
 }) {
   return (
     <div className="mt-5 flex flex-col gap-5">
@@ -57,7 +77,18 @@ export function SuitCompareClient({
           <HolographicPanel key={s.id} corners className="flex flex-col items-center p-4">
             <p className="font-semibold text-foreground">{s.codename}</p>
             <p className="text-xs text-muted-foreground">{s.archetype}</p>
-            <HolographicModel colorPrimary={s.colorPrimary} colorSecondary={s.colorSecondary} size={180} className="mt-2" />
+            <HolographicModel
+              colorPrimary={s.colorPrimary}
+              colorSecondary={s.colorSecondary}
+              silhouette={s.silhouette}
+              materialLanguage={s.materialLanguage}
+              patternStyle={s.patternStyle}
+              armorLevel={s.armorLevel}
+              maskLensStyle={s.maskLensStyle}
+              size={180}
+              controls={false}
+              className="mt-2"
+            />
             <p className="mt-1 text-[11px] text-muted-foreground">{s.componentCount} components</p>
           </HolographicPanel>
         ))}

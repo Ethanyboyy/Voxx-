@@ -32,6 +32,40 @@ const NUMERIC_FIELDS: { key: keyof Material; label: string; unit?: string; defau
   { key: "costPerKgUsd", label: "Cost per kg", unit: "USD", default: 25 },
 ];
 
+/** A single material property rendered as a compact bar, scaled against the
+ * max value in the currently visible (filtered) set — reads as an engineering
+ * comparison rather than an isolated number. */
+function PropertyBar({
+  label,
+  value,
+  max,
+  unit,
+  decimals = 0,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  unit?: string;
+  decimals?: number;
+}) {
+  const pct = max > 0 ? Math.max(2, Math.min(100, (value / max) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 truncate text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-accent-blue to-accent transition-[width] duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="lab-mono w-20 shrink-0 text-right text-[10px] text-foreground">
+        {value.toFixed(decimals)}
+        {unit ? <span className="ml-0.5 text-muted-foreground">{unit}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 export function MaterialsClient({ initialMaterials }: { initialMaterials: Material[] }) {
   const [materials, setMaterials] = useState(initialMaterials);
   const [query, setQuery] = useState("");
@@ -45,6 +79,20 @@ export function MaterialsClient({ initialMaterials }: { initialMaterials: Materi
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, Material[]>();
+    for (const m of filtered) {
+      const list = map.get(m.category) ?? [];
+      list.push(m);
+      map.set(m.category, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
+
+  const maxTensile = Math.max(1, ...filtered.map((m) => m.tensileStrengthMpa));
+  const maxDensity = Math.max(1, ...filtered.map((m) => m.densityGCm3));
+  const maxCost = Math.max(1, ...filtered.map((m) => m.costPerKgUsd));
 
   return (
     <div className="mt-5 flex flex-col gap-4">
@@ -83,47 +131,52 @@ export function MaterialsClient({ initialMaterials }: { initialMaterials: Materi
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            {filtered.length} material{filtered.length === 1 ? "" : "s"}
+            {filtered.length} material{filtered.length === 1 ? "" : "s"} across {grouped.length} categor
+            {grouped.length === 1 ? "y" : "ies"}
           </p>
-          <HolographicPanel className="overflow-x-auto p-0">
-            <table className="w-full min-w-[900px] border-collapse text-sm">
-              <thead>
-                <tr className="lab-mono border-b border-border text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="px-3 py-2 font-semibold">Name</th>
-                  <th className="px-3 py-2 font-semibold">Category</th>
-                  <th className="px-3 py-2 text-right font-semibold">Density</th>
-                  <th className="px-3 py-2 text-right font-semibold">Tensile</th>
-                  <th className="px-3 py-2 text-right font-semibold">Elasticity</th>
-                  <th className="px-3 py-2 text-right font-semibold">Abrasion</th>
-                  <th className="px-3 py-2 text-right font-semibold">Temp. res.</th>
-                  <th className="px-3 py-2 text-right font-semibold">Moisture</th>
-                  <th className="px-3 py-2 text-right font-semibold">Cost/kg</th>
-                  <th className="px-3 py-2 font-semibold">Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m) => (
-                  <tr key={m.id} className="border-b border-border/60 last:border-0 hover:bg-surface-hover">
-                    <td className="px-3 py-2 font-medium text-foreground">
-                      {m.name}
-                      {m.isCustom ? <span className="ml-1.5 text-[10px] text-accent">custom</span> : null}
-                    </td>
-                    <td className="px-3 py-2 text-muted">{m.category}</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.densityGCm3} g/cm³</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.tensileStrengthMpa} MPa</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.elasticityPercent}%</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.abrasionResistance}</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.temperatureResistanceC}°C</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">{m.moistureResistance}</td>
-                    <td className="lab-mono px-3 py-2 text-right text-foreground">${m.costPerKgUsd}</td>
-                    <td className="px-3 py-2">
-                      <ConfidenceTag confidence={m.confidence} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </HolographicPanel>
+          <div className="flex flex-col gap-5">
+            {grouped.map(([cat, items]) => (
+              <div key={cat}>
+                <div className="flex items-center justify-between">
+                  <LabSectionLabel>{cat}</LabSectionLabel>
+                  <span className="lab-mono text-[10px] text-muted-foreground">
+                    {items.length} material{items.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <HolographicPanel corners className="mt-2 overflow-hidden p-0">
+                  <div className="divide-y divide-border/60">
+                    {items.map((m) => (
+                      <div key={m.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] sm:items-center">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate font-semibold text-foreground">{m.name}</p>
+                            {m.isCustom ? (
+                              <span className="lab-mono shrink-0 rounded-full border border-[var(--border-strong)] bg-accent-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent">
+                                Custom
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <ConfidenceTag confidence={m.confidence} />
+                            <span className="lab-mono text-[10px] text-muted-foreground">
+                              elast {m.elasticityPercent}% · abr {m.abrasionResistance} · {m.temperatureResistanceC}°C · moist{" "}
+                              {m.moistureResistance}
+                            </span>
+                          </div>
+                          {m.notes ? <p className="mt-1.5 line-clamp-2 text-xs text-muted">{m.notes}</p> : null}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <PropertyBar label="Tensile" value={m.tensileStrengthMpa} max={maxTensile} unit=" MPa" />
+                          <PropertyBar label="Density" value={m.densityGCm3} max={maxDensity} unit=" g/cm³" decimals={2} />
+                          <PropertyBar label="Cost/kg" value={m.costPerKgUsd} max={maxCost} unit=" USD" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </HolographicPanel>
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>
@@ -170,7 +223,7 @@ function AddMaterialForm({ onCreated }: { onCreated: (material: Omit<Material, "
   }
 
   return (
-    <HolographicPanel corners className="p-4">
+    <HolographicPanel corners scanline className="p-4">
       <LabSectionLabel>New Material</LabSectionLabel>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
@@ -203,7 +256,7 @@ function AddMaterialForm({ onCreated }: { onCreated: (material: Omit<Material, "
         </div>
       </div>
 
-      <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Properties</p>
+      <LabSectionLabel className="mb-2 mt-4">Properties</LabSectionLabel>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         {NUMERIC_FIELDS.map((f) => (
           <div key={f.key}>

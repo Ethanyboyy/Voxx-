@@ -28,6 +28,11 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
         status: suit.status,
         colorPrimary: suit.colorPrimary,
         colorSecondary: suit.colorSecondary,
+        silhouette: suit.silhouette,
+        materialLanguage: suit.materialLanguage,
+        patternStyle: suit.patternStyle,
+        armorLevel: suit.armorLevel,
+        maskLensStyle: suit.maskLensStyle,
         currentVersionLabel: suit.currentVersion.label,
         stats: suit.currentVersion.stats,
         versions: suit.versions.map((v) => ({

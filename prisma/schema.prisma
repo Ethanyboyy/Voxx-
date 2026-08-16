@@ -84,6 +84,7 @@ model User {
   labTrainingSessions LabTrainingSession[]
   labTutorialProgress LabTutorialProgress[]
   labDesignNotes      LabDesignNote[]
+  labResearchItems    LabResearchItem[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -1185,16 +1186,63 @@ model LabProject {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  suits       LabSuit[]
-  gadgets     LabGadget[]
-  webProfiles LabWebProfile[]
-  simulations LabSimulation[]
-  experiments LabExperiment[]
+  suits         LabSuit[]
+  gadgets       LabGadget[]
+  webProfiles   LabWebProfile[]
+  simulations   LabSimulation[]
+  experiments   LabExperiment[]
+  researchItems LabResearchItem[]
 }
 
 // ---------------------------------------------------------------------------
 // Suit Bay
 // ---------------------------------------------------------------------------
+
+/// Structured suit design vocabulary — the "source of truth" a suit's
+/// holographic 3D visualization is deterministically rendered FROM (never
+/// the reverse). Lives on LabSuit (identity-level, like color) rather than
+/// per-version: silhouette/material-language/pattern read as the suit's
+/// design language, not something that changes every iteration the way
+/// stats do — see ARCHITECTURE.md.
+enum LabSilhouette {
+  ATHLETIC
+  STREAMLINED
+  ARMORED
+  TACTICAL
+  LIGHTWEIGHT
+  STEALTH
+}
+
+enum LabMaterialLanguage {
+  TEXTILE
+  CARBON_COMPOSITE
+  SYNTHETIC_FIBER
+  FLEXIBLE_POLYMER
+  EXPERIMENTAL_MATERIAL
+}
+
+enum LabPatternStyle {
+  WEB_GEOMETRY
+  GEOMETRIC
+  ORGANIC
+  TECHNICAL
+  MINIMAL
+}
+
+enum LabArmorLevel {
+  NONE
+  LIGHT
+  MODERATE
+  EXPERIMENTAL
+}
+
+enum LabMaskLensStyle {
+  NARROW
+  WIDE
+  ANGULAR
+  ROUND
+  MECHANICAL
+}
 
 model LabSuit {
   id          String          @id @default(uuid())
@@ -1209,6 +1257,14 @@ model LabSuit {
   description String?
   colorPrimary   String       @default("#a855f7")
   colorSecondary String       @default("#0a0616")
+  /// Design-parameter vocabulary driving the 3D holographic render — see
+  /// LabSilhouette etc. above. All default to a sensible baseline so
+  /// existing rows created before this field remain renderable.
+  silhouette       LabSilhouette       @default(ATHLETIC)
+  materialLanguage LabMaterialLanguage @default(TEXTILE)
+  patternStyle     LabPatternStyle     @default(WEB_GEOMETRY)
+  armorLevel       LabArmorLevel       @default(LIGHT)
+  maskLensStyle    LabMaskLensStyle    @default(ANGULAR)
   status      LabDesignStatus @default(ACTIVE)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -1541,6 +1597,10 @@ model LabSimulationRun {
   peakThermalLoadC   Float?
   fatigueEstimatePct Float?
   warnings           String?              // JSON string[]
+  /// JSON array of {category, explanation, suggestion} — structured failure
+  /// analysis (never just "simulation failed"), populated whenever the run's
+  /// modeled thresholds are exceeded. Empty array when nothing failed.
+  failureAnalysis    String?
   summary            String?
   startedAt          DateTime             @default(now())
   completedAt        DateTime?
@@ -1686,4 +1746,46 @@ model LabDesignNote {
   subjectId   String
   content     String
   createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Research Engine
+// ---------------------------------------------------------------------------
+
+enum LabResearchCategory {
+  MATERIALS
+  TEXTILES
+  POLYMERS
+  COMPOSITES
+  ROBOTICS
+  WEARABLE_TECHNOLOGY
+  SENSORS
+  PHYSICS
+  BIOMECHANICS
+  THERMAL_MANAGEMENT
+  MANUFACTURING
+  PROTECTIVE_EQUIPMENT
+}
+
+/// A single research finding/note the lab is tracking — deliberately
+/// separate from VOX's own ResearchItem (which is web-search-provider
+/// output for the cognitive OS); this is lab-internal engineering research
+/// the user records by hand or via the AI Lab Engineer, always confidence-
+/// tagged like every other lab claim.
+model LabResearchItem {
+  id         String              @id @default(uuid())
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  project    LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId  String?
+  title      String
+  category   LabResearchCategory
+  source     String?
+  sourceDate DateTime?
+  confidence LabConfidence       @default(ESTIMATED)
+  /// 0-100 — how relevant this finding is to current lab work.
+  relevance  Int                 @default(50)
+  notes      String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 }

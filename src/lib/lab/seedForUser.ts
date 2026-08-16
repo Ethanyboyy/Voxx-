@@ -17,6 +17,7 @@ import { createSimulation, executeSimulation } from "@/lib/lab/simulations";
 import { createExperiment, addExperimentResult, updateExperiment, nextExperimentCode } from "@/lib/lab/experiments";
 import {
   SUIT_SPECS,
+  generateSuitDesign,
   GADGET_SPECS,
   PROJECT_SPECS,
   EXPERIMENT_SPECS,
@@ -98,6 +99,7 @@ export async function seedLabForUser(userId: string): Promise<void> {
   for (let i = 0; i < SUIT_SPECS.length; i++) {
     const spec = SUIT_SPECS[i];
     const stats = generateSuitStats(spec.archetype, i);
+    const design = generateSuitDesign(spec.archetype, i);
     const suit = await createSuit({
       userId,
       codename: spec.codename,
@@ -106,6 +108,11 @@ export async function seedLabForUser(userId: string): Promise<void> {
       description: suitDescription(spec),
       colorPrimary: spec.colorPrimary,
       colorSecondary: spec.colorSecondary,
+      silhouette: design.silhouette,
+      materialLanguage: design.materialLanguage,
+      patternStyle: design.patternStyle,
+      armorLevel: design.armorLevel,
+      maskLensStyle: design.maskLensStyle,
       stats,
     });
     createdSuits.push({ id: suit.id, codename: suit.codename, archetype: spec.archetype });

@@ -38,6 +38,31 @@ export const labScenarioObjectiveSchema = z.enum([
   "TRAINING",
 ]);
 export const labDifficultySchema = z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED", "EXPERIMENTAL"]);
+export const labSilhouetteSchema = z.enum(["ATHLETIC", "STREAMLINED", "ARMORED", "TACTICAL", "LIGHTWEIGHT", "STEALTH"]);
+export const labMaterialLanguageSchema = z.enum([
+  "TEXTILE",
+  "CARBON_COMPOSITE",
+  "SYNTHETIC_FIBER",
+  "FLEXIBLE_POLYMER",
+  "EXPERIMENTAL_MATERIAL",
+]);
+export const labPatternStyleSchema = z.enum(["WEB_GEOMETRY", "GEOMETRIC", "ORGANIC", "TECHNICAL", "MINIMAL"]);
+export const labArmorLevelSchema = z.enum(["NONE", "LIGHT", "MODERATE", "EXPERIMENTAL"]);
+export const labMaskLensStyleSchema = z.enum(["NARROW", "WIDE", "ANGULAR", "ROUND", "MECHANICAL"]);
+export const labResearchCategorySchema = z.enum([
+  "MATERIALS",
+  "TEXTILES",
+  "POLYMERS",
+  "COMPOSITES",
+  "ROBOTICS",
+  "WEARABLE_TECHNOLOGY",
+  "SENSORS",
+  "PHYSICS",
+  "BIOMECHANICS",
+  "THERMAL_MANAGEMENT",
+  "MANUFACTURING",
+  "PROTECTIVE_EQUIPMENT",
+]);
 
 export const suitStatsSchema = z.object({
   stealth: z.number().min(0).max(100),
@@ -69,6 +94,11 @@ export const createSuitSchema = z.object({
   description: z.string().max(2000).optional(),
   colorPrimary: z.string().max(20).optional(),
   colorSecondary: z.string().max(20).optional(),
+  silhouette: labSilhouetteSchema.optional(),
+  materialLanguage: labMaterialLanguageSchema.optional(),
+  patternStyle: labPatternStyleSchema.optional(),
+  armorLevel: labArmorLevelSchema.optional(),
+  maskLensStyle: labMaskLensStyleSchema.optional(),
   status: labDesignStatusSchema.optional(),
   stats: suitStatsSchema,
   versionLabel: z.string().max(20).optional(),
@@ -81,6 +111,11 @@ export const updateSuitSchema = z.object({
   description: z.string().max(2000).optional(),
   colorPrimary: z.string().max(20).optional(),
   colorSecondary: z.string().max(20).optional(),
+  silhouette: labSilhouetteSchema.optional(),
+  materialLanguage: labMaterialLanguageSchema.optional(),
+  patternStyle: labPatternStyleSchema.optional(),
+  armorLevel: labArmorLevelSchema.optional(),
+  maskLensStyle: labMaskLensStyleSchema.optional(),
   status: labDesignStatusSchema.optional(),
   projectId: z.string().nullable().optional(),
 });
@@ -288,3 +323,24 @@ export const addDesignNoteSchema = z.object({
 });
 
 export const labAiCommandSchema = z.object({ message: z.string().min(1).max(2000) });
+
+export const createResearchItemSchema = z.object({
+  projectId: z.string().optional(),
+  title: z.string().min(1).max(160),
+  category: labResearchCategorySchema,
+  source: z.string().max(300).optional(),
+  sourceDate: z.string().datetime().optional(),
+  confidence: labConfidenceSchema.optional(),
+  relevance: z.number().min(0).max(100).optional(),
+  notes: z.string().max(4000).optional(),
+});
+
+export const updateResearchItemSchema = z.object({
+  title: z.string().min(1).max(160).optional(),
+  category: labResearchCategorySchema.optional(),
+  source: z.string().max(300).optional(),
+  sourceDate: z.string().datetime().optional(),
+  confidence: labConfidenceSchema.optional(),
+  relevance: z.number().min(0).max(100).optional(),
+  notes: z.string().max(4000).optional(),
+});

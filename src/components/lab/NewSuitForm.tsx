@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea, Select, Label } from "@/components/ui/Field";
-import { HolographicPanel } from "@/components/lab/primitives";
+import { HolographicPanel, LabSectionLabel } from "@/components/lab/primitives";
+import { HolographicModel } from "@/components/lab/HolographicModel";
+import type {
+  ArmorLevel,
+  MaskLensStyle,
+  MaterialLanguage,
+  PatternStyle,
+  Silhouette,
+} from "@/components/lab/three/suitDesign";
 
 const STAT_FIELDS: { key: string; label: string; unit?: string; default: number }[] = [
   { key: "stealth", label: "Stealth", default: 50 },
@@ -26,12 +34,30 @@ const STAT_FIELDS: { key: string; label: string; unit?: string; default: number 
   { key: "maintenanceComplexity", label: "Maintenance", default: 40 },
 ];
 
+const SILHOUETTES: Silhouette[] = ["ATHLETIC", "STREAMLINED", "ARMORED", "TACTICAL", "LIGHTWEIGHT", "STEALTH"];
+const MATERIAL_LANGUAGES: MaterialLanguage[] = ["TEXTILE", "CARBON_COMPOSITE", "SYNTHETIC_FIBER", "FLEXIBLE_POLYMER", "EXPERIMENTAL_MATERIAL"];
+const PATTERN_STYLES: PatternStyle[] = ["WEB_GEOMETRY", "GEOMETRIC", "ORGANIC", "TECHNICAL", "MINIMAL"];
+const ARMOR_LEVELS: ArmorLevel[] = ["NONE", "LIGHT", "MODERATE", "EXPERIMENTAL"];
+const MASK_LENS_STYLES: MaskLensStyle[] = ["NARROW", "WIDE", "ANGULAR", "ROUND", "MECHANICAL"];
+
+function titleCase(s: string) {
+  return s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function NewSuitForm({
   projects,
   onCreated,
 }: {
   projects: { id: string; name: string }[];
-  onCreated: (suit: { id: string; codename: string; designation: string; archetype: string; status: string; colorPrimary: string; colorSecondary: string }) => void;
+  onCreated: (suit: {
+    id: string;
+    codename: string;
+    designation: string;
+    archetype: string;
+    status: string;
+    colorPrimary: string;
+    colorSecondary: string;
+  }) => void;
 }) {
   const [codename, setCodename] = useState("");
   const [archetype, setArchetype] = useState("Stealth");
@@ -39,6 +65,11 @@ export function NewSuitForm({
   const [colorPrimary, setColorPrimary] = useState("#a855f7");
   const [colorSecondary, setColorSecondary] = useState("#0a0616");
   const [projectId, setProjectId] = useState("");
+  const [silhouette, setSilhouette] = useState<Silhouette>("ATHLETIC");
+  const [materialLanguage, setMaterialLanguage] = useState<MaterialLanguage>("TEXTILE");
+  const [patternStyle, setPatternStyle] = useState<PatternStyle>("WEB_GEOMETRY");
+  const [armorLevel, setArmorLevel] = useState<ArmorLevel>("LIGHT");
+  const [maskLensStyle, setMaskLensStyle] = useState<MaskLensStyle>("ANGULAR");
   const [stats, setStats] = useState<Record<string, number>>(
     Object.fromEntries(STAT_FIELDS.map((f) => [f.key, f.default]))
   );
@@ -61,6 +92,11 @@ export function NewSuitForm({
         description: description || undefined,
         colorPrimary,
         colorSecondary,
+        silhouette,
+        materialLanguage,
+        patternStyle,
+        armorLevel,
+        maskLensStyle,
         projectId: projectId || undefined,
         stats: { ...stats, confidence: "HYPOTHETICAL" },
       }),
@@ -77,46 +113,116 @@ export function NewSuitForm({
 
   return (
     <HolographicPanel corners className="p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label>Codename</Label>
-          <Input value={codename} onChange={(e) => setCodename(e.target.value)} placeholder="e.g. Nightcrawler" />
-        </div>
-        <div>
-          <Label>Archetype</Label>
-          <Select value={archetype} onChange={(e) => setArchetype(e.target.value)}>
-            {["Stealth", "Combat", "Recon", "Utility", "Experimental", "Aerial", "Urban"].map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Description</Label>
-          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Design intent, notes…" />
-        </div>
-        <div>
-          <Label>Primary color</Label>
-          <input type="color" value={colorPrimary} onChange={(e) => setColorPrimary(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-surface" />
-        </div>
-        <div>
-          <Label>Secondary color</Label>
-          <input type="color" value={colorSecondary} onChange={(e) => setColorSecondary(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-surface" />
-        </div>
-        {projects.length > 0 ? (
-          <div className="sm:col-span-2">
-            <Label>Project (optional)</Label>
-            <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Codename</Label>
+            <Input value={codename} onChange={(e) => setCodename(e.target.value)} placeholder="e.g. Nightcrawler" />
+          </div>
+          <div>
+            <Label>Archetype</Label>
+            <Select value={archetype} onChange={(e) => setArchetype(e.target.value)}>
+              {["Stealth", "Combat", "Recon", "Utility", "Experimental", "Aerial", "Urban"].map((a) => (
+                <option key={a} value={a}>
+                  {a}
                 </option>
               ))}
             </Select>
           </div>
-        ) : null}
+          <div className="sm:col-span-2">
+            <Label>Description</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Design intent, notes…" />
+          </div>
+
+          <LabSectionLabel className="sm:col-span-2 mt-1">Design language</LabSectionLabel>
+          <div>
+            <Label>Silhouette</Label>
+            <Select value={silhouette} onChange={(e) => setSilhouette(e.target.value as Silhouette)}>
+              {SILHOUETTES.map((s) => (
+                <option key={s} value={s}>
+                  {titleCase(s)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Material language</Label>
+            <Select value={materialLanguage} onChange={(e) => setMaterialLanguage(e.target.value as MaterialLanguage)}>
+              {MATERIAL_LANGUAGES.map((m) => (
+                <option key={m} value={m}>
+                  {titleCase(m)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Pattern</Label>
+            <Select value={patternStyle} onChange={(e) => setPatternStyle(e.target.value as PatternStyle)}>
+              {PATTERN_STYLES.map((s) => (
+                <option key={s} value={s}>
+                  {titleCase(s)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Armor level</Label>
+            <Select value={armorLevel} onChange={(e) => setArmorLevel(e.target.value as ArmorLevel)}>
+              {ARMOR_LEVELS.map((a) => (
+                <option key={a} value={a}>
+                  {titleCase(a)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Mask lens style</Label>
+            <Select value={maskLensStyle} onChange={(e) => setMaskLensStyle(e.target.value as MaskLensStyle)}>
+              {MASK_LENS_STYLES.map((m) => (
+                <option key={m} value={m}>
+                  {titleCase(m)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Primary color</Label>
+            <input type="color" value={colorPrimary} onChange={(e) => setColorPrimary(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-surface" />
+          </div>
+          <div>
+            <Label>Secondary color</Label>
+            <input type="color" value={colorSecondary} onChange={(e) => setColorSecondary(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-surface" />
+          </div>
+          {projects.length > 0 ? (
+            <div className="sm:col-span-2">
+              <Label>Project (optional)</Label>
+              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col items-center">
+          <LabSectionLabel className="self-start">Live preview</LabSectionLabel>
+          <HolographicModel
+            colorPrimary={colorPrimary}
+            colorSecondary={colorSecondary}
+            silhouette={silhouette}
+            materialLanguage={materialLanguage}
+            patternStyle={patternStyle}
+            armorLevel={armorLevel}
+            maskLensStyle={maskLensStyle}
+            size={220}
+            controls={false}
+            className="mt-2"
+          />
+        </div>
       </div>
 
       <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

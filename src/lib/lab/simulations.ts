@@ -105,10 +105,11 @@ export async function executeSimulation(userId: string, simulationId: string, se
     skillLevel: simulation.skillLevel,
   });
 
+  const hasFailures = result.failures.length > 0;
   const run = await db.labSimulationRun.create({
     data: {
       simulationId,
-      status: "COMPLETED",
+      status: hasFailures ? "FAILED" : "COMPLETED",
       seed: runSeed,
       durationS,
       telemetry: JSON.stringify(result.telemetry),
@@ -117,6 +118,7 @@ export async function executeSimulation(userId: string, simulationId: string, se
       peakThermalLoadC: result.peakThermalLoadC,
       fatigueEstimatePct: result.fatigueEstimatePct,
       warnings: JSON.stringify(result.warnings),
+      failureAnalysis: JSON.stringify(result.failures),
       summary: `Peak velocity ${result.peakVelocityMs.toFixed(1)} m/s, peak force ${result.peakForceN.toFixed(0)} N, fatigue ${result.fatigueEstimatePct.toFixed(0)}%.`,
       completedAt: new Date(),
     },
@@ -124,8 +126,8 @@ export async function executeSimulation(userId: string, simulationId: string, se
 
   await recordEvent({
     userId,
-    type: "lab.simulation.completed",
-    payload: { name: simulation.name, runId: run.id },
+    type: hasFailures ? "lab.simulation.failed" : "lab.simulation.completed",
+    payload: { name: simulation.name, runId: run.id, failureCategories: result.failures.map((f) => f.category) },
     subjectType: "LabSimulation",
     subjectId: simulationId,
   });

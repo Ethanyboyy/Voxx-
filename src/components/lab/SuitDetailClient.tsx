@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { HolographicPanel, LabSectionLabel, LabStatusBadge, StatBar, UnitStat, ConfidenceTag } from "@/components/lab/primitives";
 import { HolographicModel, type SuitLayer } from "@/components/lab/HolographicModel";
+import type {
+  ArmorLevel,
+  MaskLensStyle,
+  MaterialLanguage,
+  PatternStyle,
+  Silhouette,
+} from "@/components/lab/three/suitDesign";
 import { HolographicInspectionTree, type InspectionNode } from "@/components/lab/HolographicInspectionTree";
 import { useInfoMode } from "@/components/lab/InfoMode";
 
@@ -50,6 +57,11 @@ export function SuitDetailClient({
     status: string;
     colorPrimary: string;
     colorSecondary: string;
+    silhouette: Silhouette;
+    materialLanguage: MaterialLanguage;
+    patternStyle: PatternStyle;
+    armorLevel: ArmorLevel;
+    maskLensStyle: MaskLensStyle;
     currentVersionLabel: string;
     stats: SuitStats;
     versions: { id: string; label: string; note: string | null; createdAt: string; isCurrent: boolean; stats: SuitStats | null }[];
@@ -171,7 +183,17 @@ export function SuitDetailClient({
       <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
         <HolographicPanel corners scanline className="flex flex-col items-center p-5">
           <LabSectionLabel className="self-start">Holographic Model</LabSectionLabel>
-          <HolographicModel colorPrimary={suit.colorPrimary} colorSecondary={suit.colorSecondary} visibleLayers={layers} className="mt-3" />
+          <HolographicModel
+            colorPrimary={suit.colorPrimary}
+            colorSecondary={suit.colorSecondary}
+            silhouette={suit.silhouette}
+            materialLanguage={suit.materialLanguage}
+            patternStyle={suit.patternStyle}
+            armorLevel={suit.armorLevel}
+            maskLensStyle={suit.maskLensStyle}
+            visibleLayers={layers}
+            className="mt-3"
+          />
           {mode !== "CINEMATIC" ? (
             <div className="mt-4 flex flex-wrap justify-center gap-1.5">
               {ALL_LAYERS.map((l) => (

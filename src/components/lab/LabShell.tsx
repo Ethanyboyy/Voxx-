@@ -16,6 +16,7 @@ const SECTIONS: { href: string; label: string; icon: string }[] = [
   { href: "/lab/training", label: "Training Center", icon: "◉" },
   { href: "/lab/scenarios", label: "Scenario Generator", icon: "◐" },
   { href: "/lab/experiments", label: "Experiments", icon: "✦" },
+  { href: "/lab/research", label: "Research", icon: "❖" },
   { href: "/lab/projects", label: "Projects", icon: "▣" },
   { href: "/lab/materials", label: "Materials", icon: "◆" },
   { href: "/lab/knowledge", label: "Data / Knowledge", icon: "≡" },

@@ -41,6 +41,21 @@ export interface TelemetrySample {
   fatiguePercent: number;
 }
 
+export type FailureCategory =
+  | "EXCESSIVE_LOAD"
+  | "THERMAL_OVERLOAD"
+  | "INSUFFICIENT_STRUCTURAL_CAPACITY"
+  | "ENERGY_LIMITATION"
+  | "ENVIRONMENTAL_CONDITION"
+  | "COLLISION_RISK"
+  | "INSTABILITY";
+
+export interface FailureAnalysisEntry {
+  category: FailureCategory;
+  explanation: string;
+  suggestion: string;
+}
+
 export interface SimulationResult {
   telemetry: TelemetrySample[];
   peakVelocityMs: number;
@@ -48,6 +63,10 @@ export interface SimulationResult {
   peakThermalLoadC: number;
   fatigueEstimatePct: number;
   warnings: string[];
+  /** Structured "why" behind any threshold the run exceeded — never just
+   * "simulation failed". Empty array when nothing exceeded a modeled
+   * threshold. See master prompt §24: explain, don't just report failure. */
+  failures: FailureAnalysisEntry[];
 }
 
 /** mulberry32 — tiny, fast, deterministic PRNG. Same seed -> same sequence. */
@@ -142,7 +161,59 @@ export function runSimulation(inputs: SimulationInputs): SimulationResult {
     "SIMULATION ONLY: results are a deterministic model output, not real-world engineering validation. See Web Lab and ARCHITECTURE.md."
   );
 
-  return { telemetry, peakVelocityMs, peakForceN, peakThermalLoadC, fatigueEstimatePct, warnings };
+  const failures: FailureAnalysisEntry[] = [];
+  if (gForceEquivalent > 6) {
+    failures.push({
+      category: "EXCESSIVE_LOAD",
+      explanation: `Peak dynamic force reached ~${gForceEquivalent.toFixed(1)}g relative to total mass — beyond the model's assumed sustainable-load range.`,
+      suggestion: "Reduce equipment mass, lower scenario difficulty, or increase suit mobility to soften acceleration bursts.",
+    });
+  }
+  if (peakThermalLoadC > 48) {
+    failures.push({
+      category: "THERMAL_OVERLOAD",
+      explanation: `Simulated thermal load reached ${peakThermalLoadC.toFixed(1)}°C, above the model's 48°C sustainable-operation ceiling.`,
+      suggestion: "Investigate a lower suit thermal-load baseline, better ventilation components, or a cooler-environment scenario.",
+    });
+  }
+  if (gForceEquivalent > 5 && inputs.mobility < 40) {
+    failures.push({
+      category: "INSUFFICIENT_STRUCTURAL_CAPACITY",
+      explanation: `Low suit mobility (${inputs.mobility}/100) combined with high dynamic load suggests the current structural layer wasn't modeled for this scenario's forces.`,
+      suggestion: "Consider a structural-layer material with higher tensile strength, or test at lower difficulty first.",
+    });
+  }
+  const energyBudgetJ = 600; // assumed baseline energy budget for a run of this length
+  if (inputs.energyRequirementW * inputs.durationS > energyBudgetJ) {
+    failures.push({
+      category: "ENERGY_LIMITATION",
+      explanation: `Estimated energy draw (${(inputs.energyRequirementW * inputs.durationS).toFixed(0)} J) exceeds the model's assumed ${energyBudgetJ} J budget for a ${inputs.durationS.toFixed(0)}s run.`,
+      suggestion: "Lower gadget power draw, shorten the scenario, or flag this as a battery-capacity research item.",
+    });
+  }
+  if (inputs.windMs > 15 || inputs.temperatureC > 45 || inputs.temperatureC < -10) {
+    failures.push({
+      category: "ENVIRONMENTAL_CONDITION",
+      explanation: `Scenario conditions (wind ${inputs.windMs} m/s, ${inputs.temperatureC}°C) are outside the model's assumed nominal operating envelope.`,
+      suggestion: "Re-run under a moderate-condition scenario to isolate whether the environment or the design is the limiting factor.",
+    });
+  }
+  if (inputs.obstacleCount > 8 && inputs.difficultyFactor > 0.75) {
+    failures.push({
+      category: "COLLISION_RISK",
+      explanation: `${inputs.obstacleCount} obstacles at high difficulty exceeds what this kinematic model can represent — it has no collision detection.`,
+      suggestion: "Treat this run's telemetry as optimistic; a scenario this dense needs a real collision-aware simulation before drawing conclusions.",
+    });
+  }
+  if (fatigueEstimatePct > 90 && inputs.skillLevel < 40) {
+    failures.push({
+      category: "INSTABILITY",
+      explanation: `Fatigue reached ${fatigueEstimatePct.toFixed(0)}% with a low skill level (${inputs.skillLevel}/100) — the model treats this combination as losing controlled performance before the run ends.`,
+      suggestion: "Raise skill level (more training) or reduce scenario duration/difficulty for this design.",
+    });
+  }
+
+  return { telemetry, peakVelocityMs, peakForceN, peakThermalLoadC, fatigueEstimatePct, warnings, failures };
 }
 
 /** Theoretical load-model calculator for the Web Lab (section 13). Always
