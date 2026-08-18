@@ -14,6 +14,7 @@ import { listPatterns } from "@/lib/cognition/patterns";
 import { listConversations } from "@/lib/chat/service";
 import { getAIProvider } from "@/lib/ai";
 import { getActiveObjective, getNextBestAction, listOpportunities } from "@/lib/objectives/service";
+import { getEconomicOverview } from "@/lib/economic/service";
 import { listRecentEvents } from "@/lib/observability/events";
 import { getLabDashboard } from "@/lib/lab/dashboard";
 import { getBrainState, type BrainState } from "@/lib/brain/graph";
@@ -48,6 +49,7 @@ export default async function DashboardPage() {
     labDashboard,
     opportunities,
     brainState,
+    economicOverview,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
@@ -68,6 +70,7 @@ export default async function DashboardPage() {
     getLabDashboard(user.id),
     listOpportunities(user.id),
     getBrainState(user.id),
+    getEconomicOverview(user.id),
   ]);
 
   const displayName = user.name?.trim() || user.email.split("@")[0];
@@ -292,17 +295,21 @@ export default async function DashboardPage() {
           </GlassPanel>
         </Link>
 
-        <Link href="/objectives" className="vox-lift block">
+        <Link href="/finance" className="vox-lift block">
           <GlassPanel className="flex h-full flex-col justify-between gap-3 p-5">
-            <p className="vox-eyebrow">Opportunities</p>
+            <p className="vox-eyebrow">Economic Command</p>
             <div>
               <p className="text-sm font-semibold text-foreground">
-                {openOpportunities.length} open opportunit{openOpportunities.length === 1 ? "y" : "ies"}
+                {economicOverview.assetCount > 0
+                  ? `${economicOverview.assetCount} asset${economicOverview.assetCount === 1 ? "" : "s"} · ${economicOverview.operatingCount} operating`
+                  : `${openOpportunities.length} open opportunit${openOpportunities.length === 1 ? "y" : "ies"}`}
               </p>
               <p className="mt-1 text-xs text-muted">
-                {opportunities.length > 0
-                  ? `${opportunities.length} tracked total against your objectives.`
-                  : "Economic Command isn't built yet — this is the real Opportunities engine."}
+                {economicOverview.assetCount > 0
+                  ? `Profit to date: $${economicOverview.profitUsd.toLocaleString()}.`
+                  : opportunities.length > 0
+                    ? `${opportunities.length} tracked against your objectives — promote one into a real asset here.`
+                    : "No opportunities tracked yet — start from Objectives."}
               </p>
             </div>
           </GlassPanel>
