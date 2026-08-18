@@ -5,7 +5,8 @@ import { createMemoryRelation } from "@/lib/memory/relations";
 import { createTask } from "@/lib/projects/service";
 import { createConnection } from "@/lib/knowledge/service";
 import { approveConnection } from "@/lib/connections/service";
-import type { CapabilityLevel, Confidence, ConnectionService } from "@/generated/prisma/enums";
+import { createExperiment } from "@/lib/lab/experiments";
+import type { CapabilityLevel, Confidence, ConnectionService, LabConfidence } from "@/generated/prisma/enums";
 
 export interface CreateProposalInput {
   userId: string;
@@ -117,6 +118,24 @@ const ACTION_HANDLERS: Record<string, ActionHandler> = {
   "connection.propose": async (userId, payload) => {
     const connection = await approveConnection(userId, payload.service as ConnectionService);
     return `"${connection.displayName}" is now awaiting your approval in the Connections Hub.`;
+  },
+  // Approving a structured engineering proposal (see
+  // src/lib/lab/engineeringProposals.ts) creates the real LabExperiment row —
+  // this is the ONLY place that experiment actually gets created; proposing
+  // it only ever creates the Proposal itself.
+  "lab.create_experiment": async (userId, payload) => {
+    const experiment = await createExperiment({
+      userId,
+      code: String(payload.code),
+      title: String(payload.title),
+      hypothesis: String(payload.hypothesis),
+      objective: payload.objective ? String(payload.objective) : undefined,
+      expectedOutcome: payload.expectedOutcome ? String(payload.expectedOutcome) : undefined,
+      suitId: payload.suitId ? String(payload.suitId) : undefined,
+      componentId: payload.componentId ? String(payload.componentId) : undefined,
+      confidence: (payload.confidence as LabConfidence | undefined) ?? "HYPOTHETICAL",
+    });
+    return `Created experiment ${experiment.code} — "${experiment.title}".`;
   },
 };
 

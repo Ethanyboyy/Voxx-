@@ -178,14 +178,49 @@ Original scope, for reference:
    mapping from free-text names to subsystems — flag ones that don't map
    cleanly rather than guessing).
 
-### Milestone 9 — Engineering intelligence / experiment system — **PLANNED**
-Depends on Milestone 8 (needs `componentId` links to be meaningful). Build
-the structured engineering-proposal shape (objective/bottleneck/evidence/
-approach/risk/cost/MEASURED-ESTIMATED-SIMULATED-THEORETICAL labeling) as a
-new `actionType` the existing Proposal engine already supports
-(`src/lib/cognition/proposals.ts` — closed action registry, add one
-handler, no new permission system needed). Experiment ↔ Component ↔
-Research ↔ Memory linkage uses the FKs added in Milestone 8.
+### Milestone 9 — Engineering intelligence / experiment system — **CORE DONE**
+Built on Milestone 8's `componentId` links, as planned. One scope note:
+the master directive's "MEASURED-ESTIMATED-SIMULATED-THEORETICAL" confidence
+wording was NOT introduced as a new taxonomy — `LabConfidence`
+(VERIFIED/ESTIMATED/HYPOTHETICAL/UNKNOWN) is already the one real confidence
+vocabulary used everywhere else in the Lab domain (`LabMaterial`,
+`LabExperimentResult`, `LabComponent`), so a second parallel one would have
+been inconsistent rather than more correct. Reused it instead.
+
+What shipped:
+1. **`src/lib/lab/engineeringProposals.ts`** — `proposeExperiment()` builds
+   the structured reasoning shape (bottleneck → objective → approach →
+   risk/cost) into a real `Proposal` row via the existing `createProposal()`
+   — it creates nothing else. `actionType: "lab.create_experiment"`,
+   `capability: "lab.experiment.write"`, `requiredLevel: "RECOMMEND"` (so it
+   goes through the same real permission gate as every other consequential
+   action, per rule 4 — no bypass).
+2. **`src/lib/cognition/proposals.ts`** — added the `"lab.create_experiment"`
+   handler to the closed `ACTION_HANDLERS` registry, wrapping the existing
+   `createExperiment()` service function. This is the ONLY place a real
+   `LabExperiment` row gets created from a proposal — `approveProposal()`
+   still calls the real `enforceCapability()` first, unchanged.
+3. **`src/lib/lab/aiEngineer.ts`** — new intent: "propose/suggest an
+   experiment for <suit>" deterministically selects the suit's real
+   highest-risk component (by recorded `riskLevel`, never invented) as the
+   bottleneck, asks the grounded LLM for a single testable hypothesis
+   sentence (the same `ground()` pattern already used elsewhere in this
+   file), and calls `proposeExperiment()`. Every other field (bottleneck,
+   objective, approach, risk, cost) is derived deterministically from the
+   component's real recorded `riskLevel`/`realityStatus`/`powerDrawW`/
+   `costUsd` — only the hypothesis sentence is LLM-authored, and it's
+   grounded in that same real data.
+4. **`tests/lab-engineering-proposals.test.ts`** (4 new tests) — proposing
+   creates a real `PROPOSED` proposal and no `LabExperiment`; approving
+   without the capability granted throws and creates nothing; approving
+   with the capability granted creates the real `LabExperiment` row with
+   correct `componentId`/`suitId`/`confidence`; denying never creates one.
+
+Full verification gate clean: typecheck, lint, 212 tests (4 new), production
+build. Not done in this pass: no UI surfaces the "propose an experiment"
+Lab AI Engineer intent as a discoverable button (it's reachable today only
+via the existing free-text AI Engineer input) — the Proposals page itself
+needed no changes since it already renders any `actionType` generically.
 
 ### Milestone 10 — VOX Orchestrator — **REVISED SCOPE, see VOX_2.0_ARCHITECTURE.md**
 Original plan (a single `resolveContext()` both chat and the Lab AI
