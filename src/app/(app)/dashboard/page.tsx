@@ -13,8 +13,9 @@ import { listConnections } from "@/lib/connections/service";
 import { listPatterns } from "@/lib/cognition/patterns";
 import { listConversations } from "@/lib/chat/service";
 import { getAIProvider } from "@/lib/ai";
-import { getActiveObjective, getNextBestAction } from "@/lib/objectives/service";
+import { getActiveObjective, getNextBestAction, listOpportunities } from "@/lib/objectives/service";
 import { listRecentEvents } from "@/lib/observability/events";
+import { getLabDashboard } from "@/lib/lab/dashboard";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
@@ -44,6 +45,8 @@ export default async function DashboardPage() {
     activeObjective,
     nextBestAction,
     recentEvents,
+    labDashboard,
+    opportunities,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
@@ -61,6 +64,8 @@ export default async function DashboardPage() {
     getActiveObjective(user.id),
     getNextBestAction(user.id),
     listRecentEvents(user.id, 4),
+    getLabDashboard(user.id),
+    listOpportunities(user.id),
   ]);
 
   const displayName = user.name?.trim() || user.email.split("@")[0];
@@ -78,6 +83,10 @@ export default async function DashboardPage() {
   const activePatterns = patterns.filter((p) => p.status === "ACTIVE");
   const coreState = aggregateCoreState(agentRuns, pendingProposals.length);
   const recentConversations = conversations.slice(0, 5);
+  const mostRecentSuit = labDashboard.recentSuits[0] ?? null;
+  const openOpportunities = opportunities.filter(
+    (o) => o.status === "ACTIVE" || o.status === "EVALUATING" || o.status === "IDEA"
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -253,6 +262,47 @@ export default async function DashboardPage() {
                 Memory: {memories.length} · Patterns: {activePatterns.length}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">Always learning. Always improving.</p>
+            </div>
+          </GlassPanel>
+        </Link>
+      </div>
+
+      {/* Lab status / Opportunities — real state pulled from their own subsystems, not re-implemented here */}
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Link href="/lab" className="vox-lift block">
+          <GlassPanel className="flex h-full flex-col justify-between gap-3 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="vox-eyebrow">Lab</p>
+              <Badge tone={labDashboard.counts.activeExperiments > 0 ? "accent" : "neutral"}>
+                {labDashboard.counts.activeExperiments > 0
+                  ? `${labDashboard.counts.activeExperiments} running`
+                  : "idle"}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                {labDashboard.counts.suits} suit{labDashboard.counts.suits === 1 ? "" : "s"} · {labDashboard.counts.experiments} experiment
+                {labDashboard.counts.experiments === 1 ? "" : "s"}
+              </p>
+              <p className="mt-1 truncate text-xs text-muted">
+                {mostRecentSuit ? `Most recent suit: ${mostRecentSuit.codename}` : "No suits designed yet."}
+              </p>
+            </div>
+          </GlassPanel>
+        </Link>
+
+        <Link href="/objectives" className="vox-lift block">
+          <GlassPanel className="flex h-full flex-col justify-between gap-3 p-5">
+            <p className="vox-eyebrow">Opportunities</p>
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                {openOpportunities.length} open opportunit{openOpportunities.length === 1 ? "y" : "ies"}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {opportunities.length > 0
+                  ? `${opportunities.length} tracked total against your objectives.`
+                  : "Economic Command isn't built yet — this is the real Opportunities engine."}
+              </p>
             </div>
           </GlassPanel>
         </Link>

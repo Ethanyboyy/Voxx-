@@ -174,6 +174,12 @@ export function MemoryClient({ initialMemories }: { initialMemories: MemoryItem[
                         <ConfidenceBadge confidence={m.confidence} />
                         <span className="text-xs text-muted">{new Date(m.createdAt).toLocaleDateString()}</span>
                         <div className="ml-auto flex gap-1">
+                          <Link
+                            href={`/memory/${m.id}`}
+                            className="vox-press inline-flex h-8 items-center justify-center rounded-lg px-3 text-sm font-medium text-foreground transition-colors duration-200 ease-[var(--ease-luxury)] hover:bg-surface-hover"
+                          >
+                            Related
+                          </Link>
                           <Button size="sm" variant="ghost" onClick={() => checkContradictions(m.id)} disabled={checkingId === m.id}>
                             {checkingId === m.id ? "Checking..." : "Check for conflicts"}
                           </Button>
