@@ -91,8 +91,28 @@ the `LazyMount` WebGL-context-limit mitigation holds up under real mobile
 GPU constraints, not just desktop Chromium) and confirm frame budget on a
 throttled-CPU profile before calling this milestone's environment bar met.
 
-### Milestone 8 — Suit digital twin — **PLANNED, real schema work**
-This is the biggest genuine gap the audit found. Scope:
+### Milestone 8 — Suit digital twin — **CORE DONE**
+This was the biggest genuine gap the audit found. Schema, service layer,
+API, and UI are done and verified (typecheck/lint/191→196 tests/build all
+clean, plus a real-browser check against the live API showing subsystem
+tags, reality status, power/cost/risk, and resolved dependencies rendering
+correctly). Two items intentionally NOT done in this pass, left for a
+fast-follow rather than false-claimed complete:
+1. **Backfilling existing seeded components onto the new taxonomy** — every
+   component created before this migration has `subsystem: null`. A
+   name-based best-effort mapping (e.g. "Mask" → HEAD) is possible but
+   wasn't done here to avoid guessing wrong on ambiguous names; new
+   components (and the AI Lab Engineer, once it's taught about
+   `subsystem`) should tag correctly going forward.
+2. **A subsystem-level "everything about this region" view** (all
+   components + linked experiments + linked research + dependencies for
+   one subsystem at a glance) — today you inspect one component at a time
+   in the tree. The data model supports the rollup (`componentId` on both
+   `LabExperiment` and `LabResearchItem`); the aggregating query + UI is
+   Milestone 9's job once Engineering Intelligence needs it, not built
+   speculatively ahead of that need.
+
+Original scope, for reference:
 1. Prisma: `LabSubsystem` enum (HEAD/TORSO/ARMS/LEGS/FEET/CORE), add to
    `LabComponent`; add `powerDrawW Float?`, `costUsd Float?`,
    `riskLevel LabRiskLevel?` (new enum: LOW/MODERATE/HIGH/UNKNOWN),
