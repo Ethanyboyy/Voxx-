@@ -35,6 +35,13 @@ interface ConnectionEntry {
   connection: ConnectionRow | null;
 }
 
+function formatSyncTime(iso: string | null | undefined) {
+  if (!iso) return "Never synced";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Never synced";
+  return `Last sync: ${date.toLocaleString()}`;
+}
+
 interface SuggestedProposal {
   id: string;
   observation: string;
@@ -248,6 +255,7 @@ export function ConnectionsHubClient({
                         variant={entry.connection?.readEnabled ? "secondary" : "primary"}
                         onClick={() => handleGrantAccess(service, { read: !entry.connection?.readEnabled })}
                         disabled={busy || entry.status === "REVOKED"}
+                        title={`Permission: ${entry.catalog.readCapability} (RECOMMEND)`}
                       >
                         {entry.connection?.readEnabled ? "Read: on" : "Turn on read access"}
                       </Button>
@@ -257,13 +265,26 @@ export function ConnectionsHubClient({
                           variant={entry.connection?.writeEnabled ? "secondary" : "primary"}
                           onClick={() => handleGrantAccess(service, { write: !entry.connection?.writeEnabled })}
                           disabled={busy || entry.status === "REVOKED"}
+                          title={`Permission: ${entry.catalog.writeCapability} (ACT)`}
                         >
                           {entry.connection?.writeEnabled ? "Write: on" : "Turn on write access"}
                         </Button>
                       ) : (
-                        <Badge tone="neutral">read-only</Badge>
+                        <Badge tone="neutral" title="This service has no write capability — VOX can only read from it.">
+                          read-only
+                        </Badge>
                       )}
+                      <Badge
+                        tone={entry.hasCredential ? "success" : "neutral"}
+                        title="Security state — whether an encrypted vendor credential is currently stored for this connection."
+                      >
+                        {entry.hasCredential ? "credential stored" : "no credential stored"}
+                      </Badge>
                     </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {formatSyncTime(entry.connection?.lastSyncedAt)}
+                    </p>
 
                     <div className="flex flex-wrap items-center gap-2">
                       {entry.status === "NOT_CONNECTED" ? (
@@ -294,7 +315,11 @@ export function ConnectionsHubClient({
                     </div>
 
                     {entry.connection?.statusReason ? (
-                      <p className="text-xs text-muted">{entry.connection.statusReason}</p>
+                      entry.status === "ERROR" ? (
+                        <p className="text-xs font-medium text-danger">Error: {entry.connection.statusReason}</p>
+                      ) : (
+                        <p className="text-xs text-muted">{entry.connection.statusReason}</p>
+                      )
                     ) : null}
                     {messages[service] ? <p className="text-xs text-warning">{messages[service]}</p> : null}
                   </CardContent>

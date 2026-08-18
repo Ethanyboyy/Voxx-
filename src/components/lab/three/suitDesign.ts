@@ -52,11 +52,17 @@ export function createPatternTexture(style: PatternStyle, colorPrimary: string, 
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
+  // Base fill is colorPrimary — the suit's dominant, iconic hero color — with
+  // colorSecondary drawn as the panel-line/trim pattern on top. (Previously
+  // reversed: a colorSecondary fill made the suit read as flat near-black
+  // with only faint accent lines, since colorSecondary palette entries are
+  // deliberately dark trim/contrast tones, not a base worth covering 100% of
+  // the surface in.)
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = colorSecondary;
+  ctx.fillStyle = colorPrimary;
   ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = colorPrimary;
-  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = colorSecondary;
+  ctx.globalAlpha = 0.55;
 
   const cx = size / 2;
   const cy = size / 2;
@@ -130,7 +136,7 @@ export function createPatternTexture(style: PatternStyle, colorPrimary: string, 
       for (let i = 0; i < 30; i++) {
         const x = Math.floor((Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * (size / step)) * step;
         const y = Math.floor((Math.sin(i * 78.233) * 12543.231 % 1 + 1) % 1 * (size / step)) * step;
-        ctx.fillStyle = colorPrimary;
+        ctx.fillStyle = colorSecondary;
         ctx.fillRect(x - 2, y - 2, 4, 4);
       }
       break;

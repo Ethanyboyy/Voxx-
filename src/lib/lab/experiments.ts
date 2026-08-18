@@ -14,6 +14,9 @@ export interface CreateExperimentInput {
   environmentNotes?: string;
   expectedOutcome?: string;
   suitId?: string;
+  /// Optional: the specific component this experiment targets, rather than
+  /// "the suit generally" — see LabComponent.
+  componentId?: string;
   simulationRunId?: string;
   confidence?: LabConfidence;
 }
@@ -32,6 +35,7 @@ export async function createExperiment(input: CreateExperimentInput) {
       environmentNotes: input.environmentNotes,
       expectedOutcome: input.expectedOutcome,
       suitId: input.suitId,
+      componentId: input.componentId,
       simulationRunId: input.simulationRunId,
       confidence: input.confidence ?? "HYPOTHETICAL",
     },

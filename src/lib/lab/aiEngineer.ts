@@ -8,6 +8,7 @@ import { getAIProvider } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { getSuit, createSuitVersion, type SuitStatsInput } from "@/lib/lab/suits";
 import { getLabDashboard } from "@/lib/lab/dashboard";
+import { proposeExperiment } from "@/lib/lab/engineeringProposals";
 
 const GROUNDING_SYSTEM_PROMPT = `You are the AI Lab Engineer inside SPIDER-MAN LABORATORY, a personal R&D lab application for designing fictional suits, gadgets, and running engineering simulations.
 
@@ -91,6 +92,54 @@ export async function handleLabCommand(userId: string, message: string): Promise
       const suit = await getSuit(userId, match.id);
       const reply = await ground(text, { codename: suit?.codename, components: suit?.components });
       return { reply, action: { type: "view_suit", label: `Open ${match.codename}`, href: `/lab/suits/${match.id}` } };
+    }
+  }
+
+  if (/\b(propose|suggest)\b.*\b(experiment|test)\b/.test(lower)) {
+    const match = findSuitByName(suits, lower);
+    if (match) {
+      const suit = await getSuit(userId, match.id);
+      const components = suit?.components ?? [];
+      if (components.length > 0) {
+        // Deterministic bottleneck selection from real recorded data — the
+        // highest-risk component is the one most worth validating with an
+        // actual experiment. Never invented: riskLevel/realityStatus/
+        // powerDrawW/costUsd are all real fields set on the component.
+        const riskRank: Record<string, number> = { HIGH: 3, MODERATE: 2, UNKNOWN: 1, LOW: 0 };
+        const target = [...components].sort(
+          (a, b) => (riskRank[b.riskLevel] ?? 0) - (riskRank[a.riskLevel] ?? 0)
+        )[0];
+
+        const hypothesis = (
+          await ground(
+            `In one plain sentence (no preamble, no quotation marks), state a testable engineering hypothesis for an experiment investigating "${target.name}" on suit "${suit!.codename}".`,
+            { component: target, suit: { codename: suit!.codename, archetype: suit!.archetype } }
+          )
+        ).trim();
+
+        const powerLine = target.powerDrawW != null ? `${target.powerDrawW}W` : "unrecorded power draw";
+        const costLine = target.costUsd != null ? `$${target.costUsd}` : "unrecorded cost";
+
+        await proposeExperiment({
+          userId,
+          suitId: suit!.id,
+          componentId: target.id,
+          title: `Validate ${target.name}`,
+          hypothesis,
+          bottleneck: `${target.name} is recorded at ${target.riskLevel} risk and ${target.realityStatus} reality status — it hasn't been validated by an experiment yet.`,
+          objective: `Establish whether ${target.name} performs as recorded (${powerLine}, ${costLine}) before relying on it in ${suit!.codename}.`,
+          approach: `Run a controlled test against ${target.name}'s currently recorded specs (${powerLine}, ${costLine}) and log the outcome as a real experiment result.`,
+          risk: target.riskLevel === "HIGH" || target.riskLevel === "UNKNOWN" ? `Recorded risk level is ${target.riskLevel}.` : undefined,
+          costEstimateUsd: target.costUsd ?? undefined,
+          confidence: target.realityStatus === "REAL" ? "ESTIMATED" : "HYPOTHETICAL",
+          evidenceNote: `Component "${target.name}" (subsystem: ${target.subsystem ?? "unassigned"}) on ${suit!.codename}.`,
+        });
+
+        return {
+          reply: `Proposed an experiment to validate ${target.name} on ${suit!.codename}: "${hypothesis}" Review and approve it on the Proposals page to create the real experiment record.`,
+          action: { type: "view_proposal", label: "Review proposal", href: "/proposals" },
+        };
+      }
     }
   }
 

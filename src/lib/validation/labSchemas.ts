@@ -172,6 +172,9 @@ export const createGadgetVersionSchema = z.object({
   makeCurrent: z.boolean().optional(),
 });
 
+export const labSubsystemSchema = z.enum(["HEAD", "TORSO", "ARMS", "LEGS", "FEET", "CORE"]);
+export const labRiskLevelSchema = z.enum(["LOW", "MODERATE", "HIGH", "UNKNOWN"]);
+
 export const createComponentSchema = z.object({
   suitId: z.string().optional(),
   gadgetId: z.string().optional(),
@@ -183,6 +186,31 @@ export const createComponentSchema = z.object({
   notes: z.string().max(2000).optional(),
   confidence: labConfidenceSchema.optional(),
   order: z.number().optional(),
+  subsystem: labSubsystemSchema.optional(),
+  powerDrawW: z.number().min(0).optional(),
+  costUsd: z.number().min(0).optional(),
+  riskLevel: labRiskLevelSchema.optional(),
+  realityStatus: labRealityStatusSchema.optional(),
+});
+
+export const updateComponentSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  materialId: z.string().nullable().optional(),
+  massKg: z.number().min(0).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  confidence: labConfidenceSchema.optional(),
+  order: z.number().optional(),
+  subsystem: labSubsystemSchema.nullable().optional(),
+  powerDrawW: z.number().min(0).nullable().optional(),
+  costUsd: z.number().min(0).nullable().optional(),
+  riskLevel: labRiskLevelSchema.optional(),
+  realityStatus: labRealityStatusSchema.optional(),
+});
+
+export const createComponentDependencySchema = z.object({
+  dependsOnId: z.string().min(1),
+  note: z.string().max(300).optional(),
 });
 
 export const createMaterialSchema = z.object({
@@ -296,6 +324,7 @@ export const createExperimentSchema = z.object({
   environmentNotes: z.string().max(2000).optional(),
   expectedOutcome: z.string().max(2000).optional(),
   suitId: z.string().optional(),
+  componentId: z.string().optional(),
   simulationRunId: z.string().optional(),
   confidence: labConfidenceSchema.optional(),
 });
@@ -345,6 +374,7 @@ export const createResearchItemSchema = z.object({
   confidence: labConfidenceSchema.optional(),
   relevance: z.number().min(0).max(100).optional(),
   notes: z.string().max(4000).optional(),
+  componentId: z.string().optional(),
 });
 
 export const updateResearchItemSchema = z.object({
@@ -355,4 +385,5 @@ export const updateResearchItemSchema = z.object({
   confidence: labConfidenceSchema.optional(),
   relevance: z.number().min(0).max(100).optional(),
   notes: z.string().max(4000).optional(),
+  componentId: z.string().nullable().optional(),
 });
