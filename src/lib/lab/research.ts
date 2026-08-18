@@ -12,6 +12,8 @@ export interface CreateResearchItemInput {
   confidence?: LabConfidence;
   relevance?: number;
   notes?: string;
+  /// Optional: the specific component this finding informs.
+  componentId?: string;
 }
 
 export async function createResearchItem(input: CreateResearchItemInput) {
@@ -26,6 +28,7 @@ export async function createResearchItem(input: CreateResearchItemInput) {
       confidence: input.confidence ?? "ESTIMATED",
       relevance: input.relevance ?? 50,
       notes: input.notes,
+      componentId: input.componentId,
     },
   });
 
@@ -60,6 +63,7 @@ export interface UpdateResearchItemInput {
   confidence?: LabConfidence;
   relevance?: number;
   notes?: string;
+  componentId?: string | null;
 }
 
 export async function updateResearchItem(userId: string, id: string, updates: UpdateResearchItemInput) {

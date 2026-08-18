@@ -1,5 +1,13 @@
 import { db } from "@/lib/db";
-import type { LabConfidence } from "@/generated/prisma/enums";
+import { recordEvent } from "@/lib/observability/events";
+import type { LabConfidence, LabRealityStatus, LabRiskLevel, LabSubsystem } from "@/generated/prisma/enums";
+
+export interface ComponentDependencyRef {
+  id: string;
+  dependsOnId: string;
+  dependsOnName: string;
+  note: string | null;
+}
 
 export interface ComponentNode {
   id: string;
@@ -12,6 +20,12 @@ export interface ComponentNode {
   notes: string | null;
   confidence: LabConfidence;
   order: number;
+  subsystem: LabSubsystem | null;
+  powerDrawW: number | null;
+  costUsd: number | null;
+  riskLevel: LabRiskLevel;
+  realityStatus: LabRealityStatus;
+  dependsOn: ComponentDependencyRef[];
   children: ComponentNode[];
 }
 
@@ -21,7 +35,10 @@ export interface ComponentNode {
 export async function getComponentTree(owner: { suitId?: string; gadgetId?: string }): Promise<ComponentNode[]> {
   const flat = await db.labComponent.findMany({
     where: owner.suitId ? { suitId: owner.suitId } : { gadgetId: owner.gadgetId },
-    include: { material: { select: { name: true } } },
+    include: {
+      material: { select: { name: true } },
+      dependsOn: { include: { dependsOn: { select: { name: true } } } },
+    },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
 
@@ -38,6 +55,17 @@ export async function getComponentTree(owner: { suitId?: string; gadgetId?: stri
       notes: c.notes,
       confidence: c.confidence,
       order: c.order,
+      subsystem: c.subsystem,
+      powerDrawW: c.powerDrawW,
+      costUsd: c.costUsd,
+      riskLevel: c.riskLevel,
+      realityStatus: c.realityStatus,
+      dependsOn: c.dependsOn.map((d) => ({
+        id: d.id,
+        dependsOnId: d.dependsOnId,
+        dependsOnName: d.dependsOn.name,
+        note: d.note,
+      })),
       children: [],
     });
   }
@@ -64,6 +92,11 @@ export interface CreateComponentInput {
   notes?: string;
   confidence?: LabConfidence;
   order?: number;
+  subsystem?: LabSubsystem;
+  powerDrawW?: number;
+  costUsd?: number;
+  riskLevel?: LabRiskLevel;
+  realityStatus?: LabRealityStatus;
 }
 
 export async function createComponent(input: CreateComponentInput) {
@@ -79,10 +112,56 @@ export async function createComponent(input: CreateComponentInput) {
       notes: input.notes,
       confidence: input.confidence ?? "ESTIMATED",
       order: input.order ?? 0,
+      subsystem: input.subsystem,
+      powerDrawW: input.powerDrawW,
+      costUsd: input.costUsd,
+      riskLevel: input.riskLevel ?? "UNKNOWN",
+      realityStatus: input.realityStatus ?? "CONCEPT",
     },
   });
 }
 
+export interface UpdateComponentInput {
+  name?: string;
+  description?: string | null;
+  materialId?: string | null;
+  massKg?: number | null;
+  notes?: string | null;
+  confidence?: LabConfidence;
+  order?: number;
+  subsystem?: LabSubsystem | null;
+  powerDrawW?: number | null;
+  costUsd?: number | null;
+  riskLevel?: LabRiskLevel;
+  realityStatus?: LabRealityStatus;
+}
+
+export async function updateComponent(id: string, updates: UpdateComponentInput) {
+  return db.labComponent.update({ where: { id }, data: updates });
+}
+
 export async function deleteComponent(id: string) {
   return db.labComponent.delete({ where: { id } });
+}
+
+/** Add a directed dependency ("this component depends on that one"). A
+ * component cannot depend on itself; duplicate edges are rejected by the
+ * schema's unique constraint rather than silently deduped here. */
+export async function addComponentDependency(userId: string, componentId: string, dependsOnId: string, note?: string) {
+  if (componentId === dependsOnId) throw new Error("A component cannot depend on itself.");
+  const dep = await db.labComponentDependency.create({
+    data: { componentId, dependsOnId, note },
+  });
+  await recordEvent({
+    userId,
+    type: "lab.component.dependency_added",
+    payload: { componentId, dependsOnId },
+    subjectType: "LabComponent",
+    subjectId: componentId,
+  });
+  return dep;
+}
+
+export async function removeComponentDependency(id: string) {
+  return db.labComponentDependency.delete({ where: { id } });
 }

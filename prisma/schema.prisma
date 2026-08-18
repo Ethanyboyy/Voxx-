@@ -1359,6 +1359,27 @@ model LabSuitStats {
 // Component hierarchy — shared by suits AND gadgets (Fallout-style inspection)
 // ---------------------------------------------------------------------------
 
+/// Body-region taxonomy for suit components — the digital-twin backbone.
+/// Nullable on LabComponent so existing free-text components (and gadget
+/// components, which don't have a body region) aren't forced to guess one.
+/// CORE is for cross-cutting systems (power, comms, compute) that don't
+/// belong to one region.
+enum LabSubsystem {
+  HEAD
+  TORSO
+  ARMS
+  LEGS
+  FEET
+  CORE
+}
+
+enum LabRiskLevel {
+  LOW
+  MODERATE
+  HIGH
+  UNKNOWN
+}
+
 model LabComponent {
   id          String        @id @default(uuid())
   parent      LabComponent? @relation("ComponentTree", fields: [parentId], references: [id], onDelete: Cascade)
@@ -1376,8 +1397,38 @@ model LabComponent {
   notes       String?
   confidence  LabConfidence @default(ESTIMATED)
   order       Int           @default(0)
+  /// Body region this component belongs to — null for gadget components and
+  /// any suit component not yet classified. See LabSubsystem.
+  subsystem     LabSubsystem?
+  powerDrawW    Float?
+  costUsd       Float?
+  riskLevel     LabRiskLevel     @default(UNKNOWN)
+  /// Buildability/reality status at the COMPONENT level — independent of
+  /// the parent suit's own LabRealityStatus. A suit can be BUILDABLE
+  /// overall while one experimental subsystem is still CONCEPT.
+  realityStatus LabRealityStatus @default(CONCEPT)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  dependsOn    LabComponentDependency[] @relation("ComponentDependsOn")
+  dependedOnBy LabComponentDependency[] @relation("ComponentDependedOnBy")
+  experiments  LabExperiment[]
+  researchItems LabResearchItem[]
+}
+
+/// A component's dependency on another component (e.g. "HUD" depends on
+/// "Power Core"). Directional, many-to-many via join rows rather than a
+/// self-relation array, since Prisma/SQLite has no native array-of-FK type.
+model LabComponentDependency {
+  id           String       @id @default(uuid())
+  component    LabComponent @relation("ComponentDependsOn", fields: [componentId], references: [id], onDelete: Cascade)
+  componentId  String
+  dependsOn    LabComponent @relation("ComponentDependedOnBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
+  dependsOnId  String
+  note         String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([componentId, dependsOnId])
 }
 
 // ---------------------------------------------------------------------------
@@ -1661,6 +1712,11 @@ model LabExperiment {
   status           LabExperimentStatus  @default(PLANNED)
   suit             LabSuit?             @relation(fields: [suitId], references: [id], onDelete: SetNull)
   suitId           String?
+  /// Optional: the specific subsystem/component this experiment targets,
+  /// rather than "the suit generally". Null is valid (whole-suit
+  /// experiments still make sense).
+  component        LabComponent?        @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  componentId      String?
   simulationRun    LabSimulationRun?    @relation(fields: [simulationRunId], references: [id], onDelete: SetNull)
   simulationRunId  String?
   confidence       LabConfidence        @default(HYPOTHETICAL)
@@ -1808,6 +1864,9 @@ model LabResearchItem {
   userId     String
   project    LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   projectId  String?
+  /// Optional: the specific component this research finding informs.
+  component   LabComponent?      @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  componentId String?
   title      String
   category   LabResearchCategory
   source     String?
