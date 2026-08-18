@@ -87,11 +87,11 @@ standard's "no duplicated UI" rule. Instead, evolve/rename in place:
 
 | Directive name | Maps to (existing) | Action |
 |---|---|---|
-| `VOXSurface` | `src/components/ui/GlassPanel.tsx` | Rename export, apply neutral tokens above. |
-| `VOXPanel` | `src/components/ui/Card.tsx` | Rename export; keep `CardHeader`/`CardTitle`/`CardContent` sub-components. |
-| `VOXButton` | `src/components/ui/Button.tsx` | Rename export; primary variant becomes the one legitimate large-area accent use. |
-| `VOXInput` | `src/components/ui/Field.tsx` (`Input`/`Textarea`/`Select`) | Rename exports. |
-| `VOXCommandBar` | `src/components/command/CommandPalette.tsx` + `src/components/lab/LabCommandBar.tsx` | Unify into one `VOXCommandBar` with a `scope` prop (`"global" \| "lab"`), rather than two parallel implementations. |
+| `VOXSurface` | `src/components/ui/GlassPanel.tsx` | **Keep existing name.** Already the single reused implementation across the app (43 files import from `ui/{Button,Card,GlassPanel,Field}`) — a mechanical `VOX*` rename across every call site is pure churn with no functional or architectural change, and risks breaking working call sites for a cosmetic prefix. Apply the neutral tokens above (done) instead of renaming. |
+| `VOXPanel` | `src/components/ui/Card.tsx` | Keep existing name, same reasoning. `CardHeader`/`CardTitle`/`CardContent` sub-components unchanged. |
+| `VOXButton` | `src/components/ui/Button.tsx` | Keep existing name, same reasoning. Primary variant is the one legitimate large-area accent use. |
+| `VOXInput` | `src/components/ui/Field.tsx` (`Input`/`Textarea`/`Select`) | Keep existing names, same reasoning. |
+| `VOXCommandBar` | `src/components/command/CommandPalette.tsx` (global, Cmd/Ctrl+K) + `src/components/lab/LabCommandBar.tsx` (Lab-scoped, Shift+Cmd/Ctrl+L) | **Reconsidered during Milestone 2**: on inspection this is not accidental duplication — the Lab bar deliberately uses a different keybinding specifically to avoid colliding with the global palette on `/lab` routes, and its freeform-text fallback routes to the AI Lab Engineer (`/api/lab/ai`), a capability the global palette has no equivalent for. Keep both. Revisit only if a third command surface appears, at which point a real shared base component (not a forced merge of these two) is justified. |
 | `VOXStatus` | New — small addition to `primitives`, generalizing `LabStatusBadge`/`Badge` tone logic | Build once in `src/components/ui/`, have both Lab and core badges consume it. |
 | `VOXMetric` | New — generalize the dashboard's `StatCard` pattern already used in `dashboard/page.tsx` | Extract to `src/components/ui/`. |
 | `VOXDataRow` | New — generalize the list-row pattern already repeated in `ProjectsClient`/`TasksClient`/`GoalsClient` | Extract once, replace the repeated hand-rolled rows. |
