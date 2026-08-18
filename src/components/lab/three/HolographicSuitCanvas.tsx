@@ -69,7 +69,7 @@ export function HolographicSuitCanvas({
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [1.9, -0.05, 3.5], fov: 30 }}
+      camera={{ position: [1.5, -0.05, 2.7], fov: 27 }}
       gl={{ antialias: true, alpha: true }}
     >
       <color attach="background" args={["#050212"]} />
@@ -115,7 +115,7 @@ export function HolographicSuitCanvas({
         makeDefault
         enablePan
         panSpeed={0.5}
-        minDistance={2}
+        minDistance={1.6}
         maxDistance={6}
         minPolarAngle={0.35}
         maxPolarAngle={Math.PI - 0.35}

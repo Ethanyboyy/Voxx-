@@ -91,6 +91,54 @@ the `LazyMount` WebGL-context-limit mitigation holds up under real mobile
 GPU constraints, not just desktop Chromium) and confirm frame budget on a
 throttled-CPU profile before calling this milestone's environment bar met.
 
+**Suit rig geometry + material quality pass — DONE (direct user-directed fix).**
+The user flagged the procedural suit render as looking bad; a diagnosis
+turned up two separable problems, both fixed and re-verified by real
+Playwright screenshots against the live app (not just typecheck):
+1. **Geometry** (`SuitRig.tsx`): limbs were uniform-radius capsules, hands
+   were bare spheres, feet were single boxes, the torso was one uniform
+   block with no waist, and there was no neck connecting the head to the
+   shoulders. Rebuilt with `THREE.LatheGeometry`-based tapered limbs (real
+   bicep/thigh bulge narrowing toward wrist/ankle), a real `Hand` (palm +
+   mirrored thumb) and `Boot` (ankle block + sole) shape, a torso split into
+   tapered chest/waist volumes, a neck cylinder, blended (enlarged,
+   squashed) shoulder caps, and an ellipsoid head. All `SuitRigProps`,
+   layer-visibility, and x-ray/explode joint math were left untouched, so
+   nothing downstream (inspection tree, explode slider, x-ray toggle) needed
+   to change.
+2. **Material/color (the bigger actual cause of "looks bad"):** every suit
+   in the catalog was rendering as a near-flat, monochrome silhouette. Root
+   cause was in `suitDesign.ts`/`SuitRig.tsx` together, not the geometry —
+   `createPatternTexture()` filled the ENTIRE surface with `colorSecondary`
+   (a deliberately near-black trim tone in every palette entry) and drew
+   `colorPrimary` only as thin 50%-alpha accent lines, while
+   `outerMaterialProps.color` was also set to `colorPrimary`. Since
+   `meshStandardMaterial.color` multiplies into the sampled map texel, that
+   multiplied a bright primary color into a near-black background and
+   crushed the real lit diffuse response toward black — what was actually
+   visible was almost entirely the flat, non-directional `emissive` channel,
+   which is why the suit read as a flat colored blob with no shading
+   gradient regardless of geometry quality. Fixed by (a) swapping the
+   pattern texture so `colorPrimary` — the suit's real, dominant hero color —
+   is the base fill and `colorSecondary` is the accent/trim line pattern,
+   and (b) setting `outerMaterialProps.color` to white so the map's own
+   baked colors render correctly instead of being multiplied down. Verified
+   across the full 60-suit catalog grid via a real browser screenshot: every
+   suit now shows its own distinct saturated color with a real top-lit/
+   shadowed gradient, a visible panel-line pattern, and a readable armor
+   plate — not the previous uniform purple silhouette.
+
+Also tightened the default camera framing in `HolographicSuitCanvas.tsx`
+(`position`/`fov` reduced, `minDistance` lowered) so the improved geometry
+reads at a more legible size by default rather than small/distant, while
+leaving `maxDistance` and all orbit bounds unchanged.
+
+Zero console errors in every Playwright pass (front view, rotated 3/4 view,
+full suit grid). Full verification gate (typecheck/lint/208 tests/build)
+clean. This was scoped strictly to rig geometry + material correctness — it
+does not touch the separate mobile-fallback/frame-budget item above, which
+remains open.
+
 ### Milestone 8 — Suit digital twin — **CORE DONE**
 This was the biggest genuine gap the audit found. Schema, service layer,
 API, and UI are done and verified (typecheck/lint/191→196 tests/build all

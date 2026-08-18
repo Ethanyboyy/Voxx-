@@ -74,15 +74,93 @@ function ExplodingGroup({
   );
 }
 
-/** A limb segment hanging from its parent group's origin (the joint) —
- * offset down by half its own length so the capsule's TOP meets the joint
- * rather than being centered on it. */
-function LimbSegment({ radius, length, materialProps }: { radius: number; length: number; materialProps: Record<string, unknown> }) {
+/** A tapered-limb profile revolved into real geometry (THREE.LatheGeometry) —
+ * replaces a uniform-radius capsule with a shape that actually bulges at the
+ * joint (bicep/thigh) and narrows toward the extremity (wrist/ankle), which
+ * is what makes a limb read as a limb instead of a rod. `endScale` narrows
+ * the far end further for lower-arm/lower-leg segments vs upper ones. */
+function buildLimbProfile(radius: number, length: number, endScale: number): THREE.Vector2[] {
+  return [
+    new THREE.Vector2(0, 0),
+    new THREE.Vector2(radius * 0.72, -length * 0.02),
+    new THREE.Vector2(radius * 1.0, -length * 0.14),
+    new THREE.Vector2(radius * 1.06, -length * 0.34),
+    new THREE.Vector2(radius * 0.88, -length * 0.55),
+    new THREE.Vector2(radius * endScale * 0.84, -length * 0.75),
+    new THREE.Vector2(radius * endScale * 0.76, -length * 0.94),
+    new THREE.Vector2(radius * endScale * 0.68, -length * 0.99),
+    new THREE.Vector2(0, -length),
+  ];
+}
+
+/** A limb segment hanging from its parent group's origin (the joint). The
+ * Lathe profile already spans from y=0 (joint) to y=-length, so the mesh
+ * sits at the group origin with no extra offset needed. */
+function LimbSegment({
+  radius,
+  length,
+  endScale = 1,
+  materialProps,
+}: {
+  radius: number;
+  length: number;
+  endScale?: number;
+  materialProps: Record<string, unknown>;
+}) {
+  const geometry = useMemo(() => {
+    const profile = buildLimbProfile(radius, length, endScale);
+    return new THREE.LatheGeometry(profile, 12);
+  }, [radius, length, endScale]);
+
   return (
-    <mesh castShadow position={[0, -length / 2, 0]}>
-      <capsuleGeometry args={[radius, length * 0.55, 4, 8]} />
+    <mesh castShadow geometry={geometry}>
       <meshStandardMaterial {...materialProps} />
     </mesh>
+  );
+}
+
+/** A real glove silhouette — a flattened rounded palm plus an offset thumb —
+ * instead of a bare sphere. `mirror` flips the thumb to the inside of
+ * whichever hand it's on. */
+function Hand({
+  radius,
+  mirror,
+  colorSecondary,
+  colorPrimary,
+}: {
+  radius: number;
+  mirror: 1 | -1;
+  colorSecondary: string;
+  colorPrimary: string;
+}) {
+  const gloveMaterial = { color: colorSecondary, metalness: 0.5, roughness: 0.4, emissive: colorPrimary, emissiveIntensity: 0.2 };
+  return (
+    <group>
+      <RoundedBox castShadow args={[radius * 1.65, radius * 1.35, radius * 2.05]} radius={radius * 0.55} smoothness={3}>
+        <meshStandardMaterial {...gloveMaterial} />
+      </RoundedBox>
+      <mesh castShadow position={[mirror * radius * 0.95, -radius * 0.08, radius * 0.35]} rotation={[0.15, 0, mirror * -0.55]}>
+        <capsuleGeometry args={[radius * 0.34, radius * 0.62, 4, 6]} />
+        <meshStandardMaterial {...gloveMaterial} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A boot: a narrower ankle block over an elongated, flatter sole block —
+ * two shapes instead of one, which is what separates "boot" from "box". */
+function Boot({ radius, colorSecondary, colorPrimary }: { radius: number; colorSecondary: string; colorPrimary: string }) {
+  const bootMaterial = { color: colorSecondary, metalness: 0.5, roughness: 0.35, emissive: colorPrimary, emissiveIntensity: 0.2 };
+  const soleMaterial = { color: colorSecondary, metalness: 0.15, roughness: 0.75 };
+  return (
+    <group position={[0, -radius * 0.55, radius * 0.1]}>
+      <RoundedBox castShadow position={[0, radius * 0.42, -radius * 0.15]} args={[radius * 1.3, radius * 1.35, radius * 1.55]} radius={radius * 0.3} smoothness={3}>
+        <meshStandardMaterial {...bootMaterial} />
+      </RoundedBox>
+      <RoundedBox castShadow position={[0, -radius * 0.28, radius * 0.42]} args={[radius * 1.55, radius * 0.5, radius * 2.75]} radius={radius * 0.18} smoothness={3}>
+        <meshStandardMaterial {...soleMaterial} />
+      </RoundedBox>
+    </group>
   );
 }
 
@@ -108,12 +186,20 @@ export function SuitRig({
   const show = (l: SuitLayer) => visibleLayers.has(l);
   const outerOpacity = xray ? 0.14 : 1;
 
+  // `map` already bakes colorSecondary (base fill) and colorPrimary (pattern
+  // lines) into its pixels — meshStandardMaterial multiplies `color` into
+  // the sampled texel, so setting `color` to colorPrimary here would crush
+  // the near-black colorSecondary fill toward black and leave the flat,
+  // non-directional `emissive` channel as almost the only visible light,
+  // which is what was making every suit read as a monochrome flat silhouette
+  // regardless of geometry. Leaving `color` white lets the map's real two-tone
+  // pattern read under the studio lights; emissive stays as a modest accent.
   const outerMaterialProps = {
-    color: colorPrimary,
+    color: "#ffffff",
     metalness: mat.metalness,
     roughness: mat.roughness,
     emissive: colorPrimary,
-    emissiveIntensity: mat.emissiveIntensity * (xray ? 0.4 : 1),
+    emissiveIntensity: mat.emissiveIntensity * (xray ? 0.4 : 0.55),
     map: patternTexture,
     transparent: true,
     opacity: outerOpacity,
@@ -124,6 +210,21 @@ export function SuitRig({
   const hipY = -p.torsoHeight / 2;
   const hipX = p.torsoWidth / 2.6;
   const shoulderX = p.shoulderWidth / 2;
+
+  // Torso silhouette: a wider chest tapering to a narrower waist, instead of
+  // one uniform box — the single biggest cue that reads as "a body" rather
+  // than "a rounded brick". The overall bounding span (0.03 ± torsoHeight/2)
+  // is unchanged, so every joint computed from it (shoulderY, hipY, the
+  // chest accent, the armor plate, the structural/thermal overlays) still
+  // lines up correctly.
+  const chestH = p.torsoHeight * 0.56;
+  const waistH = p.torsoHeight - chestH;
+  const torsoTop = 0.03 + p.torsoHeight / 2;
+  const torsoBottom = 0.03 - p.torsoHeight / 2;
+  const chestY = torsoTop - chestH / 2;
+  const waistY = torsoBottom + waistH / 2;
+  const waistWidth = p.torsoWidth * 0.8;
+  const waistDepth = p.torsoDepth * 0.88;
 
   const armParts: PartDef[] = [
     { name: "upperArmL", layer: "outer", joint: [-shoulderX, shoulderY, 0], rotationZ: 0.12, explodeDir: [-1, 0.15, 0], explodeDistance: 0.5 },
@@ -169,17 +270,33 @@ export function SuitRig({
 
   return (
     <group>
-      {/* Torso (outer shell) — rounded for a smooth, non-blocky silhouette */}
+      {/* Torso (outer shell) — chest + waist, tapered for a real silhouette */}
       {show("outer") ? (
-        <RoundedBox
-          castShadow
-          position={[0, 0.03, 0]}
-          args={[p.torsoWidth, p.torsoHeight, p.torsoDepth]}
-          radius={Math.min(0.09, p.torsoDepth * 0.35)}
-          smoothness={4}
-        >
-          <meshStandardMaterial {...outerMaterialProps} />
-        </RoundedBox>
+        <>
+          <RoundedBox
+            castShadow
+            position={[0, chestY, 0]}
+            args={[p.torsoWidth, chestH, p.torsoDepth]}
+            radius={Math.min(0.09, p.torsoDepth * 0.35)}
+            smoothness={4}
+          >
+            <meshStandardMaterial {...outerMaterialProps} />
+          </RoundedBox>
+          <RoundedBox
+            castShadow
+            position={[0, waistY, 0]}
+            args={[waistWidth, waistH, waistDepth]}
+            radius={Math.min(0.08, waistDepth * 0.35)}
+            smoothness={4}
+          >
+            <meshStandardMaterial {...outerMaterialProps} />
+          </RoundedBox>
+          {/* Neck — closes the gap between the shoulder line and the head */}
+          <mesh castShadow position={[0, shoulderY + 0.045, 0]}>
+            <cylinderGeometry args={[p.limbRadius * 0.6 * p.headScale, p.limbRadius * 0.75 * p.headScale, 0.09, 12]} />
+            <meshStandardMaterial {...outerMaterialProps} />
+          </mesh>
+        </>
       ) : null}
 
       {/* Structural layer — internal rib frame, revealed in x-ray */}
@@ -231,25 +348,27 @@ export function SuitRig({
         </RoundedBox>
       ) : null}
 
-      {/* Shoulders — small spheres for smooth joint reads */}
+      {/* Shoulders — squashed, enlarged caps so they blend into the torso
+          and upper-arm meshes instead of floating as visible bare spheres */}
       {show("outer") ? (
         <>
-          <mesh position={[-shoulderX, shoulderY, 0]}>
-            <sphereGeometry args={[p.limbRadius * 1.05, 12, 10]} />
+          <mesh position={[-shoulderX, shoulderY, 0]} scale={[1, 0.82, 1]}>
+            <sphereGeometry args={[p.limbRadius * 1.3, 14, 10]} />
             <meshStandardMaterial {...outerMaterialProps} />
           </mesh>
-          <mesh position={[shoulderX, shoulderY, 0]}>
-            <sphereGeometry args={[p.limbRadius * 1.05, 12, 10]} />
+          <mesh position={[shoulderX, shoulderY, 0]} scale={[1, 0.82, 1]}>
+            <sphereGeometry args={[p.limbRadius * 1.3, 14, 10]} />
             <meshStandardMaterial {...outerMaterialProps} />
           </mesh>
         </>
       ) : null}
 
-      {/* Head / mask */}
+      {/* Head / mask — a scaled ellipsoid instead of a perfect sphere, so it
+          reads as a head/cowl rather than a ball sitting on the shoulders */}
       {show("mask") ? (
         <ExplodingGroup def={head} explodeAmount={explodeAmount}>
-          <mesh castShadow>
-            <sphereGeometry args={[0.19 * p.headScale, 24, 20]} />
+          <mesh castShadow scale={[0.94, 1.1, 0.98]}>
+            <sphereGeometry args={[0.19 * p.headScale, 26, 20]} />
             <meshStandardMaterial {...outerMaterialProps} map={patternTexture} />
           </mesh>
           {show("sensors") ? (
@@ -277,64 +396,54 @@ export function SuitRig({
         </ExplodingGroup>
       ) : null}
 
-      {/* Arms */}
+      {/* Arms — tapered upper segment (wide at shoulder) into a narrower
+          tapered forearm (endScale pulls the wrist end in further) */}
       {armParts
         .filter((d) => d.layer === "outer")
         .map((def) =>
           show("outer") ? (
             <ExplodingGroup key={def.name} def={def} explodeAmount={explodeAmount}>
-              <LimbSegment radius={p.limbRadius} length={L} materialProps={outerMaterialProps} />
+              <LimbSegment radius={p.limbRadius} length={L} endScale={def.name.startsWith("lower") ? 0.8 : 1} materialProps={outerMaterialProps} />
             </ExplodingGroup>
           ) : null
         )}
 
-      {/* Legs */}
+      {/* Legs — same tapering treatment, slightly thicker base radius */}
       {legParts
         .filter((d) => d.layer === "outer")
         .map((def) =>
           show("outer") ? (
             <ExplodingGroup key={def.name} def={def} explodeAmount={explodeAmount}>
-              <LimbSegment radius={p.limbRadius * 1.08} length={L} materialProps={outerMaterialProps} />
+              <LimbSegment radius={p.limbRadius * 1.08} length={L} endScale={def.name.startsWith("lower") ? 0.82 : 1} materialProps={outerMaterialProps} />
             </ExplodingGroup>
           ) : null
         )}
 
-      {/* Hands */}
+      {/* Hands — real glove silhouette (palm + thumb), not a bare sphere */}
       {armParts
         .filter((d) => d.layer === "gloves")
         .map((def) =>
           show("gloves") ? (
             <ExplodingGroup key={def.name} def={def} explodeAmount={explodeAmount}>
-              <mesh castShadow>
-                <sphereGeometry args={[p.limbRadius * 1.1, 12, 10]} />
-                <meshStandardMaterial color={colorSecondary} metalness={0.5} roughness={0.4} emissive={colorPrimary} emissiveIntensity={0.2} />
-              </mesh>
+              <Hand radius={p.limbRadius} mirror={def.name.endsWith("L") ? 1 : -1} colorSecondary={colorSecondary} colorPrimary={colorPrimary} />
             </ExplodingGroup>
           ) : null
         )}
 
-      {/* Feet */}
+      {/* Feet — ankle block + sole, not a single box */}
       {legParts
         .filter((d) => d.layer === "boots")
         .map((def) =>
           show("boots") ? (
             <ExplodingGroup key={def.name} def={def} explodeAmount={explodeAmount}>
-              <RoundedBox
-                castShadow
-                position={[0, -0.05, 0.06]}
-                args={[p.limbRadius * 2.2, p.limbRadius * 1.4, p.limbRadius * 3.4]}
-                radius={0.025}
-                smoothness={3}
-              >
-                <meshStandardMaterial color={colorSecondary} metalness={0.5} roughness={0.35} emissive={colorPrimary} emissiveIntensity={0.2} />
-              </RoundedBox>
+              <Boot radius={p.limbRadius * 1.15} colorSecondary={colorSecondary} colorPrimary={colorPrimary} />
             </ExplodingGroup>
           ) : null
         )}
 
       {/* Pelvis */}
       {show("outer") ? (
-        <RoundedBox position={[0, hipY + 0.02, 0]} args={[p.torsoWidth * 0.78, 0.16, p.torsoDepth * 0.9]} radius={0.05} smoothness={3}>
+        <RoundedBox position={[0, hipY + 0.02, 0]} args={[waistWidth * 0.98, 0.16, waistDepth]} radius={0.05} smoothness={3}>
           <meshStandardMaterial {...outerMaterialProps} />
         </RoundedBox>
       ) : null}
