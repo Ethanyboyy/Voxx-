@@ -28,16 +28,18 @@ Scope check: this is a *token and primitive* pass, not a full re-layout of
 every page again — the structural/spacing work from the prior "luxury
 redesign" pass stays, only the color language shifts.
 
-### Milestone 3 — Application shell — **PLANNED**
+### Milestone 3 — Application shell — **PARTIALLY DONE**
 `AppShell`/`Sidebar`/`AccountMenu`/`MobileBottomNav`/`NotificationBell`
-already share one shell (done in the prior session). Remaining: fold in the
-`VOXStateIndicator` (LOCAL/CONNECTED/DEGRADED/OFFLINE, depends on Milestone
-15's connectivity detection — stub the indicator now, wire real detection
-later) and resolve the orphaned-API-route question from the audit (verify
-`/api/hypotheses`, `/api/ideas`, `/api/decisions`, `/api/observations`,
-`/api/tools`, `/api/cognition` truly have no caller, then either wire a
-surface to them or remove them — do not carry dead API surface into 2.0
-silently).
+already share one shell (done in the prior session). The orphaned-API-route
+question is resolved: `/api/decisions`/`/api/ideas` turned out to be real
+(dynamic caller in `ProjectDetailClient.tsx` that static grep missed);
+`/api/tools`/`/api/cognition` are unused but permission-gated, no security
+cost to leaving them; `/api/hypotheses`/`/api/observations` are unused
+*because the underlying data is never created anywhere* — see Milestone 6.
+No routes deleted. Remaining shell work: wire `VOXStateIndicator` into the
+header once Milestone 15's real connectivity detection exists (do not stub
+a fake "Connected" state before then — see Quality Standard's "no fake
+functionality" rule).
 
 ### Milestone 4 — Command Center — **PLANNED**
 Dashboard already restructured (Milestone 42 of the prior session) with a
@@ -57,14 +59,28 @@ and the Command Center consistent (today `BrainStateBadge` may only render
 in one place — audit its usage sites and ensure the same real state drives
 every visual instance of "what is VOX doing right now").
 
-### Milestone 6 — Memory / Cognition UX — **PLANNED, extend existing**
+### Milestone 6 — Memory / Cognition UX — **PLANNED, extend existing, +1 real gap found**
 Memory, Cognitive Profile, Observations, Hypotheses (via Cognition page),
 Knowledge Graph, Research, Proposals, Activity all exist and were restyled
-last session. Gap: Knowledge Graph has no caller/consumer beyond its own
-page (audit finding) — connect it: surface "related graph entities" on
-Memory/Project/Objective detail views via `findRelated()`
-(`src/lib/knowledge/service.ts`), so the graph becomes infrastructure other
-pages read, not an island.
+last session. Two real gaps found during Milestone 3:
+1. Knowledge Graph has no caller/consumer beyond its own page — connect
+   it: surface "related graph entities" on Memory/Project/Objective detail
+   views via `findRelated()` (`src/lib/knowledge/service.ts`), so the graph
+   becomes infrastructure other pages read, not an island.
+2. **`Observation`/`Hypothesis` are never created anywhere** —
+   `createHypothesis()`/`createObservation()` exist in
+   `src/lib/cognition/service.ts` but nothing calls them (confirmed:
+   neither pattern detection nor any detector writes one). The Cognition
+   page has always shown an honest empty state for these because there is
+   no pipeline producing them. Real scope for this milestone: give
+   `detectPatterns()` (`src/lib/cognition/patterns.ts`) — or a new
+   sibling function — a path that writes `Observation` rows from real
+   `Event`-timeline signals (the data source is already there per
+   `PHASE_2_ARCHITECTURE.md`'s "Observation ... may be informed by the
+   Event timeline"), and a simple rule for forming a `Hypothesis` from a
+   cluster of related Observations. Confidence starts at LOW per the
+   existing "never fabricate confidence" rule — same posture as pattern
+   detection already uses.
 
 ### Milestone 7 — Lab environment — **PLANNED, evolve not rebuild**
 The Lab's visual environment (studio lighting, procedural material system,
