@@ -102,13 +102,23 @@ makes them visible and connected, per the master directive's own framing
   `componentId` FKs to `LabExperiment` and `LabResearchItem` so an
   experiment/research item can target a specific subsystem, not just "the
   suit."
-- **`src/lib/chat/service.ts`'s context builder → the Orchestrator.**
-  Extract the "gather relevant memory + objectives + security context"
-  pattern into `src/lib/orchestrator/service.ts` with a general
-  `resolveContext(userId, { domain, query })` entry point; chat becomes one
-  caller among several (Lab AI Engineer, future Economic advisor, future
-  Field Mode voice loop all route through it instead of each hand-rolling
-  context assembly).
+- **`src/lib/chat/service.ts`'s context builder → augmented by, not replaced
+  by, the Orchestrator.** Revised during Milestone 10 after actually
+  reading `src/lib/lab/aiEngineer.ts`: chat's context assembly (semantic
+  memory retrieval + active objective) and the Lab AI Engineer's (regex
+  intent-routing to structured Lab data grounding, including real state
+  changes like `createLighterVariant`) are genuinely different shapes of
+  work, not the same pattern in two places. Forcing them through one
+  `resolveContext(userId, { domain, query })` function would be a bad
+  abstraction — combining unlike things because they both "gather context
+  and call an AI provider" is too shallow a similarity. Instead:
+  `src/lib/orchestrator/service.ts` provides `getCrossDomainSnapshot(userId)`
+  — a genuinely new capability (a compact picture of what's happening
+  across Lab/Proposals/Brain-state/Objectives in one call) that chat's
+  system prompt now optionally includes, so chat gains awareness of Lab
+  activity and pending approvals it previously had zero visibility into.
+  Each domain keeps its own context-gathering logic; the Orchestrator's job
+  is the cross-domain summary, not a forced merge.
 - **Voice → a real provider abstraction.** `useSpeech.ts` stays as the
   browser-native default implementation but moves behind a
   `VoiceProvider` interface (mirroring `AIProvider`/`ResearchProvider`) so a

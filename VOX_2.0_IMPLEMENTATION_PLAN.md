@@ -139,15 +139,20 @@ new `actionType` the existing Proposal engine already supports
 handler, no new permission system needed). Experiment ↔ Component ↔
 Research ↔ Memory linkage uses the FKs added in Milestone 8.
 
-### Milestone 10 — VOX Orchestrator — **PLANNED, extraction + generalization**
-Extract `src/lib/chat/service.ts`'s context-assembly pattern into
-`src/lib/orchestrator/service.ts`. Entry point:
-`resolveContext(userId, { domain, query }) → ContextTrace` (reuse the
-`ContextTrace` shape from `PHASE_2_ARCHITECTURE.md` §6, already
-implemented for chat). Migrate chat to call the orchestrator instead of
-having its own copy; wire the Lab AI Engineer (`/api/lab/ai`) to the same
-entry point next, so there are not two independent "gather context and ask
-the AI provider" implementations.
+### Milestone 10 — VOX Orchestrator — **REVISED SCOPE, see VOX_2.0_ARCHITECTURE.md**
+Original plan (a single `resolveContext()` both chat and the Lab AI
+Engineer route through) didn't survive contact with the actual code: the
+Lab AI Engineer (`src/lib/lab/aiEngineer.ts`) does regex intent-routing to
+structured Lab-data grounding, including real state changes
+(`createLighterVariant`) — a different shape of work from chat's semantic-
+memory-retrieval context assembly, not the same pattern twice. Forcing a
+merge would be a bad abstraction. Revised scope: `src/lib/orchestrator/
+service.ts` exports `getCrossDomainSnapshot(userId)` — a new aggregation
+(Brain state + pending-proposal count + Lab activity + active objective in
+one call) that chat's system prompt now optionally folds in, giving chat
+real visibility into Lab/Proposals state it had none of before. Each
+domain keeps its own context logic; the Orchestrator's job is the
+cross-domain summary specifically, not a forced routing layer.
 
 ### Milestone 11 — Economic Command — **PLANNED, real schema work**
 New Prisma models: `EconomicAsset` (name, category, status, revenue/

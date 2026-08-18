@@ -160,8 +160,7 @@ export function VoxCore({
             key={i}
             className="absolute left-1/2 top-1/2 h-full w-full"
             style={{
-              animation: `vox-core-particle ${timing.particleDuration}s linear infinite`,
-              animationDelay: `${(i / particles.length) * timing.particleDuration}s`,
+              animation: `vox-core-particle ${timing.particleDuration}s linear infinite ${(i / particles.length) * timing.particleDuration}s`,
               ["--orbit-r" as string]: `${orbitR}px`,
             }}
           >

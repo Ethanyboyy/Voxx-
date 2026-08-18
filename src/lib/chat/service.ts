@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { decryptField, encryptField } from "@/lib/security/crypto";
 import { getSemanticMemories, listMemories } from "@/lib/memory/service";
 import { getActiveObjective, getNextBestAction } from "@/lib/objectives/service";
+import { getCrossDomainSnapshot, summarizeCrossDomainSnapshot } from "@/lib/orchestrator/service";
 import { logger } from "@/lib/observability/logger";
 import type { ChatMessageInput } from "@/lib/ai/types";
 import type { Confidence } from "@/generated/prisma/enums";
@@ -126,11 +127,13 @@ export interface SystemPromptResult {
  * topically similar right now.
  */
 export async function buildSystemPrompt(userId: string, query: string): Promise<SystemPromptResult> {
-  const [semantic, activeObjective, nextBestAction] = await Promise.all([
+  const [semantic, activeObjective, nextBestAction, crossDomainSnapshot] = await Promise.all([
     query.trim() ? getSemanticMemories(userId, query, 8) : Promise.resolve([]),
     getActiveObjective(userId),
     getNextBestAction(userId),
+    getCrossDomainSnapshot(userId),
   ]);
+  const snapshotSection = summarizeCrossDomainSnapshot(crossDomainSnapshot);
   const includedIds = new Set(semantic.map((m) => m.id));
 
   const confirmed = (await listMemories(userId, { confidence: "CONFIRMED" }))
@@ -156,14 +159,14 @@ export async function buildSystemPrompt(userId: string, query: string): Promise<
 
   if (selected.length === 0) {
     return {
-      prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context: none yet — this is early in getting to know the user.${objectiveSection}`,
+      prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context: none yet — this is early in getting to know the user.${objectiveSection}${snapshotSection}`,
       trace: { memoriesUsed: [], assumptions: [] },
     };
   }
 
   const lines = selected.map((m) => `- [${m.category}, ${m.confidence}] ${m.content}`);
   return {
-    prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context about the user:\n${lines.join("\n")}${objectiveSection}`,
+    prompt: `${SYSTEM_PROMPT_HEADER}\n\nKnown context about the user:\n${lines.join("\n")}${objectiveSection}${snapshotSection}`,
     trace: {
       memoriesUsed: selected.map((m) => ({
         id: m.id,

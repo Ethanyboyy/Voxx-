@@ -16,11 +16,11 @@ import { getAIProvider } from "@/lib/ai";
 import { getActiveObjective, getNextBestAction, listOpportunities } from "@/lib/objectives/service";
 import { listRecentEvents } from "@/lib/observability/events";
 import { getLabDashboard } from "@/lib/lab/dashboard";
+import { getBrainState, type BrainState } from "@/lib/brain/graph";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import type { VoxCoreState } from "@/components/vox/VoxCore";
 import { MountainHero } from "@/components/dashboard/MountainHero";
 import { BrainPreview } from "@/components/dashboard/BrainPreview";
 
@@ -47,6 +47,7 @@ export default async function DashboardPage() {
     recentEvents,
     labDashboard,
     opportunities,
+    brainState,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
@@ -66,6 +67,7 @@ export default async function DashboardPage() {
     listRecentEvents(user.id, 4),
     getLabDashboard(user.id),
     listOpportunities(user.id),
+    getBrainState(user.id),
   ]);
 
   const displayName = user.name?.trim() || user.email.split("@")[0];
@@ -81,7 +83,6 @@ export default async function DashboardPage() {
   const provider = getAIProvider();
   const connectedCount = connections.filter((c) => c.status === "CONNECTED").length;
   const activePatterns = patterns.filter((p) => p.status === "ACTIVE");
-  const coreState = aggregateCoreState(agentRuns, pendingProposals.length);
   const recentConversations = conversations.slice(0, 5);
   const mostRecentSuit = labDashboard.recentSuits[0] ?? null;
   const openOpportunities = opportunities.filter(
@@ -98,7 +99,7 @@ export default async function DashboardPage() {
             <h1 className="vox-headline text-2xl sm:text-3xl">
               {greeting()}, {displayName}.
             </h1>
-            <p className="mt-1 text-sm text-muted">{coreStateMessage(coreState, pendingProposals.length, agentRuns.length)}</p>
+            <p className="mt-1 text-sm text-muted">{brainStateMessage(brainState.state, brainState.detail)}</p>
           </div>
           <Link
             href="/chat"
@@ -557,29 +558,22 @@ function priorityRank(priority: string): number {
   return { HIGH: 2, MEDIUM: 1, LOW: 0 }[priority] ?? 0;
 }
 
-function aggregateCoreState(
-  agentRuns: { status: string }[],
-  pendingProposalCount: number
-): VoxCoreState {
-  if (agentRuns.some((r) => r.status === "RUNNING")) return "executing";
-  if (agentRuns.some((r) => r.status === "PLANNING")) return "thinking";
-  if (agentRuns.some((r) => r.status === "WAITING_FOR_PERMISSION")) return "waiting";
-  if (pendingProposalCount > 0) return "waiting";
-  return "idle";
-}
-
-function coreStateMessage(state: VoxCoreState, pendingProposalCount: number, agentRunCount: number): string {
+function brainStateMessage(state: BrainState, detail: string | null): string {
   switch (state) {
     case "executing":
-      return "An agent run is executing right now.";
+      return detail ? `Executing: ${detail}` : "An agent run is executing right now.";
     case "thinking":
-      return "Planning an agent run.";
+      return detail ? `Planning: ${detail}` : "Planning an agent run.";
+    case "researching":
+      return detail ? `Researching: ${detail}` : "Researching.";
     case "waiting":
-      return pendingProposalCount > 0
-        ? `${pendingProposalCount} proposal${pendingProposalCount === 1 ? "" : "s"} waiting on you.`
-        : "An agent run is waiting on a permission.";
+      return detail ?? "Waiting on you.";
+    case "learning":
+      return detail ? `Learning: ${detail}` : "Learning.";
+    case "error":
+      return detail ?? "An agent run failed.";
     default:
-      return agentRunCount > 0 ? "Idle. Everything's caught up." : "Idle. Give VOX something to do.";
+      return "Idle. Give VOX something to do.";
   }
 }
 
