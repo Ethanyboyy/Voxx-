@@ -71,6 +71,7 @@ model User {
   notificationPreference NotificationPreference?
   objectives            Objective[]
   opportunities         Opportunity[]
+  economicAssets        EconomicAsset[]
   brainGroups           BrainGroup[]
   brainViews            BrainView[]
 
@@ -980,6 +981,92 @@ model Opportunity {
   updatedAt   DateTime          @updatedAt
 
   researchItems ResearchItem[]
+  economicAsset EconomicAsset?
+}
+
+// ---------------------------------------------------------------------------
+// Economic Command — the real infrastructure behind the Finance page. Not
+// magic passive income: a structured record of assets, revenue, and expense
+// the user enters themselves. Reuses Opportunity's evidence-based scoring
+// (confidence/effort/risk) rather than inventing a parallel system — an
+// EconomicAsset is what an Opportunity becomes once it's actually built.
+//
+// No capability-gating here, deliberately: creating/updating an
+// EconomicAsset or logging a Revenue/Expense entry is direct user CRUD on
+// their own data, exactly like editing a Memory or a Task — SECURITY.md is
+// explicit that this class of action isn't gated by enforceCapability().
+// That gate exists for what VOX does *autonomously*. There is currently no
+// autonomous economic action anywhere in this codebase (no automation
+// engine, no payment integration), so adding permission checks here now
+// would be decorative, not real — see VOX_2.0_ARCHITECTURE.md. When a real
+// autonomous economic action is built, it goes through the existing
+// Proposal engine's closed action registry (src/lib/cognition/proposals.ts)
+// exactly like every other consequential action, the same way
+// connection.propose already works for the Connections Hub.
+// ---------------------------------------------------------------------------
+
+enum EconomicAssetCategory {
+  MICRO_SAAS
+  DIGITAL_PRODUCT
+  CONTENT_ASSET
+  WEBSITE
+  AFFILIATE_ASSET
+  LEAD_GENERATION
+  API_PRODUCT
+  AUTOMATION_SERVICE
+  LICENSED_SOFTWARE
+  OTHER
+}
+
+enum EconomicAssetStatus {
+  IDEA
+  BUILDING
+  LAUNCHED
+  OPERATING
+  PAUSED
+  RETIRED
+}
+
+model EconomicAsset {
+  id            String                @id @default(uuid())
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  /// The Opportunity this asset was built from — at most one asset per
+  /// opportunity, same "promoted, not just labeled" posture as
+  /// Opportunity.projectId.
+  opportunity   Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?               @unique
+  name          String
+  category      EconomicAssetCategory
+  status        EconomicAssetStatus  @default(IDEA)
+  description   String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  revenues EconomicRevenue[]
+  expenses EconomicExpense[]
+}
+
+model EconomicRevenue {
+  id         String        @id @default(uuid())
+  asset      EconomicAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId    String
+  amountUsd  Float
+  source     String?
+  occurredAt DateTime
+  notes      String?
+  createdAt  DateTime      @default(now())
+}
+
+model EconomicExpense {
+  id         String        @id @default(uuid())
+  asset      EconomicAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId    String
+  amountUsd  Float
+  category   String?
+  occurredAt DateTime
+  notes      String?
+  createdAt  DateTime      @default(now())
 }
 
 // ---------------------------------------------------------------------------

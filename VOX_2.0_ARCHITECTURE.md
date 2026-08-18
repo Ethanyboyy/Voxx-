@@ -91,10 +91,20 @@ makes them visible and connected, per the master directive's own framing
 
 - **Objectives/Opportunities → Economic Command.** The scoring/evidence
   architecture is correct; it needs a finance-specific specialization
-  (`EconomicAsset`, `Revenue`, `Expense` models FK'd to `Opportunity`) rather
-  than a parallel system. Autonomy gating reuses `CapabilityLevel` — a new
-  `capability: "economic.execute"` key checked via the existing
-  `enforceCapability()`, not a second permission system.
+  (`EconomicAsset`, `EconomicRevenue`, `EconomicExpense` models FK'd to
+  `Opportunity`) rather than a parallel system. **Revised during Milestone
+  11**: no capability-gating on `EconomicAsset`/`Revenue`/`Expense` CRUD —
+  per `SECURITY.md`, direct user actions on their own data (editing a
+  Memory, deleting a Task) are never gated by `enforceCapability()`; that
+  gate exists only for what VOX does *autonomously*. There is no autonomous
+  economic action anywhere in this codebase yet (no automation engine, no
+  payment integration), so bolting a `capability: "economic.execute"` check
+  onto plain data entry would be decorative permission theater, not real
+  gating — the same mistake as inventing a second `CapabilityLevel` axis
+  when the existing one already covers this. When a real autonomous
+  economic action exists, it becomes a new handler in the Proposal engine's
+  closed action registry (`src/lib/cognition/proposals.ts`), exactly like
+  every other consequential action — not a new permission system.
 - **`LabComponent` → suit digital twin.** Add a `LabSubsystem` enum (HEAD,
   TORSO, ARMS, LEGS, FEET, CORE — extensible), `powerDrawW`, `costUsd`,
   `riskLevel`, `realityStatus` (reuse `LabRealityStatus`, already exists on

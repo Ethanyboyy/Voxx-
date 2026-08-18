@@ -323,6 +323,43 @@ export const promoteOpportunitySchema = z.object({
   projectName: z.string().min(1).max(200).optional(),
 });
 
+export const economicAssetCategorySchema = z.enum([
+  "MICRO_SAAS",
+  "DIGITAL_PRODUCT",
+  "CONTENT_ASSET",
+  "WEBSITE",
+  "AFFILIATE_ASSET",
+  "LEAD_GENERATION",
+  "API_PRODUCT",
+  "AUTOMATION_SERVICE",
+  "LICENSED_SOFTWARE",
+  "OTHER",
+]);
+export const economicAssetStatusSchema = z.enum(["IDEA", "BUILDING", "LAUNCHED", "OPERATING", "PAUSED", "RETIRED"]);
+
+export const createEconomicAssetSchema = z.object({
+  opportunityId: z.string().min(1).optional(),
+  name: z.string().min(1).max(160),
+  category: economicAssetCategorySchema,
+  status: economicAssetStatusSchema.optional(),
+  description: z.string().max(5000).optional(),
+});
+
+export const updateEconomicAssetSchema = z.object({
+  name: z.string().min(1).max(160).optional(),
+  category: economicAssetCategorySchema.optional(),
+  status: economicAssetStatusSchema.optional(),
+  description: z.string().max(5000).optional(),
+});
+
+export const addEconomicLedgerEntrySchema = z.object({
+  amountUsd: z.coerce.number().min(0),
+  source: z.string().max(200).optional(),
+  category: z.string().max(80).optional(),
+  occurredAt: z.coerce.date(),
+  notes: z.string().max(2000).optional(),
+});
+
 export const createBrainGroupSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
