@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils/cn";
 import { ContextPanel, type ContextTrace } from "@/components/chat/ContextPanel";
 import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
 import { VoxErrorPanel } from "@/components/vox/VoxErrorPanel";
-import { useSpeechToText, useTextToSpeech } from "@/lib/voice/useSpeech";
+import { useVoice } from "@/lib/voice/useVoice";
 
 function SpeakerIcon() {
   return (
@@ -65,8 +65,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
   const [voiceReplies, setVoiceReplies] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const tts = useTextToSpeech();
-  const stt = useSpeechToText((finalText) => {
+  const voice = useVoice((finalText) => {
     if (finalText) handleSend(finalText);
   });
 
@@ -161,7 +160,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                   : m
               )
             );
-            if (voiceReplies) tts.speak(fullText);
+            if (voiceReplies) voice.speak(fullText);
           } else if (event.type === "error") {
             setError(event.message);
           }
@@ -174,13 +173,13 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
   }
 
   const pendingAssistant = messages.find((m) => m.pending);
-  const coreState: VoxCoreState = stt.listening
+  const coreState: VoxCoreState = voice.listening
     ? "listening"
     : streaming
       ? pendingAssistant?.content
         ? "responding"
         : "thinking"
-      : tts.speaking
+      : voice.speaking
         ? "responding"
         : "idle";
 
@@ -257,9 +256,9 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             <button
               type="button"
               onClick={() => setVoiceReplies((v) => !v)}
-              disabled={!tts.supported}
+              disabled={!voice.ttsSupported}
               title={
-                tts.supported
+                voice.ttsSupported
                   ? voiceReplies
                     ? "Voice replies on — VOX will speak new responses"
                     : "Voice replies off"
@@ -282,19 +281,19 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
           {messages.length === 0 ? (
             <div className="mt-16 flex flex-col items-center gap-4 text-center">
-              {stt.supported ? (
+              {voice.sttSupported ? (
                 <button
                   type="button"
-                  onClick={() => (stt.listening ? stt.stop() : stt.start())}
+                  onClick={() => (voice.listening ? voice.stopListening() : voice.startListening())}
                   className="mt-6 flex flex-col items-center gap-6 sm:hidden"
-                  aria-label={stt.listening ? "Stop listening" : "Tap to talk to VOX"}
+                  aria-label={voice.listening ? "Stop listening" : "Tap to talk to VOX"}
                 >
                   <span className="relative flex h-64 w-64 items-center justify-center">
                     <span
                       className="absolute inset-0 rounded-full blur-2xl"
                       style={{
                         background: "radial-gradient(circle, var(--accent) 0%, transparent 70%)",
-                        opacity: stt.listening ? 0.55 : 0.32,
+                        opacity: voice.listening ? 0.55 : 0.32,
                       }}
                     />
                     <span
@@ -302,17 +301,17 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                       style={{
                         borderColor: "var(--accent)",
                         opacity: 0.4,
-                        animation: stt.listening ? "vox-ambient-pulse 2.4s ease-in-out infinite" : undefined,
+                        animation: voice.listening ? "vox-ambient-pulse 2.4s ease-in-out infinite" : undefined,
                       }}
                     />
-                    <VoxCore state={stt.listening ? "listening" : "idle"} size="xl" />
+                    <VoxCore state={voice.listening ? "listening" : "idle"} size="xl" />
                   </span>
                   <p className="text-base font-medium text-foreground">
-                    {stt.listening ? "Listening…" : "Tap to talk to VOX"}
+                    {voice.listening ? "Listening…" : "Tap to talk to VOX"}
                   </p>
                 </button>
               ) : null}
-              <div className={cn("flex-col items-center gap-4", stt.supported ? "hidden sm:flex" : "flex")}>
+              <div className={cn("flex-col items-center gap-4", voice.sttSupported ? "hidden sm:flex" : "flex")}>
                 <VoxCore state="idle" size="lg" />
                 <p className="max-w-sm text-sm text-muted">
                   Say something to start. VOX remembers context across this conversation and your saved memories.
@@ -347,14 +346,14 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                       </div>
                       <div className="mt-1 flex items-center gap-2">
                         {m.model ? <span className="text-xs text-muted">{m.model}</span> : null}
-                        {m.role === "ASSISTANT" && m.content && tts.supported ? (
+                        {m.role === "ASSISTANT" && m.content && voice.ttsSupported ? (
                           <button
                             type="button"
-                            onClick={() => (tts.speaking ? tts.stop() : tts.speak(m.content))}
+                            onClick={() => (voice.speaking ? voice.stopSpeaking() : voice.speak(m.content))}
                             className="text-xs text-muted hover:text-accent"
-                            title={tts.speaking ? "Stop" : "Play this message"}
+                            title={voice.speaking ? "Stop" : "Play this message"}
                           >
-                            {tts.speaking ? "■ stop" : "▶ play"}
+                            {voice.speaking ? "■ stop" : "▶ play"}
                           </button>
                         ) : null}
                       </div>
@@ -372,25 +371,25 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <button
               type="button"
-              disabled={!stt.supported || streaming}
-              onClick={() => (stt.listening ? stt.stop() : stt.start())}
+              disabled={!voice.sttSupported || streaming}
+              onClick={() => (voice.listening ? voice.stopListening() : voice.startListening())}
               title={
-                stt.supported
-                  ? stt.listening
+                voice.sttSupported
+                  ? voice.listening
                     ? "Stop listening"
                     : "Speak to VOX"
                   : "Speech recognition isn't supported in this browser — text is the only input path here."
               }
-              aria-label={stt.listening ? "Stop listening" : "Voice input"}
-              aria-pressed={stt.listening}
+              aria-label={voice.listening ? "Stop listening" : "Voice input"}
+              aria-pressed={voice.listening}
               className={cn(
                 "vox-press relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ease-[var(--ease-luxury)] disabled:opacity-30",
-                stt.listening
+                voice.listening
                   ? "bg-danger/15 text-danger"
                   : "text-muted hover:bg-surface-hover hover:text-foreground"
               )}
             >
-              {stt.listening ? (
+              {voice.listening ? (
                 <span
                   className="absolute inset-0 rounded-lg border border-danger"
                   style={{ animation: "vox-core-ring-expand 1.4s ease-out infinite" }}
@@ -411,13 +410,13 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                     handleSend();
                   }
                 }}
-                placeholder={stt.listening ? "Listening…" : "Message VOX..."}
+                placeholder={voice.listening ? "Listening…" : "Message VOX..."}
                 rows={2}
                 className="flex-1"
               />
-              {stt.interimTranscript ? (
+              {voice.interimTranscript ? (
                 <p className="pointer-events-none absolute inset-x-3 bottom-1.5 truncate text-xs italic text-muted">
-                  {stt.interimTranscript}
+                  {voice.interimTranscript}
                 </p>
               ) : null}
             </div>
@@ -425,8 +424,8 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               {streaming ? "Sending..." : "Send"}
             </Button>
           </div>
-          {stt.error ? (
-            <p className="mx-auto mt-2 max-w-2xl text-xs text-danger">{stt.error}</p>
+          {voice.error ? (
+            <p className="mx-auto mt-2 max-w-2xl text-xs text-danger">{voice.error}</p>
           ) : null}
         </div>
       </div>

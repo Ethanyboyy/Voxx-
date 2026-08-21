@@ -230,6 +230,49 @@ giving it a real, verified UI consumer.
 
 Full verification gate clean: typecheck, lint, 223 tests, production build.
 
+## Milestone: voice provider abstraction — DONE
+
+VOX 2.0 Milestone 14 / the new directive's §17. Voice already worked in
+`ChatClient.tsx` via the browser's native Web Speech API
+(`src/lib/voice/useSpeech.ts` — real STT/TTS, no mock), but there was no
+seam a future non-browser provider could plug into, and no unified status
+vocabulary.
+
+1. **`src/lib/voice/useVoice.ts`** — the one entry point VOX's UI should use
+   for voice going forward, matching "voice uses the same orchestration as
+   text, not a separate system." A thin wrapper over the existing, already-
+   working `useSpeechToText`/`useTextToSpeech` hooks (deliberately not
+   rewritten — they're real and tested), exposing a stable `VoiceState`
+   contract: unified `status` (`offline | ready | listening | processing |
+   speaking | error`), `provider` tag (`"browser" | "none"` today), and
+   `sttSupported`/`ttsSupported` reported separately and honestly (a
+   browser can have one without the other). `"processing"` is in the type
+   for a future streaming remote provider that would genuinely have that
+   phase — the browser provider never emits it, since the Web Speech API
+   has no such phase; documented as an honest omission, not a placeholder.
+2. **`ChatClient.tsx`** migrated from calling the two raw hooks directly
+   (25 call sites) to the single `useVoice()` hook — removes the "two ways
+   to access voice" duplication the directive explicitly warns against.
+   Pure pass-through refactor: `voice.listening`/`voice.speak()`/etc. are
+   the exact same underlying state/functions as before, just accessed
+   through the unified contract.
+3. No dedicated unit test — this codebase has no component/hook-rendering
+   test infrastructure (all existing tests are service-level Vitest), and
+   adding one (e.g. React Testing Library) for a single thin wrapper would
+   be exactly the "unnecessary dependency explosion" the directive warns
+   against. Verified instead the way this session verifies UI behavior
+   throughout: typecheck (caught nothing — confirms structural equivalence
+   of the refactor) plus live Playwright against the real `/chat` page —
+   sent a real message through the full mock-AI round trip post-migration
+   (unchanged, correct), clicked the mic button and a message's TTS play
+   button (zero console errors, no crash on either). The listening/speaking
+   states didn't visibly latch in this headless sandbox, which is a real
+   environment limitation (no real mic/audio hardware satisfying the Web
+   Speech API's full permission chain even with fake-device flags) — not a
+   regression, since the underlying hook implementation wasn't touched.
+
+Full verification gate clean: typecheck, lint, 223 tests, production build.
+
 ## Reconciling the "VOX — Complete Autonomous AI Ecosystem" directive
 
 A second, larger master directive arrived after this plan was already
@@ -270,8 +313,7 @@ future milestones, not attempted in this pass:**
    directive describes in §15/§7(phase 7).
 3. **Lab Cinematic/Engineering mode split** — already queued from the prior
    directive, unchanged.
-4. **Voice provider abstraction** — already queued (VOX 2.0 Milestone 14),
-   unchanged.
+4. **Voice provider abstraction** — **DONE** (see below).
 5. **Automation loop infrastructure** (§25) — scheduled recurring work with
    its own permission/execution-history/stop-control shape. Related to but
    distinct from the existing `AgentRun` model; needs its own schema check
