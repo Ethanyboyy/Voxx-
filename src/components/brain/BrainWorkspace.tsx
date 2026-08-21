@@ -7,6 +7,9 @@ import { InspectorPanel, type GraphPatch, type MemoryAnnotation } from "@/compon
 import { CompareView } from "@/components/brain/CompareView";
 import { OrbitAnnotations, annotationConnectors, type AnnotationItem } from "@/components/brain/Annotations";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
+import { StateIndicator } from "@/components/ui/StateIndicator";
+import { useEventStream } from "@/lib/events/useEventStream";
+import type { LiveEvent } from "@/lib/events/bus";
 import { PerspectiveTabs, perspectiveLabel, type Perspective } from "@/components/brain/PerspectiveTabs";
 import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
 import { layoutRadial, layoutGrid, layoutFocus, type Point } from "@/components/brain/layout";
@@ -385,23 +388,54 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
     return items;
   }, [focusMode, selectedNode]);
 
-  // Poll for real state changes (agent runs, proposals, new events) — same
-  // cadence/pattern as the rest of the app's live-activity polling.
+  const refreshGraph = useCallback(async () => {
+    try {
+      const res = await fetch("/api/brain/graph");
+      if (!res.ok) return;
+      const data: BrainPayload = await res.json();
+      setNodes(data.nodes);
+      setEdges(data.edges);
+      setEvents(data.events);
+      setBrain(data.brain);
+    } catch {
+      // transient network hiccup — next tick/event retries
+    }
+  }, []);
+
+  // Slow fallback poll — the live event bus (below) is the primary update
+  // path now, so this only needs to catch whatever the bus misses (a missed
+  // SSE frame, a dropped connection reconnecting). Interval widened from the
+  // original 20s now that a real push mechanism exists, since the common
+  // case is handled live instead of on a timer.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/brain/graph");
-        if (!res.ok) return;
-        const data: BrainPayload = await res.json();
-        setNodes(data.nodes);
-        setEdges(data.edges);
-        setEvents(data.events);
-        setBrain(data.brain);
-      } catch {
-        // transient network hiccup — next tick retries
-      }
-    }, 20000);
+    const interval = setInterval(refreshGraph, 60000);
     return () => clearInterval(interval);
+  }, [refreshGraph]);
+
+  // Live event bus — every frame here is a real Event row (see
+  // src/lib/events/bus.ts), never fabricated. New events append to the feed
+  // immediately; a debounced graph refetch picks up whatever node/edge/
+  // brain-state changes that event implies (which fields change per event
+  // type isn't predictable client-side, so re-reading the real authoritative
+  // state from the server is the honest approach rather than guessing).
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleLiveEvent = useCallback(
+    (event: LiveEvent) => {
+      setEvents((prev) => [
+        { id: event.id, type: event.type, subjectType: event.subjectType, subjectId: event.subjectId, createdAt: event.createdAt },
+        ...prev,
+      ].slice(0, 60));
+
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(refreshGraph, 600);
+    },
+    [refreshGraph]
+  );
+  const { status: liveStatus } = useEventStream({ onEvent: handleLiveEvent });
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
   }, []);
 
   // Center the camera on the active objective (or the origin) once, on first load.
@@ -984,6 +1018,12 @@ export function BrainWorkspace({ initial }: { initial: BrainPayload }) {
           >
             ?
           </button>
+          <StateIndicator
+            color={liveStatus === "open" ? "var(--success)" : "var(--muted-foreground)"}
+            label={liveStatus === "open" ? "Live" : liveStatus === "unsupported" ? "Live feed unavailable" : "Connecting…"}
+            pulse={liveStatus === "open"}
+            className="hidden sm:flex"
+          />
           <BrainStateBadge state={displayState.state} detail={displayState.detail} />
         </div>
       </div>

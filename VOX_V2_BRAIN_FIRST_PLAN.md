@@ -83,7 +83,7 @@ memory of it — re-verified where it matters for this directive)
 | 1 — Design system | VOX 2.0 Milestone 2 (neutral tokens, StateIndicator) | **DONE**, reused |
 | 2 — Brain | Brain-first entry point + nav reorder | **DONE** |
 | 2b — Quick Command | Real cross-domain search (below) | **DONE** |
-| 3 — Cognitive orchestration | Live event bus transport (below) DONE; wiring the Brain UI to consume it is next | Transport DONE, UI PLANNED next |
+| 3 — Cognitive orchestration | Live event bus transport + Brain UI wired to it (below) | **DONE** |
 | 4 — Home/Projects/Memory/Research | Already real UI (Workstream A); revisit only where Brain-first nav changes their entry paths | Mostly done, spot-check only |
 | 5 — Laboratory | Cinematic/Engineering mode split on top of the real suit rendering fix | PLANNED |
 | 6 — Systems/Connections | Connections Hub already real (Milestone 12); no new work identified yet | Mostly done |
@@ -194,15 +194,95 @@ unverified changes").
 
 Full verification gate clean: typecheck, lint, 223 tests, production build.
 
-## Next: wire the Brain visualization to the live event bus (priority #3)
+## Milestone: wire the Brain visualization to the live event bus — DONE
 
-`BrainWorkspace.tsx` currently re-fetches its entire graph (nodes/edges/
-events/brain state) on a 20s `setInterval` poll — functional, but not live,
-and wasteful (refetches everything every tick regardless of what changed).
-Plan: a `useEventStream()` client hook wrapping `EventSource` against
-`/api/events/stream`, consumed by `BrainWorkspace` to append real live
-events to its existing event list/state as they happen, complementing
-(not necessarily replacing outright) the poll as a safety-net fallback.
-This is where the Brain's visual state should start reacting to specific
-event types (memory retrieval, research, tool execution) rather than only
-the coarse idle/thinking/executing states it already derives.
+Priority #3. Completes the transport built in the previous milestone by
+giving it a real, verified UI consumer.
+
+1. **`src/lib/events/useEventStream.ts`** — client hook wrapping
+   `EventSource` against `/api/events/stream`. Feature-detects
+   `EventSource` via `useSyncExternalStore` (same pattern as
+   `useSpeech.ts`'s `supported` checks, avoiding a real
+   `react-hooks/set-state-in-effect` lint violation the naive version hit)
+   rather than `setState` inside an effect body. Returns an honest
+   `"connecting" | "open" | "unsupported"` status — never a fabricated
+   "always live" claim.
+2. **`BrainWorkspace.tsx`**: the old 20s blind poll is now a 60s *fallback*
+   (widened, since the live stream is the primary path — only needs to
+   catch a missed frame or a reconnect gap). New events arriving over SSE
+   append to the existing `events` state immediately, and trigger a
+   debounced (600ms) refetch of `/api/brain/graph` so node/edge/brain-state
+   changes implied by that event get picked up from the real authoritative
+   server state — deliberately NOT guessed client-side from the event type
+   string, since that would risk exactly the "fake state" the directive
+   prohibits. Added an honest connection-status dot (reusing
+   `StateIndicator`, whose doc comment had already anticipated this exact
+   use case) next to the existing Brain state badge — hidden on mobile to
+   avoid toolbar clutter.
+3. **Verified live in a real browser, not inferred from code review**:
+   opened `/brain` on the Activity perspective, screenshotted the timeline,
+   then in a separate request created a real Lab experiment
+   (`POST /api/lab/experiments`) and screenshotted again 2 seconds later
+   with **no page reload** — a new "lab experiment created" entry appeared
+   at the top of the timeline with a timestamp matching the moment it was
+   created. Re-verified 0px horizontal overflow and zero console errors at
+   375px mobile.
+
+Full verification gate clean: typecheck, lint, 223 tests, production build.
+
+## Reconciling the "VOX — Complete Autonomous AI Ecosystem" directive
+
+A second, larger master directive arrived after this plan was already
+executing priorities #1-#3. Per its own instruction ("preserve... unless
+there is a concrete reason to replace it" / "do not repeatedly ask
+permission"), this is treated as an extension of the same in-flight Brain-
+first rebuild, not a restart — the audit below is a genuine delta against
+what's already real, not a re-audit from zero.
+
+**Already real, substantially satisfying that directive's asks, no new work
+identified:** the Brain orchestration loop (perception→memory→cognition→
+planning→tools→execution is what `getBrainState()` + the orchestrator +
+now the live event bus together implement); Memory (categories, confidence,
+relations, semantic retrieval — already real per earlier VOX 2.0 milestones);
+Knowledge Graph (connected, Milestone 6); Research Engine (real
+provider-abstracted, already feeds memory); Security/permissions
+(`enforceCapability`, encrypted memory, audit events — already real,
+already documented in `SECURITY.md`); Connections Hub (real lifecycle +
+capability gating, Milestone 12); Lab digital twin data model (subsystem/
+risk/reality-status/dependencies, Milestone 8) and structured engineering
+proposals (Milestone 9).
+
+**Genuinely new scope this directive adds, not yet built — queued as real
+future milestones, not attempted in this pass:**
+1. **Economic Engine / Venture depth.** The existing Economic Command
+   (Milestone 11: `EconomicAsset`/`Revenue`/`Expense`, real ledger math) is
+   a solid foundation but doesn't yet have this directive's fuller shape:
+   opportunity *scoring* (comparing by return/capital/time/automation/risk),
+   a distinct venture *stage* pipeline (discovery→experiment→validation→
+   operating), or the `AUTONOMOUS`/`APPROVAL REQUIRED`/`PROHIBITED`
+   permission tiers specifically for spending/contracts — that last part is
+   a real, security-relevant piece of net-new schema and enforcement work,
+   not a UI change.
+2. **Unified Tool/Agent orchestration framework.** Tools exist
+   (`src/lib/tools/registry.ts`) and the Lab AI Engineer does intent-routing,
+   but there's no generic "decompose an objective into subtasks, select
+   tools per subtask, track execution history/failure state" layer the
+   directive describes in §15/§7(phase 7).
+3. **Lab Cinematic/Engineering mode split** — already queued from the prior
+   directive, unchanged.
+4. **Voice provider abstraction** — already queued (VOX 2.0 Milestone 14),
+   unchanged.
+5. **Automation loop infrastructure** (§25) — scheduled recurring work with
+   its own permission/execution-history/stop-control shape. Related to but
+   distinct from the existing `AgentRun` model; needs its own schema check
+   before assuming a fit.
+
+Sequencing: continuing the already-confirmed priority order (Voice next,
+then Lab Cinematic/Engineering, then a full visual pass) rather than
+re-ordering around the new directive's phase numbering, since both
+orderings are compatible (Brain-first and event-driven infrastructure
+first, broad polish/hardening last) and restarting the sequence would
+waste the groundwork already verified. The Economic Engine depth and
+Tool/Agent framework are large enough to warrant their own dedicated
+milestones once the current thread (Voice → Lab) lands, not folded in
+ad hoc.
