@@ -83,7 +83,7 @@ memory of it — re-verified where it matters for this directive)
 | 1 — Design system | VOX 2.0 Milestone 2 (neutral tokens, StateIndicator) | **DONE**, reused |
 | 2 — Brain | Brain-first entry point + nav reorder | **DONE** |
 | 2b — Quick Command | Real cross-domain search (below) | **DONE** |
-| 3 — Cognitive orchestration | Orchestrator (Milestone 10) exists; live event bus is the real gap | PLANNED next |
+| 3 — Cognitive orchestration | Live event bus transport (below) DONE; wiring the Brain UI to consume it is next | Transport DONE, UI PLANNED next |
 | 4 — Home/Projects/Memory/Research | Already real UI (Workstream A); revisit only where Brain-first nav changes their entry paths | Mostly done, spot-check only |
 | 5 — Laboratory | Cinematic/Engineering mode split on top of the real suit rendering fix | PLANNED |
 | 6 — Systems/Connections | Connections Hub already real (Milestone 12); no new work identified yet | Mostly done |
@@ -152,13 +152,57 @@ actions without confirmation" requirement the directive itself states.
 Left as a follow-up milestone once the event bus (next) gives the command
 bar a place to show that kind of pending-confirmation state.
 
-## Next: live event bus (VOX V2 continuation priority #2)
+## Milestone: Live event bus (transport) — DONE
 
-`Event` rows are real and written at the right points (`recordEvent()`), but
-nothing pushes them to a connected client — the Brain re-fetches on page
-load only. Plan: an internal pub/sub the API layer publishes into whenever
-`recordEvent()` runs, exposed to the client via a transport abstraction
-(SSE is the natural fit for this stack — no new infra dependency, works
-through the existing Next.js route handlers) so the Brain visualization and
-a live system feed can react to real activity as it happens, not on a
-timer.
+Priority #2 of the "VOX V2 - continue from current state" directive, scoped
+deliberately to the transport itself — connecting the Brain's visualization
+to it is priority #3's job (next), so its own diff and verification stay
+separable per the directive's own phase boundaries ("do not accumulate huge
+unverified changes").
+
+1. **`src/lib/events/bus.ts`** — an in-process `EventEmitter`-based
+   publish/subscribe channel (`publishEvent`/`subscribeToEvents(userId, cb)`).
+   Documented deployment constraint: correct for VOX's current single-machine
+   Fly deployment (`fly.toml`: `min_machines_running = 1`), not multi-instance
+   — but the transport is fully isolated behind those two functions so a
+   real horizontally-scaled deployment could swap in a message broker later
+   without touching any caller.
+2. **`recordEvent()`** (`src/lib/observability/events.ts`) now calls
+   `publishEvent()` with the exact row it just durably wrote, right after
+   the write — nothing on the bus is ever synthetic; every frame traces back
+   to a real `Event` table row.
+3. **`/api/events/stream`** — a real SSE (`text/event-stream`) route,
+   `runtime = "nodejs"` (matching the existing streaming convention in
+   `/api/chat`), one `data: {...}\n\n` frame per event for that user, a
+   25s heartbeat comment frame, and real cleanup (`unsubscribe()`) on both
+   `ReadableStream.cancel()` and `request.signal`'s `abort` event.
+4. **`tests/event-bus.test.ts`** (5 new) — per-user delivery isolation,
+   unsubscribe actually stops delivery, multiple concurrent subscribers for
+   one user (multi-tab/device) both receive a frame, and a real integration
+   test proving `recordEvent()` publishes the exact persisted row.
+5. **Verified live, end-to-end, across two separate HTTP requests** — not
+   just unit tests: opened a real browser `EventSource` against
+   `/api/events/stream`, then in a second real request called
+   `POST /api/lab/experiments` (which calls `recordEvent()` with type
+   `lab.experiment.created`); the SSE connection received exactly that
+   frame, with `subjectId` matching the created experiment's real id and
+   the payload title matching what was actually sent. First attempt at this
+   check used `POST /api/tasks` and got 0 frames — traced that to
+   `createTask()` simply not calling `recordEvent()` at all (not a bus bug),
+   corrected the check to an already-instrumented action, and confirmed
+   real delivery.
+
+Full verification gate clean: typecheck, lint, 223 tests, production build.
+
+## Next: wire the Brain visualization to the live event bus (priority #3)
+
+`BrainWorkspace.tsx` currently re-fetches its entire graph (nodes/edges/
+events/brain state) on a 20s `setInterval` poll — functional, but not live,
+and wasteful (refetches everything every tick regardless of what changed).
+Plan: a `useEventStream()` client hook wrapping `EventSource` against
+`/api/events/stream`, consumed by `BrainWorkspace` to append real live
+events to its existing event list/state as they happen, complementing
+(not necessarily replacing outright) the poll as a safety-net fallback.
+This is where the Brain's visual state should start reacting to specific
+event types (memory retrieval, research, tool execution) rather than only
+the coarse idle/thinking/executing states it already derives.

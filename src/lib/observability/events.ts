@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/observability/logger";
+import { publishEvent } from "@/lib/events/bus";
 
 export interface RecordEventInput {
   userId: string;
@@ -31,6 +32,16 @@ export async function recordEvent(input: RecordEventInput) {
     },
   });
   logger.info("event.recorded", { type: input.type, consequential: event.consequential });
+  publishEvent({
+    id: event.id,
+    userId: event.userId,
+    type: event.type,
+    subjectType: event.subjectType,
+    subjectId: event.subjectId,
+    payload: event.payload,
+    consequential: event.consequential,
+    createdAt: event.createdAt.toISOString(),
+  });
   return event;
 }
 
