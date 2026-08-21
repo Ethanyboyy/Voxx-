@@ -341,6 +341,88 @@ and Engineering Mode UI, the mode switch with context preservation, digital
 twin subsystem-selection wiring, the live activity layer, and Brain
 integration verification are the next milestone, continuing immediately.
 
+## Milestone: Lab Cinematic/Engineering split — Phase B (UI) — DONE
+
+Built on Phase A's schema/services. Real, important discovery made before
+writing any new UI: `src/components/lab/InfoMode.tsx` already had a real,
+shipped, three-way mode system (`CINEMATIC`/`ENGINEERING`/`EVERYTHING`,
+context + localStorage-persisted, rendered as the pill toggle already
+visible in the Lab's global header) — used today only as a field-density
+filter (fewer stat rows in Cinematic). Per "build ONE Lab domain, no
+duplicated source of truth," this was reused as the mode-switching
+mechanism rather than building a second one; the actual work was making
+the two modes genuinely different layouts, not just different field
+counts, and wiring the new engineering domain + live events into them.
+
+**`SuitDetailClient.tsx` rewritten** around a shared `CinematicView` /
+`EngineeringView` split, both fed by the same suit/components/requirements/
+questions/decisions data (server-fetched once in `page.tsx`, no duplicated
+source of truth):
+- **Subsystem selection** (`?subsystem=` URL param) is the shared context
+  that survives a mode switch, per the directive's explicit "select POWER
+  in Cinematic, switch to Engineering, still looking at POWER" requirement
+  — verified live, not assumed (see below).
+- **CinematicView**: large centered model, compact stat bars, a real
+  "Project Status" summary (`X / Y requirements verified`, open question
+  count, decisions logged, reality status — all real counts, never
+  fabricated), a "Needs Attention" panel surfacing real unresolved
+  questions by importance, and a **Live Activity** panel wired to
+  `useEventStream()` (built in the earlier event-bus milestone), filtered
+  to events whose subject or payload actually references this suit —
+  genuinely event-driven, not a decorative animation loop.
+- **EngineeringView**: the existing dense stats/component-tree/notes
+  layout, plus three new panels — Requirements (status-advance button that
+  refuses to reach VERIFIED without a real evidence prompt, enforced
+  server-side too), Engineering Questions (resolve-with-answer flow),
+  Decision Log (immutable, append-only) — each with its own quick-add form
+  hitting the real Phase A API routes.
+
+**Real bugs found and fixed during mobile/visual testing** (not just
+claimed — actually caught by looking at screenshots, not just checking
+overflow=0px):
+1. A 2-column stat-bar grid in Cinematic mode caused label/value text to
+   visually collide (`StatBar`'s fixed-width label + bar don't fit two per
+   row at this panel width) — changed to a single-column stack, matching
+   how `StatBar` is already used correctly everywhere else in this file.
+2. The header action-button row (`Duplicate`/`Archive`/`Generate Lighter
+   Variant`/`Ask AI Engineer`) had no `flex-wrap`, so on a 375px viewport
+   button *text* wrapped internally into overlapping multi-line labels
+   instead of whole buttons wrapping onto new rows — added `flex-wrap` to
+   the container and `whitespace-nowrap` to each button. This bug predates
+   this milestone (the row was carried over unchanged from before), caught
+   because mobile testing was actually done, not skipped.
+
+**Verified live in the browser, full workflow, not a mockup:**
+switched Cinematic → Engineering → confirmed `?subsystem=ARMS` persisted in
+the URL both directions; created a real requirement, question, and decision
+through the Engineering panels and confirmed each appeared immediately;
+switched back to Cinematic and confirmed the Live Activity panel showed
+"Lab Question Created" / "Lab Requirement Created" with real timestamps —
+this is the event bus actually driving the Lab's UI, per the directive's
+explicit requirement that Lab activity flow through the existing bus, not a
+second one. Zero console errors throughout. Re-verified 0px horizontal
+overflow on mobile for both modes after the two fixes above.
+
+**Explicitly not done in this pass** (documented, not silently dropped):
+- The digital twin's 3D model itself doesn't yet visually highlight/select
+  by subsystem when a subsystem chip is clicked (the chip filters the
+  Requirements/Questions lists; the model render is unchanged by
+  selection). Wiring `SuitRig`'s existing per-part rendering to accept a
+  highlighted-subsystem prop is a real, scoped follow-up, not attempted
+  here to avoid touching the 3D rig again this session without a full
+  re-verification pass dedicated to it.
+- `LabResearchLink` (Phase A) has real API routes but no UI surface yet to
+  attach research to a requirement/question/decision from this page.
+- The Lab dashboard (`/lab`) itself doesn't yet surface the two-mode split
+  or cross-suit requirement/question rollups — this was scoped to the suit
+  detail page specifically, matching where the digital twin already lives.
+- The Quick Command action layer (natural-language writes like "create a
+  requirement for X") remains deferred from the earlier Quick Command
+  milestone — Requirements/Questions/Decisions are searchable via Quick
+  Command (Phase A) but not yet creatable from it.
+
+Full verification gate clean: typecheck, lint, 234 tests, production build.
+
 ## Reconciling the "VOX — Complete Autonomous AI Ecosystem" directive
 
 A second, larger master directive arrived after this plan was already

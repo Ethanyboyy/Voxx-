@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSuit } from "@/lib/lab/suits";
 import { getComponentTree } from "@/lib/lab/components";
 import { listDesignNotes } from "@/lib/lab/notes";
+import { listRequirements } from "@/lib/lab/requirements";
+import { listQuestions } from "@/lib/lab/questions";
+import { listDecisions } from "@/lib/lab/decisions";
 import { SuitDetailClient } from "@/components/lab/SuitDetailClient";
 
 export default async function SuitDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,9 +15,12 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
   const suit = await getSuit(user.id, id);
   if (!suit || !suit.currentVersion?.stats) notFound();
 
-  const [components, notes] = await Promise.all([
+  const [components, notes, requirements, questions, decisions] = await Promise.all([
     getComponentTree({ suitId: id }),
     listDesignNotes(user.id, "LabSuit", id),
+    listRequirements(user.id, id),
+    listQuestions(user.id, id),
+    listDecisions(user.id, id),
   ]);
 
   return (
@@ -48,6 +54,33 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
       }}
       components={components}
       notes={notes.map((n) => ({ id: n.id, content: n.content, createdAt: n.createdAt.toISOString() }))}
+      requirements={requirements.map((r) => ({
+        id: r.id,
+        code: r.code,
+        title: r.title,
+        status: r.status,
+        priority: r.priority,
+        subsystem: r.subsystem,
+        verificationMethod: r.verificationMethod,
+        evidence: r.evidence,
+      }))}
+      questions={questions.map((q) => ({
+        id: q.id,
+        question: q.question,
+        importance: q.importance,
+        subsystem: q.subsystem,
+        resolved: q.resolved,
+        currentHypothesis: q.currentHypothesis,
+        nextAction: q.nextAction,
+      }))}
+      decisions={decisions.map((d) => ({
+        id: d.id,
+        decision: d.decision,
+        selectedOption: d.selectedOption,
+        rationale: d.rationale,
+        author: d.author,
+        createdAt: d.createdAt.toISOString(),
+      }))}
     />
   );
 }
