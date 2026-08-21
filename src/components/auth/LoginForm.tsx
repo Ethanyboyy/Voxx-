@@ -28,7 +28,7 @@ export function LoginForm() {
       setError(body.error ?? "Login failed.");
       return;
     }
-    router.push("/dashboard");
+    router.push("/brain");
     router.refresh();
   }
 

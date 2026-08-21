@@ -29,7 +29,7 @@ export function SetupForm() {
       setError(body.error ?? "Setup failed.");
       return;
     }
-    router.push("/dashboard");
+    router.push("/brain");
     router.refresh();
   }
 

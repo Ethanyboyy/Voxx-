@@ -178,9 +178,9 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
   {
     group: "VOX",
     items: [
+      { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
       { href: "/dashboard", label: "Home", icon: IconHome },
       { href: "/chat", label: "Chat", icon: IconChat },
-      { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
     ],
   },
   {

@@ -4,7 +4,7 @@ import { hasAnyUser } from "@/lib/auth/service";
 
 export default async function RootPage() {
   const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
+  if (user) redirect("/brain");
   if (await hasAnyUser()) redirect("/login");
   redirect("/setup");
 }

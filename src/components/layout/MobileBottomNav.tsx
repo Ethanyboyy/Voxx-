@@ -17,9 +17,9 @@ function IconMore(p: SVGProps<SVGSVGElement>) {
 }
 
 const TABS = [
+  { href: "/brain", label: "Brain", icon: IconBrain },
   { href: "/dashboard", label: "Home", icon: IconHome },
   { href: "/chat", label: "Chat", icon: IconChat },
-  { href: "/brain", label: "Brain", icon: IconBrain },
   { href: "/projects", label: "Projects", icon: IconFolder },
 ] as const;
 
