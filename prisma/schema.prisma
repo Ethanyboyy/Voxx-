@@ -86,6 +86,10 @@ model User {
   labTutorialProgress LabTutorialProgress[]
   labDesignNotes      LabDesignNote[]
   labResearchItems    LabResearchItem[]
+  labRequirements     LabRequirement[]
+  labEngineeringQuestions LabEngineeringQuestion[]
+  labDecisions        LabDecision[]
+  labResearchLinks    LabResearchLink[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -537,6 +541,7 @@ model ResearchItem {
 
   memorySources MemorySource[]
   knowledgeNode KnowledgeNode?
+  labResearchLinks LabResearchLink[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1392,6 +1397,9 @@ model LabSuit {
   components      LabComponent[]
   simulations     LabSimulation[]
   experiments     LabExperiment[]
+  requirements    LabRequirement[]
+  engineeringQuestions LabEngineeringQuestion[]
+  decisions       LabDecision[]
 }
 
 /// One snapshot in a suit's design history. Components live on the parent
@@ -1501,6 +1509,7 @@ model LabComponent {
   dependedOnBy LabComponentDependency[] @relation("ComponentDependedOnBy")
   experiments  LabExperiment[]
   researchItems LabResearchItem[]
+  requirements LabRequirement[]
 }
 
 /// A component's dependency on another component (e.g. "HUD" depends on
@@ -1812,6 +1821,7 @@ model LabExperiment {
   updatedAt        DateTime             @updatedAt
 
   results LabExperimentResult[]
+  requirements LabRequirement[]
 
   @@unique([userId, code])
 }
@@ -1964,4 +1974,115 @@ model LabResearchItem {
   notes      String?
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Engineering domain — requirements, open questions, decisions
+// (Lab Cinematic/Engineering mode split)
+// ---------------------------------------------------------------------------
+
+/// Verification-workflow stage — deliberately a separate axis from
+/// LabConfidence (evidence quality of a single claim). A requirement can
+/// only reach VERIFIED through real evidence recorded on `evidence`/
+/// `verificationMethod`; nothing in this app sets it there automatically.
+enum LabRequirementStatus {
+  HYPOTHESIS
+  MODELED
+  TESTED
+  VERIFIED
+}
+
+enum LabPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// A concrete, testable engineering requirement — "what the system must
+/// accomplish" — for Engineering Mode's REQUIREMENTS section.
+model LabRequirement {
+  id          String        @id @default(uuid())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  suit        LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId      String?
+  code        String
+  title       String
+  description String?
+  priority    LabPriority   @default(MEDIUM)
+  status      LabRequirementStatus @default(HYPOTHESIS)
+  verificationMethod String?
+  evidence    String?
+  subsystem   LabSubsystem?
+  component   LabComponent? @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  componentId String?
+  experiment  LabExperiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  experimentId String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+/// A first-class unresolved engineering question — something concrete for
+/// VOX (or the user) to go investigate, distinct from a vague TODO.
+model LabEngineeringQuestion {
+  id                String        @id @default(uuid())
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  suit              LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId            String?
+  question          String
+  importance        LabPriority   @default(MEDIUM)
+  subsystem         LabSubsystem?
+  researchStatus    String?
+  currentHypothesis String?
+  confidence        LabConfidence @default(HYPOTHETICAL)
+  nextAction        String?
+  resolved          Boolean       @default(false)
+  answer            String?
+  resolvedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+/// A structured engineering decision log entry — "why a design choice was
+/// made" — permanent project memory, never overwritten (create a new row
+/// for a later reversal/superseding decision rather than editing history).
+model LabDecision {
+  id             String        @id @default(uuid())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  suit           LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId         String?
+  decision       String
+  context        String?
+  /// JSON string[] of options that were considered.
+  options        String?
+  selectedOption String?
+  rationale      String?
+  evidence       String?
+  tradeoffs      String?
+  author         String        @default("user")
+  confidence     LabConfidence @default(ESTIMATED)
+  createdAt      DateTime      @default(now())
+}
+
+/// Links a REAL core ResearchItem (VOX's web-search-backed research) to any
+/// Lab engineering object, so Lab objects can reference existing research
+/// instead of duplicating it inside the Lab — LabResearchItem (above) stays
+/// a separate, deliberately distinct concept for hand-entered/AI-Lab-
+/// Engineer engineering notes. subjectType/subjectId follows the same
+/// polymorphic convention as LabDesignNote.
+model LabResearchLink {
+  id             String       @id @default(uuid())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  researchItem   ResearchItem @relation(fields: [researchItemId], references: [id], onDelete: Cascade)
+  researchItemId String
+  subjectType    String
+  subjectId      String
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  @@unique([researchItemId, subjectType, subjectId])
 }

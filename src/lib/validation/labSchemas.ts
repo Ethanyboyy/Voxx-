@@ -387,3 +387,78 @@ export const updateResearchItemSchema = z.object({
   notes: z.string().max(4000).optional(),
   componentId: z.string().nullable().optional(),
 });
+
+// ---------------------------------------------------------------------------
+// Engineering domain — requirements, open questions, decisions
+// ---------------------------------------------------------------------------
+
+export const labRequirementStatusSchema = z.enum(["HYPOTHESIS", "MODELED", "TESTED", "VERIFIED"]);
+export const labPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+export const createRequirementSchema = z.object({
+  suitId: z.string().optional(),
+  title: z.string().min(1).max(160),
+  description: z.string().max(4000).optional(),
+  priority: labPrioritySchema.optional(),
+  status: labRequirementStatusSchema.optional(),
+  verificationMethod: z.string().max(2000).optional(),
+  evidence: z.string().max(4000).optional(),
+  subsystem: labSubsystemSchema.optional(),
+  componentId: z.string().optional(),
+  experimentId: z.string().optional(),
+});
+
+export const updateRequirementSchema = z.object({
+  title: z.string().min(1).max(160).optional(),
+  description: z.string().max(4000).optional(),
+  priority: labPrioritySchema.optional(),
+  status: labRequirementStatusSchema.optional(),
+  verificationMethod: z.string().max(2000).optional(),
+  evidence: z.string().max(4000).optional(),
+  subsystem: labSubsystemSchema.nullable().optional(),
+  componentId: z.string().nullable().optional(),
+  experimentId: z.string().nullable().optional(),
+});
+
+export const createEngineeringQuestionSchema = z.object({
+  suitId: z.string().optional(),
+  question: z.string().min(1).max(2000),
+  importance: labPrioritySchema.optional(),
+  subsystem: labSubsystemSchema.optional(),
+  researchStatus: z.string().max(300).optional(),
+  currentHypothesis: z.string().max(2000).optional(),
+  confidence: labConfidenceSchema.optional(),
+  nextAction: z.string().max(2000).optional(),
+});
+
+export const updateEngineeringQuestionSchema = z.object({
+  question: z.string().min(1).max(2000).optional(),
+  importance: labPrioritySchema.optional(),
+  subsystem: labSubsystemSchema.nullable().optional(),
+  researchStatus: z.string().max(300).optional(),
+  currentHypothesis: z.string().max(2000).optional(),
+  confidence: labConfidenceSchema.optional(),
+  nextAction: z.string().max(2000).optional(),
+  resolved: z.boolean().optional(),
+  answer: z.string().max(4000).optional(),
+});
+
+export const createDecisionSchema = z.object({
+  suitId: z.string().optional(),
+  decision: z.string().min(1).max(2000),
+  context: z.string().max(4000).optional(),
+  options: z.array(z.string()).optional(),
+  selectedOption: z.string().max(500).optional(),
+  rationale: z.string().max(4000).optional(),
+  evidence: z.string().max(4000).optional(),
+  tradeoffs: z.string().max(4000).optional(),
+  author: z.string().max(80).optional(),
+  confidence: labConfidenceSchema.optional(),
+});
+
+export const createResearchLinkSchema = z.object({
+  researchItemId: z.string().min(1),
+  subjectType: z.enum(["LabRequirement", "LabEngineeringQuestion", "LabDecision", "LabComponent", "LabExperiment", "LabSuit"]),
+  subjectId: z.string().min(1),
+  note: z.string().max(1000).optional(),
+});

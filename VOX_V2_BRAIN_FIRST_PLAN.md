@@ -273,6 +273,74 @@ vocabulary.
 
 Full verification gate clean: typecheck, lint, 223 tests, production build.
 
+## Milestone: Lab Cinematic/Engineering split — Phase A (engineering domain model) — DONE
+
+Per the "VOX — Spider-Man Lab: Cinematic Mode + Engineering Mode Split"
+directive. Audited the existing Lab schema first (`LabProject`, `LabSuit`,
+`LabComponent` + dependencies, `LabExperiment`, `LabResearchItem`,
+`LabDesignNote`, etc. — all real, from earlier milestones) before adding
+anything, per the directive's own "do not touch what doesn't need
+touching" rule. Three genuinely missing structured concepts identified and
+built; everything else (digital twin, subsystem taxonomy, reality-status
+labeling, experiments) already existed and is reused as-is.
+
+**Schema** (migration `20260821222240_lab_engineering_domain`):
+- `LabRequirement` — `LabRequirementStatus` (HYPOTHESIS/MODELED/TESTED/
+  VERIFIED) as a deliberately separate axis from `LabConfidence` (evidence
+  quality). Links to suit/subsystem/component/experiment.
+- `LabEngineeringQuestion` — first-class unresolved-question tracking
+  (importance, researchStatus, currentHypothesis, confidence, resolved/
+  resolvedAt/answer).
+- `LabDecision` — immutable decision log (context/options/selectedOption/
+  rationale/evidence/tradeoffs/author/confidence) — no update/delete
+  function exists for it on purpose; a reversal is a new decision row, not
+  an edit, so history is never lost.
+- `LabResearchLink` — polymorphic link (same `subjectType`/`subjectId`
+  convention as the existing `LabDesignNote`) from a REAL core `ResearchItem`
+  to any Lab object. This is the concrete answer to "reference existing
+  research records, don't duplicate research inside the Lab": `LabResearchItem`
+  (hand-entered/AI-Lab-Engineer notes) stays untouched as its own real,
+  separate concept: `LabResearchLink` is for pointing at VOX's actual
+  web-search-backed research instead of re-entering it.
+- Deliberately NOT changed: `LabExperimentStatus` already covers PLANNED→
+  RUNNING→COMPLETED→FAILED/ABANDONED closely enough to the directive's
+  ask that adding ANALYZED/INVALID as new values wasn't worth a schema
+  migration for marginal semantic gain — documented as a deliberate no-op.
+
+**Enforcement, not just labeling:** `updateRequirement()` throws if a
+caller tries to set `status: "VERIFIED"` without non-empty `evidence` —
+the "never imply a prototype measured something it didn't" rule is a real
+guard, not a UI convention someone could bypass via the API.
+
+**Service + API layer:** `src/lib/lab/{requirements,questions,decisions,
+researchLinks}.ts`, each following the established `recordEvent()`-on-
+creation/status-change pattern (so this domain is event-bus-connected from
+day one — `lab.requirement.created`, `lab.requirement.status_changed`,
+`lab.question.created`, `lab.question.resolved`, `lab.decision.recorded`,
+`lab.research_link.created`) — real routes under `/api/lab/{requirements,
+questions,decisions,research-links}`.
+
+**Quick Command integration:** `searchLab()` (already the cross-domain
+search's Lab-domain source, from Milestone 8/the Quick Command milestone)
+extended to include Requirements/Engineering Questions/Decisions — no
+second Lab-specific command parser was created, per the directive's
+explicit instruction.
+
+**Tests:** `tests/lab-engineering-domain.test.ts` (11 new) — HYPOTHESIS
+default, the VERIFIED-without-evidence rejection, VERIFIED-with-evidence
+success, per-user scoping, question resolution + idempotent re-save,
+unresolved filtering, decision recording, and three research-link
+ownership tests (real link succeeds; refuses a research item the caller
+doesn't own; refuses a subject the caller doesn't own).
+
+Full verification gate clean: typecheck, lint, 234 tests, production build.
+
+**Explicitly not yet done** (this was schema/service/API only, per the
+"commit logically, continue" workflow rule) — the actual Cinematic Mode
+and Engineering Mode UI, the mode switch with context preservation, digital
+twin subsystem-selection wiring, the live activity layer, and Brain
+integration verification are the next milestone, continuing immediately.
+
 ## Reconciling the "VOX — Complete Autonomous AI Ecosystem" directive
 
 A second, larger master directive arrived after this plan was already
