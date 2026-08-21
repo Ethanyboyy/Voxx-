@@ -81,7 +81,8 @@ memory of it — re-verified where it matters for this directive)
 |---|---|---|
 | 0 — Audit | This document | **DONE** |
 | 1 — Design system | VOX 2.0 Milestone 2 (neutral tokens, StateIndicator) | **DONE**, reused |
-| 2 — Brain | Brain-first entry point + nav reorder (below) | **STARTING NOW** |
+| 2 — Brain | Brain-first entry point + nav reorder | **DONE** |
+| 2b — Quick Command | Real cross-domain search (below) | **DONE** |
 | 3 — Cognitive orchestration | Orchestrator (Milestone 10) exists; live event bus is the real gap | PLANNED next |
 | 4 — Home/Projects/Memory/Research | Already real UI (Workstream A); revisit only where Brain-first nav changes their entry paths | Mostly done, spot-check only |
 | 5 — Laboratory | Cinematic/Engineering mode split on top of the real suit rendering fix | PLANNED |
@@ -89,7 +90,7 @@ memory of it — re-verified where it matters for this directive)
 | 7 — Mobile | Spot-checked clean on 4 pages; broaden the sweep as other phases land | Ongoing |
 | 8 — Polish | Final pass once the above land | Not started |
 
-## Milestone: Brain-first entry point + navigation reorder — IN PROGRESS
+## Milestone: Brain-first entry point + navigation reorder — DONE
 
 Smallest, most concrete, most directly-demanded change with the least risk of
 destroying working infrastructure (nothing is deleted, every existing route
@@ -108,3 +109,56 @@ stays reachable):
 Explicitly NOT in this milestone: rebuilding Brain's internal layout,
 Quick Command's real cross-domain search, the live event bus, or the Lab
 presentation split — each is its own milestone below, sequenced next.
+
+## Milestone: Real cross-domain Quick Command — DONE
+
+Replaced the static route-list-only ⌘K palette with genuine cross-domain
+search, per the "VOX V2 — Continue from current state" directive's priority
+#1.
+
+1. **`src/lib/search/service.ts`** — `searchEverything(userId, query)`
+   queries memory (reusing the existing embeddings-based
+   `getSemanticMemories()` — real semantic ranking, not new), the Lab
+   (reusing the existing `searchLab()` from Milestone 8/task #8 rather than
+   duplicating it), and direct `contains` queries across Objective,
+   Opportunity, Goal, Task, Project, ResearchItem, EconomicAsset, and recent
+   Events — all scoped to the requesting user. Returns one unified
+   `SearchResult[]` (`source`, `type`, `title`, `subtitle`, `timestamp`,
+   `relevance`, `href`), sorted by a real deterministic relevance heuristic
+   (exact match > prefix > substring on the actual matched text — not a
+   fabricated ML score).
+2. **`/api/search`** — standard `requireUser()`/`jsonOk()` route wrapping it.
+3. **`CommandPalette.tsx`** — rewritten to merge the existing static
+   navigation commands with live, debounced (200ms, `AbortController`-backed
+   — the same proven pattern already shipped in `LabCommandBar.tsx`) search
+   results, grouped by type, single keyboard-navigable list.
+4. **`tests/search.test.ts`** (6 new tests) — short-query guard, real
+   cross-domain matches, Lab reuse, ranking sanity, and cross-user isolation.
+5. Verified live in the browser, not just via tests: a real query
+   ("suit") returned genuinely grouped, real results (Lab gadgets,
+   tutorials, experiments, a system event) with zero console errors on
+   desktop; clicking a result (`EXP-004 — Noise profile reduction`)
+   navigated to the actual experiment's real detail URL — confirmed
+   end-to-end, not just that a network request fired. Re-verified clean at
+   375px mobile (0px horizontal overflow).
+
+**Explicitly deferred, not silently dropped:** the directive's action layer
+("create a milestone for Mask V3 called material testing" as a structured
+write, not a search) is real additional scope — natural-language intent
+parsing plus a safe confirmation/permission boundary for write actions
+initiated from free text. Building that hastily onto this pass would mean
+either a fragile keyword-matcher or skipping the "never execute dangerous
+actions without confirmation" requirement the directive itself states.
+Left as a follow-up milestone once the event bus (next) gives the command
+bar a place to show that kind of pending-confirmation state.
+
+## Next: live event bus (VOX V2 continuation priority #2)
+
+`Event` rows are real and written at the right points (`recordEvent()`), but
+nothing pushes them to a connected client — the Brain re-fetches on page
+load only. Plan: an internal pub/sub the API layer publishes into whenever
+`recordEvent()` runs, exposed to the client via a transport abstraction
+(SSE is the natural fit for this stack — no new infra dependency, works
+through the existing Next.js route handlers) so the Brain visualization and
+a live system feed can react to real activity as it happens, not on a
+timer.
