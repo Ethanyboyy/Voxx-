@@ -281,6 +281,17 @@ export const startAgentRunSchema = z.object({
 
 export const agentStatusSchema = z.enum(["DRAFT", "READY", "ARCHIVED"]);
 
+export const startSupervisorRunSchema = z.object({
+  objectiveId: z.string().min(1),
+  maxIterations: z.number().int().min(0).max(5).optional(),
+});
+
+export const autonomyModeSchema = z.enum(["MANUAL", "SUPERVISED", "AUTONOMOUS", "AUTONOMOUS_APPROVAL_GATES"]);
+
+export const updateAutonomySchema = z.object({
+  autonomyMode: autonomyModeSchema,
+});
+
 export const createAgentSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),

@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea, Label } from "@/components/ui/Field";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StateIndicator } from "@/components/ui/StateIndicator";
+import { SupervisorPanel, type SupervisorRunItem } from "@/components/objectives/SupervisorPanel";
+import { useEventStream } from "@/lib/events/useEventStream";
+import type { LiveEvent } from "@/lib/events/bus";
 
 interface ObjectiveItem {
   id: string;
@@ -48,13 +52,31 @@ const STATUS_TONE: Record<string, "neutral" | "accent" | "success" | "warning" |
 export function ObjectivesClient({
   objectives: initialObjectives,
   opportunities: initialOpportunities,
+  supervisorRuns: initialSupervisorRuns,
 }: {
   objectives: ObjectiveItem[];
   opportunities: OpportunityItem[];
+  supervisorRuns: SupervisorRunItem[];
 }) {
   const [objectives, setObjectives] = useState(initialObjectives);
   const [opportunities, setOpportunities] = useState(initialOpportunities);
+  const [supervisorRuns, setSupervisorRuns] = useState(initialSupervisorRuns);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const refreshSupervisorRun = useCallback(async (id: string) => {
+    const res = await fetch(`/api/supervisor/${id}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setSupervisorRuns((prev) => (prev.some((r) => r.id === id) ? prev.map((r) => (r.id === id ? data.run : r)) : [data.run, ...prev]));
+  }, []);
+
+  const handleLiveEvent = useCallback(
+    (event: LiveEvent) => {
+      if (event.subjectType === "SupervisorRun" && event.subjectId) void refreshSupervisorRun(event.subjectId);
+    },
+    [refreshSupervisorRun]
+  );
+  const { status: liveStatus } = useEventStream({ onEvent: handleLiveEvent });
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({ title: "", description: "", strategy: "", targetValue: "", targetUnit: "" });
@@ -124,7 +146,12 @@ export function ObjectivesClient({
 
   return (
     <div className="mt-6">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <StateIndicator
+          color={liveStatus === "open" ? "var(--success)" : "var(--muted-foreground)"}
+          label={liveStatus === "open" ? "Live" : liveStatus === "unsupported" ? "Live updates unsupported" : "Connecting…"}
+          pulse={liveStatus === "open"}
+        />
         <Button size="sm" onClick={() => setShowCreate((s) => !s)}>
           {showCreate ? "Cancel" : "New Objective"}
         </Button>
@@ -244,9 +271,11 @@ export function ObjectivesClient({
                     <ObjectiveDetail
                       objective={o}
                       opportunities={objOpportunities}
+                      supervisorRuns={supervisorRuns.filter((s) => s.objectiveId === o.id)}
                       onUpdateStatus={(status) => updateObjectiveStatus(o.id, status)}
                       onUpdateProgress={(value) => updateProgress(o.id, value)}
                       onOpportunitiesChange={setOpportunities}
+                      onSupervisorRunsChange={setSupervisorRuns}
                     />
                   ) : null}
                 </CardContent>
@@ -262,15 +291,19 @@ export function ObjectivesClient({
 function ObjectiveDetail({
   objective,
   opportunities,
+  supervisorRuns,
   onUpdateStatus,
   onUpdateProgress,
   onOpportunitiesChange,
+  onSupervisorRunsChange,
 }: {
   objective: ObjectiveItem;
   opportunities: OpportunityItem[];
+  supervisorRuns: SupervisorRunItem[];
   onUpdateStatus: (status: string) => void;
   onUpdateProgress: (value: string) => void;
   onOpportunitiesChange: (updater: (prev: OpportunityItem[]) => OpportunityItem[]) => void;
+  onSupervisorRunsChange: (updater: (prev: SupervisorRunItem[]) => SupervisorRunItem[]) => void;
 }) {
   const [showAddOpportunity, setShowAddOpportunity] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -378,6 +411,8 @@ function ObjectiveDetail({
           </div>
         ) : null}
       </div>
+
+      <SupervisorPanel objectiveId={objective.id} runs={supervisorRuns} onRunsChange={onSupervisorRunsChange} />
 
       <div className="mt-4 flex items-center justify-between">
         <p className="vox-eyebrow">Opportunities</p>

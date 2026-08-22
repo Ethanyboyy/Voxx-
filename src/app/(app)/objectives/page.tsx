@@ -1,12 +1,17 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { listObjectives, listOpportunities } from "@/lib/objectives/service";
+import { listSupervisorRuns } from "@/lib/supervisor/service";
 import { ObjectivesClient } from "@/components/objectives/ObjectivesClient";
 
 export default async function ObjectivesPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [objectives, opportunities] = await Promise.all([listObjectives(user.id), listOpportunities(user.id)]);
+  const [objectives, opportunities, supervisorRuns] = await Promise.all([
+    listObjectives(user.id),
+    listOpportunities(user.id),
+    listSupervisorRuns(user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -42,6 +47,32 @@ export default async function ObjectivesPage() {
           risk: o.risk,
           nextAction: o.nextAction,
           status: o.status,
+        }))}
+        supervisorRuns={supervisorRuns.map((s) => ({
+          id: s.id,
+          objectiveId: s.objectiveId,
+          status: s.status,
+          iterations: s.iterations,
+          maxIterations: s.maxIterations,
+          result: s.result,
+          error: s.error,
+          createdAt: s.createdAt.toISOString(),
+          updatedAt: s.updatedAt.toISOString(),
+          agentRuns: s.agentRuns.map((r) => ({
+            id: r.id,
+            status: r.status,
+            error: r.error,
+            steps: r.steps.map((step) => ({
+              id: step.id,
+              order: step.order,
+              description: step.description,
+              toolName: step.toolName,
+              status: step.status,
+              capability: step.capability,
+              requiredLevel: step.requiredLevel,
+              error: step.error,
+            })),
+          })),
         }))}
       />
     </div>

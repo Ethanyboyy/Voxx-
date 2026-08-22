@@ -38,13 +38,42 @@ enum CapabilityLevel {
 // Identity & auth
 // ---------------------------------------------------------------------------
 
+/// Governs how freely the Supervisor may grant a newly-created Agent tool
+/// capabilities when starting autonomous work (src/lib/supervisor/service.ts
+/// #selectOrCreateAgent). This can only ever be MORE restrictive than the
+/// user's own Permission grants — never a way to grant more than
+/// checkCapability()/the Agent allowlist would already allow. See §26/§27
+/// of the Brain<->Agent orchestration directive: autonomy mode is
+/// subordinate to capability/permission/risk, never a bypass of them.
+enum AutonomyMode {
+  /// The Supervisor may still plan, but selectOrCreateAgent never grants a
+  /// newly-created agent any tool capability — every tool-bound step blocks
+  /// via the existing allowlist enforcement until a human manually builds
+  /// and runs a saved Agent themselves (unaffected, outside the Supervisor).
+  MANUAL
+  /// Alias of AUTONOMOUS_APPROVAL_GATES for this milestone — not yet
+  /// behaviorally distinct; see the final checkpoint report.
+  SUPERVISED
+  /// Alias of AUTONOMOUS_APPROVAL_GATES for this milestone — not yet
+  /// behaviorally distinct; see the final checkpoint report.
+  AUTONOMOUS
+  /// The preferred default: the Supervisor grants a newly-created agent
+  /// exactly the capabilities its plan demonstrably needs, and execution
+  /// proceeds autonomously until a real WAITING_FOR_PERMISSION boundary
+  /// (an ungranted capability) is reached.
+  AUTONOMOUS_APPROVAL_GATES
+}
+
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String       @id @default(uuid())
+  email        String       @unique
   passwordHash String
   name         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  /// Global default for how the Supervisor is allowed to authorize new
+  /// agents it creates — never grants more than Permission/capability would.
+  autonomyMode AutonomyMode @default(AUTONOMOUS_APPROVAL_GATES)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   sessions        Session[]
   conversations   Conversation[]
@@ -75,6 +104,7 @@ model User {
   economicAssets        EconomicAsset[]
   brainGroups           BrainGroup[]
   brainViews            BrainView[]
+  supervisorRuns        SupervisorRun[]
 
   labProjects         LabProject[]
   labSuits            LabSuit[]
@@ -872,7 +902,8 @@ model Agent {
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
-  runs AgentRun[]
+  runs           AgentRun[]
+  supervisorRuns SupervisorRun[]
 }
 
 model AgentRun {
@@ -883,6 +914,11 @@ model AgentRun {
   projectId   String?
   agent       Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
   agentId     String?
+  /// Set when this run was started by a SupervisorRun rather than directly
+  /// from the Agent UI — lets the Supervisor find/monitor "its" run and lets
+  /// the Brain graph draw Objective -> SupervisorRun -> AgentRun.
+  supervisorRun   SupervisorRun? @relation(fields: [supervisorRunId], references: [id], onDelete: SetNull)
+  supervisorRunId String?
   objective   String
   status      AgentRunStatus @default(PLANNING)
   /// Index into `steps` (order value) the executor is currently on / paused at.
@@ -975,7 +1011,8 @@ model Objective {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  opportunities Opportunity[]
+  opportunities  Opportunity[]
+  supervisorRuns SupervisorRun[]
 }
 
 enum OpportunityStatus {
@@ -1026,6 +1063,60 @@ model Opportunity {
 
   researchItems ResearchItem[]
   economicAsset EconomicAsset?
+}
+
+// ---------------------------------------------------------------------------
+// Supervisor — the Brain <-> Agent Runtime bridge. A SupervisorRun does not
+// execute anything itself: it plans (the existing planObjective()), selects
+// or creates an Agent by capability (never hardcoded per domain), and drives
+// the existing AgentRun/AgentStep engine exactly as the Agent UI would.
+// Nothing here is a second execution engine, a second planner, a second
+// permission system, or a second event bus.
+// ---------------------------------------------------------------------------
+
+enum SupervisorRunStatus {
+  PLANNING
+  RUNNING
+  WAITING_FOR_APPROVAL
+  REPLANNING
+  BLOCKED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// One bounded orchestration attempt at an Objective. Owns *at most one*
+/// in-flight AgentRun at a time (see agentRuns below) — multi-agent swarms
+/// and unbounded background loops are explicitly out of scope; see
+/// `iterations`/`maxIterations` for the one bounded recovery mechanism
+/// (re-plan-and-retry after a failed run).
+model SupervisorRun {
+  id          String              @id @default(uuid())
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  objective   Objective           @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  objectiveId String
+  /// The Agent selected/created to carry out the current plan. Selection is
+  /// capability-based (src/lib/supervisor/service.ts#selectOrCreateAgent) —
+  /// never a hardcoded "if research then researchAgent" mapping.
+  agent       Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentId     String?
+  status      SupervisorRunStatus @default(PLANNING)
+  /// JSON snapshot of the planner's PlanStep[] output for this attempt —
+  /// inspectable, not a hidden chain-of-thought transcript.
+  plan        String?
+  /// Number of replan-and-retry cycles used so far (bounded by maxIterations).
+  iterations    Int      @default(0)
+  maxIterations Int      @default(2)
+  /// Final synthesized outcome once COMPLETED — copied from the driving AgentRun.result.
+  result      String?
+  /// Failure/decline reason once FAILED or CANCELLED.
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  agentRuns AgentRun[]
 }
 
 // ---------------------------------------------------------------------------

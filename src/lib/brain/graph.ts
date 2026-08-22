@@ -5,6 +5,7 @@ import { listConnections } from "@/lib/connections/service";
 import { listMemories } from "@/lib/memory/service";
 import { listResearchItems } from "@/lib/research/service";
 import { listAgentRuns } from "@/lib/agents/service";
+import { listSupervisorRuns } from "@/lib/supervisor/service";
 
 /**
  * The Brain workspace's data source. Every node here is a real VOX entity —
@@ -22,7 +23,8 @@ export type BrainNodeType =
   | "PROPOSAL"
   | "CONNECTION"
   | "MEMORY"
-  | "AGENT_RUN";
+  | "AGENT_RUN"
+  | "SUPERVISOR_RUN";
 
 export interface BrainNode {
   /** `${type}:${entityId}` — unique across the whole graph. */
@@ -59,7 +61,7 @@ const MEMORY_LIMIT = 24;
 const RESEARCH_LIMIT = 40;
 
 export async function getBrainGraph(userId: string): Promise<BrainGraph> {
-  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research, agentRuns] =
+  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research, agentRuns, supervisorRuns] =
     await Promise.all([
       listObjectives(userId),
       listOpportunities(userId),
@@ -70,6 +72,7 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
       listMemories(userId, { confidence: "CONFIRMED" }),
       listResearchItems(userId, RESEARCH_LIMIT),
       listAgentRuns(userId, 10),
+      listSupervisorRuns(userId, 10),
     ]);
 
   const nodes: BrainNode[] = [];
@@ -270,6 +273,35 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
     }
   }
 
+  for (const sup of supervisorRuns) {
+    const nodeId = `SUPERVISOR_RUN:${sup.id}`;
+    nodes.push({
+      id: nodeId,
+      entityId: sup.id,
+      type: "SUPERVISOR_RUN",
+      label: `Supervising: ${objectives.find((o) => o.id === sup.objectiveId)?.title ?? sup.objectiveId}`,
+      status: sup.status,
+      updatedAt: sup.updatedAt.toISOString(),
+      meta: {
+        objectiveId: sup.objectiveId,
+        agentId: sup.agentId,
+        iterations: sup.iterations,
+        maxIterations: sup.maxIterations,
+        result: sup.result,
+        error: sup.error,
+      },
+    });
+    edges.push({ id: nextEdgeId(), from: `OBJECTIVE:${sup.objectiveId}`, to: nodeId, relation: "supervised_by" });
+    for (const run of sup.agentRuns) {
+      // Only draw the edge when the AgentRun node actually made it into this
+      // slice (agentRuns above is capped at 10, most-recent-first) — never
+      // draw an edge to a node that isn't in the graph.
+      if (agentRuns.some((r) => r.id === run.id)) {
+        edges.push({ id: nextEdgeId(), from: nodeId, to: `AGENT_RUN:${run.id}`, relation: "drives" });
+      }
+    }
+  }
+
   return {
     nodes,
     edges,
@@ -296,13 +328,26 @@ export type BrainState =
   | "error";
 
 export async function getBrainState(userId: string): Promise<{ state: BrainState; detail: string | null }> {
-  const [agentRuns, pendingProposals] = await Promise.all([
+  const [agentRuns, pendingProposals, supervisorRuns, objectives] = await Promise.all([
     listAgentRuns(userId, 5),
     listProposals(userId, "PROPOSED"),
+    listSupervisorRuns(userId, 5),
+    listObjectives(userId),
   ]);
+
+  const objectiveTitle = (objectiveId: string) => objectives.find((o) => o.id === objectiveId)?.title ?? "an objective";
+
+  const failedSupervisor = supervisorRuns.find((s) => s.status === "FAILED");
+  if (failedSupervisor) return { state: "error", detail: failedSupervisor.error ?? "A supervisor run failed." };
 
   const failed = agentRuns.find((r) => r.status === "FAILED");
   if (failed) return { state: "error", detail: failed.error ?? "An agent run failed." };
+
+  const waitingApproval = supervisorRuns.find((s) => s.status === "WAITING_FOR_APPROVAL");
+  if (waitingApproval) return { state: "waiting", detail: `Approval needed to continue ${objectiveTitle(waitingApproval.objectiveId)}` };
+
+  const supervising = supervisorRuns.find((s) => s.status === "RUNNING" || s.status === "PLANNING" || s.status === "REPLANNING");
+  if (supervising) return { state: "executing", detail: `Working on ${objectiveTitle(supervising.objectiveId)}` };
 
   const running = agentRuns.find((r) => r.status === "RUNNING");
   if (running) return { state: "executing", detail: running.objective };
