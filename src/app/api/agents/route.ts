@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
     const body = startAgentRunSchema.parse(await request.json());
-    const run = await startAgentRun({ userId: user.id, objective: body.objective, projectId: body.projectId });
+    const run = await startAgentRun({ userId: user.id, objective: body.objective, projectId: body.projectId, agentId: body.agentId });
     return jsonOk({ run }, 201);
   } catch (error) {
     return apiErrorResponse(error);

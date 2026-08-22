@@ -5,6 +5,8 @@ import { runResearch } from "@/lib/research/service";
 import { proposeConnection } from "@/lib/connections/service";
 import { getCatalogEntry } from "@/lib/integrations/catalog";
 import { getConnectionProvider } from "@/lib/integrations/stub";
+import { createRequirement, nextRequirementCode } from "@/lib/lab/requirements";
+import { createQuestion } from "@/lib/lab/questions";
 import type { ToolDefinition } from "@/lib/tools/types";
 
 /**
@@ -152,6 +154,56 @@ register({
   execute: async (userId, input) => {
     const connection = await proposeConnection(userId, input.service, input.reason);
     return { output: { service: input.service, status: connection.status }, summary: `Suggested connecting ${connection.displayName} in the Connections Hub.` };
+  },
+});
+
+register({
+  name: "lab.create_requirement",
+  description: "Record an engineering requirement in the Spider-Man Laboratory, optionally attached to a suit.",
+  category: "project",
+  capability: "lab.write",
+  requiredLevel: "RECOMMEND",
+  inputSchema: z.object({
+    title: z.string().min(1).max(200),
+    description: z.string().max(5000).optional(),
+    suitId: z.string().optional(),
+    priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  }),
+  execute: async (userId, input) => {
+    const code = await nextRequirementCode(userId);
+    const requirement = await createRequirement({
+      userId,
+      suitId: input.suitId,
+      code,
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+    });
+    return { output: { id: requirement.id, code: requirement.code }, summary: `Recorded requirement ${requirement.code}: "${requirement.title}".` };
+  },
+});
+
+register({
+  name: "lab.create_question",
+  description: "Record an open engineering question in the Spider-Man Laboratory, optionally attached to a suit.",
+  category: "project",
+  capability: "lab.write",
+  requiredLevel: "RECOMMEND",
+  inputSchema: z.object({
+    question: z.string().min(1).max(2000),
+    suitId: z.string().optional(),
+    importance: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+    currentHypothesis: z.string().max(2000).optional(),
+  }),
+  execute: async (userId, input) => {
+    const question = await createQuestion({
+      userId,
+      suitId: input.suitId,
+      question: input.question,
+      importance: input.importance,
+      currentHypothesis: input.currentHypothesis,
+    });
+    return { output: { id: question.id }, summary: `Recorded engineering question: "${question.question.slice(0, 80)}${question.question.length > 80 ? "..." : ""}"` };
   },
 });
 

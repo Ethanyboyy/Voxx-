@@ -19,6 +19,16 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
   if (!run) throw new Error("Agent run not found.");
   if (run.status === "COMPLETED" || run.status === "CANCELLED" || run.status === "FAILED") return run;
 
+  // Agent-level capability allowlist (§ Agent model doc comment in schema.prisma):
+  // a second, stricter restriction on top of the user's own Permission grants.
+  // Only applies to runs started from a persistent Agent definition; ad hoc
+  // runs (agentId null) are governed solely by the normal checkCapability() gate.
+  let allowedCapabilities: string[] | null = null;
+  if (run.agentId) {
+    const agent = await db.agent.findUnique({ where: { id: run.agentId } });
+    allowedCapabilities = agent ? (JSON.parse(agent.allowedCapabilities) as string[]) : [];
+  }
+
   if (run.status === "PLANNING") {
     run = await db.agentRun.update({ where: { id: run.id }, data: { status: "RUNNING" }, include: { steps: { orderBy: { order: "asc" } } } });
     await recordEvent({ userId, type: "agent.run.started", subjectType: "AgentRun", subjectId: run.id, payload: { objective: run.objective } });
@@ -40,6 +50,18 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     const tool = getTool(step.toolName);
     if (!tool) {
       return await failRun(userId, run.id, step.id, `Unknown tool "${step.toolName}" — the planner referenced a tool that doesn't exist in the registry.`);
+    }
+
+    if (allowedCapabilities !== null && !allowedCapabilities.includes(tool.capability)) {
+      // Not a WAITING_FOR_PERMISSION pause: no Permission grant can fix this —
+      // only editing the Agent's own allowedCapabilities can. Fail outright
+      // rather than parking the run in a state that looks resumable.
+      return await failRun(
+        userId,
+        run.id,
+        step.id,
+        `This agent is not permitted to use capability "${tool.capability}" (tool "${tool.name}"). Add it to the agent's allowed capabilities to enable this.`
+      );
     }
 
     const check = await checkCapability(userId, tool.capability, tool.requiredLevel);

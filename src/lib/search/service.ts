@@ -49,7 +49,7 @@ export async function searchEverything(userId: string, query: string): Promise<S
   if (q.length < 2) return [];
   const contains = { contains: q };
 
-  const [memories, labResults, objectives, opportunities, goals, tasks, projects, research, assets, events] =
+  const [memories, labResults, objectives, opportunities, goals, tasks, projects, research, assets, events, agents, agentRuns] =
     await Promise.all([
       getSemanticMemories(userId, q, 6).catch(() => []),
       searchLab(userId, q),
@@ -69,6 +69,8 @@ export async function searchEverything(userId: string, query: string): Promise<S
         take: 6,
         orderBy: { createdAt: "desc" },
       }),
+      db.agent.findMany({ where: { userId, OR: [{ name: contains }, { description: contains }] }, take: 6 }),
+      db.agentRun.findMany({ where: { userId, objective: contains }, take: 6, orderBy: { createdAt: "desc" } }),
     ]);
 
   const results: SearchResult[] = [];
@@ -197,6 +199,32 @@ export async function searchEverything(userId: string, query: string): Promise<S
       timestamp: e.createdAt.toISOString(),
       relevance: textRelevance(q, e.type, e.subjectType) * 0.8, // events are a weaker signal — type is a code, not prose
       href: `/activity`,
+    });
+  }
+
+  for (const a of agents) {
+    results.push({
+      source: "agent",
+      type: "Agent",
+      id: a.id,
+      title: a.name,
+      subtitle: a.status.toLowerCase(),
+      timestamp: a.updatedAt.toISOString(),
+      relevance: textRelevance(q, a.name, a.description),
+      href: `/agents`,
+    });
+  }
+
+  for (const r of agentRuns) {
+    results.push({
+      source: "agentRun",
+      type: "Agent Run",
+      id: r.id,
+      title: r.objective,
+      subtitle: r.status.toLowerCase().replace(/_/g, " "),
+      timestamp: r.createdAt.toISOString(),
+      relevance: textRelevance(q, r.objective),
+      href: `/agents`,
     });
   }
 

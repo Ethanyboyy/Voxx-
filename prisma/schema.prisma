@@ -67,6 +67,7 @@ model User {
   events          Event[]
   proposals       Proposal[]
   agentRuns             AgentRun[]
+  agents                Agent[]
   notifications         Notification[]
   notificationPreference NotificationPreference?
   objectives            Objective[]
@@ -838,12 +839,50 @@ enum AgentStepStatus {
   SKIPPED
 }
 
+enum AgentStatus {
+  DRAFT
+  READY
+  ARCHIVED
+}
+
+/// A persistent, reusable agent DEFINITION — distinct from an AgentRun
+/// (one execution of it). Answers "what is this agent" separately from
+/// "what has this agent actually done" (each run is its own AgentRun row).
+/// `allowedCapabilities` is a real, enforced second layer of restriction on
+/// top of the user's own granted Permission rows (see executor.ts): even
+/// with every capability granted at the account level, a run started from
+/// this Agent can only plan/execute tools whose capability key appears
+/// here — agents do not get unrestricted access by default (empty list —
+/// the honest default — means the agent can only run no-tool/reasoning
+/// steps until capabilities are explicitly added).
+model Agent {
+  id                  String      @id @default(uuid())
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  name                String
+  description         String?
+  /// Default objective template used to start a new run when none is
+  /// given explicitly — free text, may contain the agent's persona/instructions.
+  instructions        String?
+  status              AgentStatus @default(DRAFT)
+  /// JSON string[] of capability keys (e.g. ["memory.read","research.web"])
+  /// this agent's runs are allowed to use — checked in the executor before
+  /// the normal enforceCapability() gate, never after.
+  allowedCapabilities String      @default("[]")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  runs AgentRun[]
+}
+
 model AgentRun {
   id          String         @id @default(uuid())
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
   project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   projectId   String?
+  agent       Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentId     String?
   objective   String
   status      AgentRunStatus @default(PLANNING)
   /// Index into `steps` (order value) the executor is currently on / paused at.

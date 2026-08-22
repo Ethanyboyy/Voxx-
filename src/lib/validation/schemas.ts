@@ -276,6 +276,24 @@ export const grantConnectionAccessSchema = z.object({
 export const startAgentRunSchema = z.object({
   objective: z.string().min(1).max(2000),
   projectId: z.string().optional(),
+  agentId: z.string().optional(),
+});
+
+export const agentStatusSchema = z.enum(["DRAFT", "READY", "ARCHIVED"]);
+
+export const createAgentSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  instructions: z.string().max(4000).optional(),
+  allowedCapabilities: z.array(z.string().min(1)).max(50).optional(),
+});
+
+export const updateAgentSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  instructions: z.string().max(4000).optional(),
+  status: agentStatusSchema.optional(),
+  allowedCapabilities: z.array(z.string().min(1)).max(50).optional(),
 });
 
 export const objectiveStatusSchema = z.enum(["ACTIVE", "PAUSED", "ACHIEVED", "ABANDONED"]);

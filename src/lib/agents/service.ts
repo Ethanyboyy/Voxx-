@@ -8,12 +8,22 @@ export interface StartAgentRunInput {
   userId: string;
   objective: string;
   projectId?: string;
+  /** Persistent Agent definition to run under — its allowedCapabilities
+   * allowlist is enforced by the executor on top of the normal permission
+   * gate. Must belong to the same user and not be ARCHIVED. */
+  agentId?: string;
 }
 
 /** Plans the objective, persists the run + steps, then executes as far as it can go before hitting a permission wait, failure, or completion. */
 export async function startAgentRun(input: StartAgentRunInput) {
+  if (input.agentId) {
+    const agent = await db.agent.findFirst({ where: { id: input.agentId, userId: input.userId } });
+    if (!agent) throw new Error("Agent not found.");
+    if (agent.status === "ARCHIVED") throw new Error("This agent is archived and can't start new runs.");
+  }
+
   const run = await db.agentRun.create({
-    data: { userId: input.userId, objective: input.objective, projectId: input.projectId, status: "PLANNING" },
+    data: { userId: input.userId, objective: input.objective, projectId: input.projectId, agentId: input.agentId, status: "PLANNING" },
   });
   await recordEvent({ userId: input.userId, type: "agent.run.created", subjectType: "AgentRun", subjectId: run.id, payload: { objective: input.objective } });
 
