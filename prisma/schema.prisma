@@ -1636,6 +1636,36 @@ model LabSuit {
   requirements    LabRequirement[]
   engineeringQuestions LabEngineeringQuestion[]
   decisions       LabDecision[]
+  images          LabSuitImage[]
+}
+
+enum LabSuitImageKind {
+  CONCEPT
+  FRONT
+  REAR
+  SIDE
+  DETAIL
+}
+
+/// A real, externally-produced concept-art asset for a suit — referenced by
+/// URL, exactly like LabSuit.modelUrl already references a .glb file. VOX
+/// never generates this image itself (no image-generation provider is
+/// configured in this project — see /public/models/suits/README.md for the
+/// same posture applied to 3D assets); a human (or a future dedicated
+/// image-generation workflow) supplies the URL after producing/approving
+/// the artwork. A suit with zero LabSuitImage rows is the honest default —
+/// the Lab's Cinematic presentation shows a clearly-labeled "concept art
+/// not yet produced" state rather than pretending the procedural
+/// holographic render is finished artwork.
+model LabSuitImage {
+  id        String           @id @default(uuid())
+  suit      LabSuit          @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId    String
+  kind      LabSuitImageKind
+  url       String
+  /// Optional free-text caption, e.g. "Detail — chest emblem, close-up".
+  label     String?
+  createdAt DateTime         @default(now())
 }
 
 /// One snapshot in a suit's design history. Components live on the parent

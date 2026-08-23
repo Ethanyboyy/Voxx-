@@ -14,6 +14,7 @@ import type {
   Silhouette,
 } from "@/components/lab/three/suitDesign";
 import { HolographicInspectionTree, type InspectionNode } from "@/components/lab/HolographicInspectionTree";
+import { SuitCinematicGallery, ConceptImagesPanel, type SuitImageDTO } from "@/components/lab/SuitCinematicGallery";
 import { useInfoMode } from "@/components/lab/InfoMode";
 import { useEventStream } from "@/lib/events/useEventStream";
 import type { LiveEvent } from "@/lib/events/bus";
@@ -104,6 +105,7 @@ export function SuitDetailClient({
   requirements: initialRequirements,
   questions: initialQuestions,
   decisions: initialDecisions,
+  images: initialImages,
 }: {
   suit: {
     id: string;
@@ -130,8 +132,10 @@ export function SuitDetailClient({
   requirements: RequirementDTO[];
   questions: QuestionDTO[];
   decisions: DecisionDTO[];
+  images: SuitImageDTO[];
 }) {
   const { mode } = useInfoMode();
+  const [images, setImages] = useState(initialImages);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -322,6 +326,7 @@ export function SuitDetailClient({
           requirementCount={requirements.length}
           verifiedCount={verifiedCount}
           decisionCount={decisions.length}
+          images={images}
         />
       ) : (
         <EngineeringView
@@ -344,6 +349,8 @@ export function SuitDetailClient({
           noteText={noteText}
           setNoteText={setNoteText}
           addNote={addNote}
+          images={images}
+          setImages={setImages}
         />
       )}
     </div>
@@ -360,6 +367,7 @@ function CinematicView({
   requirementCount,
   verifiedCount,
   decisionCount,
+  images,
 }: {
   suit: Parameters<typeof SuitDetailClient>[0]["suit"];
   layers: Set<SuitLayer>;
@@ -370,28 +378,38 @@ function CinematicView({
   requirementCount: number;
   verifiedCount: number;
   decisionCount: number;
+  images: SuitImageDTO[];
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-      <HolographicPanel corners scanline className="flex flex-col items-center p-6">
-        <HolographicModel
-          colorPrimary={suit.colorPrimary}
-          colorSecondary={suit.colorSecondary}
-          silhouette={suit.silhouette}
-          materialLanguage={suit.materialLanguage}
-          patternStyle={suit.patternStyle}
-          armorLevel={suit.armorLevel}
-          maskLensStyle={suit.maskLensStyle}
-          modelUrl={suit.modelUrl}
-          visibleLayers={layers}
-          size={420}
-        />
-        <div className="mt-4 flex w-full max-w-sm flex-col gap-2 border-t border-border pt-4">
+      <div className="flex flex-col gap-4">
+        {images.length > 0 ? (
+          <SuitCinematicGallery images={images} codename={suit.codename} />
+        ) : (
+          <HolographicPanel corners scanline className="flex flex-col items-center p-6">
+            <span className="lab-mono mb-3 self-start rounded-full border border-border px-2.5 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              Procedural preview — concept art not yet produced
+            </span>
+            <HolographicModel
+              colorPrimary={suit.colorPrimary}
+              colorSecondary={suit.colorSecondary}
+              silhouette={suit.silhouette}
+              materialLanguage={suit.materialLanguage}
+              patternStyle={suit.patternStyle}
+              armorLevel={suit.armorLevel}
+              maskLensStyle={suit.maskLensStyle}
+              modelUrl={suit.modelUrl}
+              visibleLayers={layers}
+              size={420}
+            />
+          </HolographicPanel>
+        )}
+        <HolographicPanel className="flex flex-col gap-2 p-4">
           {keysToShow.map((k) => (
             <StatBar key={k} statKey={k} value={(suit.stats as unknown as Record<string, number>)[k]} />
           ))}
-        </div>
-      </HolographicPanel>
+        </HolographicPanel>
+      </div>
 
       <div className="flex flex-col gap-4">
         <HolographicPanel className="p-4">
@@ -478,6 +496,8 @@ function EngineeringView({
   noteText,
   setNoteText,
   addNote,
+  images,
+  setImages,
 }: {
   suit: Parameters<typeof SuitDetailClient>[0]["suit"];
   layers: Set<SuitLayer>;
@@ -498,6 +518,8 @@ function EngineeringView({
   noteText: string;
   setNoteText: (v: string) => void;
   addNote: () => void;
+  images: SuitImageDTO[];
+  setImages: (images: SuitImageDTO[]) => void;
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -557,6 +579,8 @@ function EngineeringView({
             ))}
           </div>
         </HolographicPanel>
+
+        <ConceptImagesPanel suitId={suit.id} images={images} onImagesChange={setImages} />
       </div>
 
       <div className="flex flex-col gap-4">

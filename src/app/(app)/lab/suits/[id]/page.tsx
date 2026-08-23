@@ -6,6 +6,7 @@ import { listDesignNotes } from "@/lib/lab/notes";
 import { listRequirements } from "@/lib/lab/requirements";
 import { listQuestions } from "@/lib/lab/questions";
 import { listDecisions } from "@/lib/lab/decisions";
+import { listSuitImages } from "@/lib/lab/suitImages";
 import { SuitDetailClient } from "@/components/lab/SuitDetailClient";
 
 export default async function SuitDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,12 +16,13 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
   const suit = await getSuit(user.id, id);
   if (!suit || !suit.currentVersion?.stats) notFound();
 
-  const [components, notes, requirements, questions, decisions] = await Promise.all([
+  const [components, notes, requirements, questions, decisions, images] = await Promise.all([
     getComponentTree({ suitId: id }),
     listDesignNotes(user.id, "LabSuit", id),
     listRequirements(user.id, id),
     listQuestions(user.id, id),
     listDecisions(user.id, id),
+    listSuitImages(user.id, id),
   ]);
 
   return (
@@ -80,6 +82,12 @@ export default async function SuitDetailPage({ params }: { params: Promise<{ id:
         rationale: d.rationale,
         author: d.author,
         createdAt: d.createdAt.toISOString(),
+      }))}
+      images={(images ?? []).map((img) => ({
+        id: img.id,
+        kind: img.kind,
+        url: img.url,
+        label: img.label,
       }))}
     />
   );

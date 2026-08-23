@@ -462,3 +462,11 @@ export const createResearchLinkSchema = z.object({
   subjectId: z.string().min(1),
   note: z.string().max(1000).optional(),
 });
+
+export const labSuitImageKindSchema = z.enum(["CONCEPT", "FRONT", "REAR", "SIDE", "DETAIL"]);
+
+export const addSuitImageSchema = z.object({
+  kind: labSuitImageKindSchema,
+  url: z.string().url().max(2000),
+  label: z.string().max(200).optional(),
+});
