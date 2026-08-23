@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { getBrainGraph, getBrainState } from "@/lib/brain/graph";
 import { listRecentEvents } from "@/lib/observability/events";
-import { BrainWorkspace } from "@/components/brain/BrainWorkspace";
+import { BrainRouteClient } from "@/components/brain/BrainRouteClient";
 
 export default async function BrainPage() {
   const user = await getCurrentUser();
@@ -14,7 +14,7 @@ export default async function BrainPage() {
   ]);
 
   return (
-    <BrainWorkspace
+    <BrainRouteClient
       initial={{
         nodes: graph.nodes,
         edges: graph.edges,

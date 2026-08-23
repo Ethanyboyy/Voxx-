@@ -18,7 +18,7 @@ import { importanceOf } from "@/components/brain/importance";
 import type { BrainNode, BrainEdge, BrainState } from "@/lib/brain/graph";
 import type { BrainGroupDTO } from "@/lib/brain/groups";
 
-interface ActivityEvent {
+export interface ActivityEvent {
   id: string;
   type: string;
   subjectType: string | null;
@@ -26,7 +26,7 @@ interface ActivityEvent {
   createdAt: string;
 }
 
-interface BrainPayload {
+export interface BrainPayload {
   nodes: BrainNode[];
   edges: BrainEdge[];
   totals: { memories: number; research: number; tasks: number };
