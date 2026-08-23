@@ -7,6 +7,8 @@ import { getCatalogEntry } from "@/lib/integrations/catalog";
 import { getConnectionProvider } from "@/lib/integrations/stub";
 import { createRequirement, nextRequirementCode } from "@/lib/lab/requirements";
 import { createQuestion } from "@/lib/lab/questions";
+import { recordOpportunitySpend } from "@/lib/economic/service";
+import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import type { ToolDefinition } from "@/lib/tools/types";
 
 /**
@@ -204,6 +206,41 @@ register({
       currentHypothesis: input.currentHypothesis,
     });
     return { output: { id: question.id }, summary: `Recorded engineering question: "${question.question.slice(0, 80)}${question.question.length > 80 ? "..." : ""}"` };
+  },
+});
+
+register({
+  name: "economic.record_expense",
+  description:
+    "Record a real spend against an opportunity's economic ledger. Gated by the economic.spend capability at ACT level AND the user's own autonomous-spend ceiling — a granted capability alone is never sufficient to spend.",
+  category: "external",
+  capability: "economic.spend",
+  requiredLevel: "ACT",
+  isExternal: false,
+  inputSchema: z.object({
+    opportunityId: z.string().min(1),
+    amountUsd: z.number().min(0.01).max(1_000_000),
+    category: z.string().max(80).optional(),
+    notes: z.string().max(2000).optional(),
+  }),
+  execute: async (userId, input) => {
+    // Second, independent gate: even with economic.spend granted at ACT,
+    // an amount above the user's configured autonomous ceiling is refused
+    // here rather than executed — see src/lib/economic/policy.ts.
+    const decision = await evaluateSpendPolicy(userId, input.amountUsd);
+    if (!decision.allowed) {
+      throw new Error(decision.reason);
+    }
+    const expense = await recordOpportunitySpend(userId, {
+      opportunityId: input.opportunityId,
+      amountUsd: input.amountUsd,
+      category: input.category,
+      notes: input.notes,
+    });
+    return {
+      output: { id: expense.id, amountUsd: expense.amountUsd },
+      summary: `Recorded a $${expense.amountUsd.toFixed(2)} expense (within the $${decision.thresholdUsd.toFixed(2)} autonomous limit).`,
+    };
   },
 });
 

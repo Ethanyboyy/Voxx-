@@ -31,6 +31,8 @@ export interface SupervisorRunItem {
   maxIterations: number;
   result: string | null;
   error: string | null;
+  /** JSON string — the planner's steps, shown for inspection while BLOCKED (MANUAL mode). */
+  plan: string | null;
   createdAt: string;
   updatedAt: string;
   agentRuns: SupervisorAgentRunSummary[];
@@ -132,6 +134,21 @@ export function SupervisorPanel({
     }
   }
 
+  /** MANUAL autonomy's "Start execution" — runs exactly the plan already
+   * shown, never re-plans. */
+  async function begin(id: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/supervisor/${id}/begin`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        onRunsChange((prev) => prev.map((r) => (r.id === id ? data.run : r)));
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function cancel(id: string) {
     setBusyId(id);
     try {
@@ -181,6 +198,35 @@ export function SupervisorPanel({
                 {run.result ? <p className="mt-2 text-sm text-foreground">{run.result}</p> : null}
                 {run.error ? <p className="mt-2 text-sm text-danger">{run.error}</p> : null}
 
+                {run.status === "BLOCKED" ? (
+                  <div className="mt-3 rounded-[var(--radius-sm)] border border-warning/40 bg-warning/10 p-3">
+                    <p className="text-sm font-medium text-foreground">Plan ready — awaiting your go-ahead</p>
+                    <p className="mt-1 text-xs text-muted">
+                      MANUAL autonomy mode: VOX has planned this but will not execute anything until you say so.
+                    </p>
+                    {run.plan ? (
+                      <ol className="mt-2 flex flex-col gap-1 text-xs text-muted">
+                        {(JSON.parse(run.plan) as { description: string; toolName?: string | null }[]).map((step, i) => (
+                          <li key={i}>
+                            {i + 1}. {step.description}
+                            {step.toolName ? (
+                              <>
+                                {" "}
+                                via <code>{step.toolName}</code>
+                              </>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    <div className="mt-2">
+                      <Button size="sm" onClick={() => begin(run.id)} disabled={busyId === run.id}>
+                        Start execution
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
                 {run.status === "WAITING_FOR_APPROVAL" && blockedStep ? (
                   <div className="mt-3 rounded-[var(--radius-sm)] border border-warning/40 bg-warning/10 p-3">
                     <p className="text-sm font-medium text-foreground">Approval required</p>
@@ -212,7 +258,7 @@ export function SupervisorPanel({
                   </div>
                 ) : null}
 
-                {run.status === "RUNNING" || run.status === "PLANNING" || run.status === "REPLANNING" ? (
+                {run.status === "RUNNING" || run.status === "PLANNING" || run.status === "REPLANNING" || run.status === "BLOCKED" ? (
                   <div className="mt-2">
                     <Button size="sm" variant="ghost" onClick={() => cancel(run.id)} disabled={busyId === run.id}>
                       Cancel

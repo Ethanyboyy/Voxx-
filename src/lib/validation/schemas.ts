@@ -289,7 +289,15 @@ export const startSupervisorRunSchema = z.object({
 export const autonomyModeSchema = z.enum(["MANUAL", "SUPERVISED", "AUTONOMOUS", "AUTONOMOUS_APPROVAL_GATES"]);
 
 export const updateAutonomySchema = z.object({
-  autonomyMode: autonomyModeSchema,
+  autonomyMode: autonomyModeSchema.optional(),
+  maxAutonomousSpendUsd: z.coerce.number().min(0).max(1_000_000).optional(),
+}).refine((v) => v.autonomyMode !== undefined || v.maxAutonomousSpendUsd !== undefined, {
+  message: "At least one of autonomyMode or maxAutonomousSpendUsd is required.",
+});
+
+export const createValidationObjectiveSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional(),
 });
 
 export const createAgentSchema = z.object({
@@ -308,7 +316,27 @@ export const updateAgentSchema = z.object({
 });
 
 export const objectiveStatusSchema = z.enum(["ACTIVE", "PAUSED", "ACHIEVED", "ABANDONED"]);
-export const opportunityStatusSchema = z.enum(["IDEA", "EVALUATING", "ACTIVE", "PAUSED", "COMPLETED", "REJECTED"]);
+export const opportunityStatusSchema = z.enum([
+  "IDEA",
+  "DISCOVERED",
+  "RESEARCHING",
+  "EVALUATING",
+  "WATCHLIST",
+  "APPROVED",
+  "PLANNING",
+  "EXECUTING",
+  "VALIDATING",
+  "ACTIVE",
+  "PAUSED",
+  "FAILED",
+  "COMPLETED",
+  "REJECTED",
+]);
+
+export const evidenceItemSchema = z.object({
+  type: z.enum(["FACT", "SOURCED", "ESTIMATE", "ASSUMPTION", "UNKNOWN"]),
+  text: z.string().min(1).max(1000),
+});
 export const effortLevelSchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 export const riskLevelSchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
@@ -344,8 +372,21 @@ export const createOpportunitySchema = z.object({
   confidence: confidenceSchema.optional(),
   risk: riskLevelSchema.optional(),
   nextAction: z.string().max(2000).optional(),
-  evidence: z.array(z.string().min(1).max(1000)).max(20).optional(),
+  evidence: z.array(evidenceItemSchema).max(20).optional(),
   status: opportunityStatusSchema.optional(),
+  category: z.string().max(80).optional(),
+  source: z.string().max(120).optional(),
+  estimatedStartupCost: z.coerce.number().min(0).optional(),
+  estimatedOperatingCost: z.coerce.number().min(0).optional(),
+  estimatedMargin: z.coerce.number().min(0).max(1).optional(),
+  estimatedTimeToRevenueDays: z.coerce.number().int().min(0).optional(),
+  complexity: riskLevelSchema.optional(),
+  competition: riskLevelSchema.optional(),
+  scalability: riskLevelSchema.optional(),
+  requiredHumanInvolvement: riskLevelSchema.optional(),
+  requiredCapabilities: z.array(z.string().min(1).max(80)).max(20).optional(),
+  dependencies: z.array(z.string().min(1).max(300)).max(20).optional(),
+  rationale: z.string().max(3000).optional(),
 });
 
 export const promoteOpportunitySchema = z.object({
@@ -418,8 +459,21 @@ export const updateOpportunitySchema = z.object({
   confidence: confidenceSchema.optional(),
   risk: riskLevelSchema.nullable().optional(),
   nextAction: z.string().max(2000).nullable().optional(),
-  evidence: z.array(z.string().min(1).max(1000)).max(20).nullable().optional(),
+  evidence: z.array(evidenceItemSchema).max(20).nullable().optional(),
   status: opportunityStatusSchema.optional(),
+  category: z.string().max(80).nullable().optional(),
+  source: z.string().max(120).nullable().optional(),
+  estimatedStartupCost: z.coerce.number().min(0).nullable().optional(),
+  estimatedOperatingCost: z.coerce.number().min(0).nullable().optional(),
+  estimatedMargin: z.coerce.number().min(0).max(1).nullable().optional(),
+  estimatedTimeToRevenueDays: z.coerce.number().int().min(0).nullable().optional(),
+  complexity: riskLevelSchema.nullable().optional(),
+  competition: riskLevelSchema.nullable().optional(),
+  scalability: riskLevelSchema.nullable().optional(),
+  requiredHumanInvolvement: riskLevelSchema.nullable().optional(),
+  requiredCapabilities: z.array(z.string().min(1).max(80)).max(20).nullable().optional(),
+  dependencies: z.array(z.string().min(1).max(300)).max(20).nullable().optional(),
+  rationale: z.string().max(3000).nullable().optional(),
 });
 
 export const notificationPrioritySchema = z.enum(["LOW", "NORMAL", "HIGH"]);

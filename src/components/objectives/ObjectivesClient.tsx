@@ -36,6 +36,23 @@ interface OpportunityItem {
   risk: string | null;
   nextAction: string | null;
   status: string;
+  /** Omitted (not fabricated as 0) until the next full page load recomputes it server-side. */
+  score?: number;
+  scoreBreakdown?: {
+    value: number;
+    valueIsAssumedDefault: boolean;
+    effort: string | null;
+    effortWeight: number;
+    confidenceWeight: number;
+    riskPenalty: number;
+    capitalDivisor: number;
+    operatingDivisor: number;
+    marginMultiplier: number;
+    speedMultiplier: number;
+  };
+  category: string | null;
+  estimatedStartupCost: number | null;
+  estimatedTimeToRevenueDays: number | null;
 }
 
 const STATUS_TONE: Record<string, "neutral" | "accent" | "success" | "warning" | "danger"> = {
@@ -44,7 +61,15 @@ const STATUS_TONE: Record<string, "neutral" | "accent" | "success" | "warning" |
   ACHIEVED: "success",
   ABANDONED: "neutral",
   IDEA: "neutral",
+  DISCOVERED: "neutral",
+  RESEARCHING: "accent",
   EVALUATING: "warning",
+  WATCHLIST: "neutral",
+  APPROVED: "accent",
+  PLANNING: "accent",
+  EXECUTING: "accent",
+  VALIDATING: "warning",
+  FAILED: "danger",
   COMPLETED: "success",
   REJECTED: "danger",
 };
@@ -276,6 +301,10 @@ export function ObjectivesClient({
                       onUpdateProgress={(value) => updateProgress(o.id, value)}
                       onOpportunitiesChange={setOpportunities}
                       onSupervisorRunsChange={setSupervisorRuns}
+                      onValidated={(newObjective) => {
+                        setObjectives((prev) => [newObjective, ...prev]);
+                        setExpandedId(newObjective.id);
+                      }}
                     />
                   ) : null}
                 </CardContent>
@@ -296,6 +325,7 @@ function ObjectiveDetail({
   onUpdateProgress,
   onOpportunitiesChange,
   onSupervisorRunsChange,
+  onValidated,
 }: {
   objective: ObjectiveItem;
   opportunities: OpportunityItem[];
@@ -304,9 +334,12 @@ function ObjectiveDetail({
   onUpdateProgress: (value: string) => void;
   onOpportunitiesChange: (updater: (prev: OpportunityItem[]) => OpportunityItem[]) => void;
   onSupervisorRunsChange: (updater: (prev: SupervisorRunItem[]) => SupervisorRunItem[]) => void;
+  onValidated: (objective: ObjectiveItem) => void;
 }) {
   const [showAddOpportunity, setShowAddOpportunity] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [whyId, setWhyId] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     title: "",
     estimatedValue: "",
@@ -314,7 +347,36 @@ function ObjectiveDetail({
     confidence: "LOW",
     risk: "",
     nextAction: "",
+    category: "",
+    estimatedStartupCost: "",
+    estimatedTimeToRevenueDays: "",
   });
+
+  async function validateOpportunity(op: OpportunityItem) {
+    setValidatingId(op.id);
+    try {
+      const res = await fetch(`/api/opportunities/${op.id}/validate`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        onOpportunitiesChange((prev) => prev.map((o) => (o.id === op.id ? { ...o, status: data.opportunity.status } : o)));
+        onValidated({
+          id: data.objective.id,
+          title: data.objective.title,
+          description: data.objective.description,
+          strategy: data.objective.strategy,
+          assumptions: data.objective.assumptions ?? [],
+          targetValue: data.objective.targetValue,
+          targetUnit: data.objective.targetUnit,
+          currentValue: data.objective.currentValue,
+          targetDate: data.objective.targetDate,
+          status: data.objective.status,
+          createdAt: data.objective.createdAt,
+        });
+      }
+    } finally {
+      setValidatingId(null);
+    }
+  }
 
   async function addOpportunity() {
     if (!draft.title.trim()) return;
@@ -330,6 +392,9 @@ function ObjectiveDetail({
         confidence: draft.confidence,
         risk: draft.risk || undefined,
         nextAction: draft.nextAction || undefined,
+        category: draft.category || undefined,
+        estimatedStartupCost: draft.estimatedStartupCost ? Number(draft.estimatedStartupCost) : undefined,
+        estimatedTimeToRevenueDays: draft.estimatedTimeToRevenueDays ? Number(draft.estimatedTimeToRevenueDays) : undefined,
       }),
     });
     setCreating(false);
@@ -347,10 +412,23 @@ function ObjectiveDetail({
           risk: data.opportunity.risk,
           nextAction: data.opportunity.nextAction,
           status: data.opportunity.status,
+          category: data.opportunity.category,
+          estimatedStartupCost: data.opportunity.estimatedStartupCost,
+          estimatedTimeToRevenueDays: data.opportunity.estimatedTimeToRevenueDays,
         },
         ...prev,
       ]);
-      setDraft({ title: "", estimatedValue: "", effort: "", confidence: "LOW", risk: "", nextAction: "" });
+      setDraft({
+        title: "",
+        estimatedValue: "",
+        effort: "",
+        confidence: "LOW",
+        risk: "",
+        nextAction: "",
+        category: "",
+        estimatedStartupCost: "",
+        estimatedTimeToRevenueDays: "",
+      });
       setShowAddOpportunity(false);
     }
   }
@@ -460,6 +538,25 @@ function ObjectiveDetail({
               <option value="HIGH">High</option>
             </Select>
           </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <Input
+              value={draft.category}
+              onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
+              placeholder="Category (e.g. lead-generation)"
+            />
+            <Input
+              type="number"
+              value={draft.estimatedStartupCost}
+              onChange={(e) => setDraft((d) => ({ ...d, estimatedStartupCost: e.target.value }))}
+              placeholder="Startup cost ($)"
+            />
+            <Input
+              type="number"
+              value={draft.estimatedTimeToRevenueDays}
+              onChange={(e) => setDraft((d) => ({ ...d, estimatedTimeToRevenueDays: e.target.value }))}
+              placeholder="Days to revenue"
+            />
+          </div>
           <div>
             <Button size="sm" disabled={creating || !draft.title.trim()} onClick={addOpportunity}>
               Add
@@ -475,11 +572,12 @@ function ObjectiveDetail({
             there&apos;s a real option worth weighing.
           </p>
         ) : (
-          opportunities.map((op) => (
+          [...opportunities].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity)).map((op) => (
             <div key={op.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">{op.title}</p>
+                  {op.category ? <p className="mt-0.5 text-xs text-muted-foreground">{op.category}</p> : null}
                   {op.nextAction ? <p className="mt-0.5 text-xs text-muted">Next: {op.nextAction}</p> : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -489,9 +587,17 @@ function ObjectiveDetail({
                     className="!w-auto py-1 text-xs"
                   >
                     <option value="IDEA">Idea</option>
+                    <option value="DISCOVERED">Discovered</option>
+                    <option value="RESEARCHING">Researching</option>
                     <option value="EVALUATING">Evaluating</option>
+                    <option value="WATCHLIST">Watchlist</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="PLANNING">Planning</option>
+                    <option value="EXECUTING">Executing</option>
+                    <option value="VALIDATING">Validating</option>
                     <option value="ACTIVE">Active</option>
                     <option value="PAUSED">Paused</option>
+                    <option value="FAILED">Failed</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="REJECTED">Rejected</option>
                   </Select>
@@ -500,8 +606,20 @@ function ObjectiveDetail({
                   </Button>
                 </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {op.score != null ? (
+                  <button
+                    type="button"
+                    className="vox-press"
+                    onClick={() => setWhyId(whyId === op.id ? null : op.id)}
+                    title="Why this score?"
+                  >
+                    <Badge tone="accent">score {op.score.toFixed(2)} · why?</Badge>
+                  </button>
+                ) : null}
                 {op.estimatedValue != null ? <Badge>{op.estimatedValue} est. value</Badge> : null}
+                {op.estimatedStartupCost != null ? <Badge>${op.estimatedStartupCost} startup</Badge> : null}
+                {op.estimatedTimeToRevenueDays != null ? <Badge>{op.estimatedTimeToRevenueDays}d to revenue</Badge> : null}
                 {op.effort ? <Badge>{op.effort.toLowerCase()} effort</Badge> : null}
                 <Badge tone={op.confidence === "CONFIRMED" || op.confidence === "HIGH" ? "accent" : "neutral"}>
                   {op.confidence.toLowerCase()} confidence
@@ -511,6 +629,27 @@ function ObjectiveDetail({
                     {op.risk.toLowerCase()} risk
                   </Badge>
                 ) : null}
+              </div>
+              {whyId === op.id && op.scoreBreakdown ? (
+                <div className="mt-2 rounded-[var(--radius-sm)] border border-border bg-surface-hover p-2 text-xs text-muted">
+                  <p className="mb-1 vox-eyebrow">Why this score</p>
+                  <ul className="flex flex-col gap-0.5">
+                    <li>Value: {op.scoreBreakdown.value}{op.scoreBreakdown.valueIsAssumedDefault ? " (assumed — not entered)" : ""}</li>
+                    <li>Effort weight: /{op.scoreBreakdown.effortWeight} ({op.scoreBreakdown.effort ?? "assumed medium"})</li>
+                    <li>Confidence weight: ×{op.scoreBreakdown.confidenceWeight}</li>
+                    <li>Risk penalty: −{Math.round(op.scoreBreakdown.riskPenalty * 100)}%</li>
+                    <li>Startup capital drag: ÷{op.scoreBreakdown.capitalDivisor.toFixed(2)}</li>
+                    <li>Operating cost drag: ÷{op.scoreBreakdown.operatingDivisor.toFixed(2)}</li>
+                    <li>Margin: ×{op.scoreBreakdown.marginMultiplier.toFixed(2)}</li>
+                    <li>Speed to revenue: ×{op.scoreBreakdown.speedMultiplier.toFixed(2)}</li>
+                    <li>Complexity/competition/human-involvement penalties applied where set; scalability bonus where set.</li>
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-2">
+                <Button size="sm" variant="secondary" onClick={() => validateOpportunity(op)} disabled={validatingId === op.id}>
+                  {validatingId === op.id ? "Creating objective…" : "Validate this opportunity"}
+                </Button>
               </div>
             </div>
           ))

@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth/session";
-import { listObjectives, listOpportunities } from "@/lib/objectives/service";
+import { listObjectives, listOpportunities, scoreOpportunity, explainOpportunityScore } from "@/lib/objectives/service";
 import { listSupervisorRuns } from "@/lib/supervisor/service";
 import { ObjectivesClient } from "@/components/objectives/ObjectivesClient";
 
@@ -36,18 +36,26 @@ export default async function ObjectivesPage() {
           status: o.status,
           createdAt: o.createdAt.toISOString(),
         }))}
-        opportunities={opportunities.map((o) => ({
-          id: o.id,
-          objectiveId: o.objectiveId,
-          title: o.title,
-          description: o.description,
-          estimatedValue: o.estimatedValue,
-          effort: o.effort,
-          confidence: o.confidence,
-          risk: o.risk,
-          nextAction: o.nextAction,
-          status: o.status,
-        }))}
+        opportunities={opportunities.map((o) => {
+          const breakdown = explainOpportunityScore(o);
+          return {
+            id: o.id,
+            objectiveId: o.objectiveId,
+            title: o.title,
+            description: o.description,
+            estimatedValue: o.estimatedValue,
+            effort: o.effort,
+            confidence: o.confidence,
+            risk: o.risk,
+            nextAction: o.nextAction,
+            status: o.status,
+            score: scoreOpportunity(o),
+            scoreBreakdown: breakdown,
+            category: o.category,
+            estimatedStartupCost: o.estimatedStartupCost,
+            estimatedTimeToRevenueDays: o.estimatedTimeToRevenueDays,
+          };
+        })}
         supervisorRuns={supervisorRuns.map((s) => ({
           id: s.id,
           objectiveId: s.objectiveId,
@@ -56,6 +64,7 @@ export default async function ObjectivesPage() {
           maxIterations: s.maxIterations,
           result: s.result,
           error: s.error,
+          plan: s.plan,
           createdAt: s.createdAt.toISOString(),
           updatedAt: s.updatedAt.toISOString(),
           agentRuns: s.agentRuns.map((r) => ({

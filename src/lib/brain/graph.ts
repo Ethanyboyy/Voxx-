@@ -6,6 +6,8 @@ import { listMemories } from "@/lib/memory/service";
 import { listResearchItems } from "@/lib/research/service";
 import { listAgentRuns } from "@/lib/agents/service";
 import { listSupervisorRuns } from "@/lib/supervisor/service";
+import { listEconomicAssets } from "@/lib/economic/service";
+import { db } from "@/lib/db";
 
 /**
  * The Brain workspace's data source. Every node here is a real VOX entity —
@@ -24,7 +26,8 @@ export type BrainNodeType =
   | "CONNECTION"
   | "MEMORY"
   | "AGENT_RUN"
-  | "SUPERVISOR_RUN";
+  | "SUPERVISOR_RUN"
+  | "ECONOMIC_ASSET";
 
 export interface BrainNode {
   /** `${type}:${entityId}` — unique across the whole graph. */
@@ -61,7 +64,7 @@ const MEMORY_LIMIT = 24;
 const RESEARCH_LIMIT = 40;
 
 export async function getBrainGraph(userId: string): Promise<BrainGraph> {
-  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research, agentRuns, supervisorRuns] =
+  const [objectives, opportunities, projects, tasks, proposals, connections, memories, research, agentRuns, supervisorRuns, economicAssets] =
     await Promise.all([
       listObjectives(userId),
       listOpportunities(userId),
@@ -73,7 +76,14 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
       listResearchItems(userId, RESEARCH_LIMIT),
       listAgentRuns(userId, 10),
       listSupervisorRuns(userId, 10),
+      listEconomicAssets(userId),
     ]);
+
+  const supervisorRunIds = supervisorRuns.map((s) => s.id);
+  const outcomes = supervisorRunIds.length
+    ? await db.outcome.findMany({ where: { userId, supervisorRunId: { in: supervisorRunIds } } })
+    : [];
+  const outcomeBySupervisorRunId = new Map(outcomes.map((o) => [o.supervisorRunId, o]));
 
   const nodes: BrainNode[] = [];
   const edges: BrainEdge[] = [];
@@ -136,12 +146,38 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
         rankScore: scoreOpportunity(op),
         isNextBestAction: topOpportunityIdByObjective.get(op.objectiveId) === op.id,
         scoreBreakdown: explainOpportunityScore(op),
+        // Economic Engine: structured opportunity intelligence.
+        category: op.category,
+        source: op.source,
+        discoveredAt: op.discoveredAt.toISOString(),
+        estimatedStartupCost: op.estimatedStartupCost,
+        estimatedOperatingCost: op.estimatedOperatingCost,
+        estimatedMargin: op.estimatedMargin,
+        estimatedTimeToRevenueDays: op.estimatedTimeToRevenueDays,
+        complexity: op.complexity,
+        competition: op.competition,
+        scalability: op.scalability,
+        requiredHumanInvolvement: op.requiredHumanInvolvement,
+        requiredCapabilities: op.requiredCapabilities,
+        dependencies: op.dependencies,
+        rationale: op.rationale,
       },
     });
     edges.push({ id: nextEdgeId(), from: `OBJECTIVE:${op.objectiveId}`, to: nodeId, relation: "targets" });
     if (op.projectId) {
       edges.push({ id: nextEdgeId(), from: nodeId, to: `PROJECT:${op.projectId}`, relation: "promoted_to" });
       projectHasOpportunityParent.add(op.projectId);
+    }
+  }
+
+  // Economic Engine: an Objective created specifically to validate/pursue
+  // this Opportunity (distinct from the Opportunity's own parent Objective
+  // above, which is the "targets" edge in the other direction).
+  for (const objective of objectives) {
+    if (!objective.sourceOpportunityId) continue;
+    const opportunityNodeId = `OPPORTUNITY:${objective.sourceOpportunityId}`;
+    if (opportunities.some((o) => o.id === objective.sourceOpportunityId)) {
+      edges.push({ id: nextEdgeId(), from: opportunityNodeId, to: `OBJECTIVE:${objective.id}`, relation: "prompted_validation_of" });
     }
   }
 
@@ -289,6 +325,17 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
         maxIterations: sup.maxIterations,
         result: sup.result,
         error: sup.error,
+        outcome: (() => {
+          const outcome = outcomeBySupervisorRunId.get(sup.id);
+          if (!outcome) return null;
+          return {
+            status: outcome.status,
+            summary: outcome.summary,
+            costUsd: outcome.costUsd,
+            timeSpentMinutes: outcome.timeSpentMinutes,
+            confidence: outcome.confidence,
+          };
+        })(),
       },
     });
     edges.push({ id: nextEdgeId(), from: `OBJECTIVE:${sup.objectiveId}`, to: nodeId, relation: "supervised_by" });
@@ -299,6 +346,22 @@ export async function getBrainGraph(userId: string): Promise<BrainGraph> {
       if (agentRuns.some((r) => r.id === run.id)) {
         edges.push({ id: nextEdgeId(), from: nodeId, to: `AGENT_RUN:${run.id}`, relation: "drives" });
       }
+    }
+  }
+
+  for (const asset of economicAssets) {
+    const nodeId = `ECONOMIC_ASSET:${asset.id}`;
+    nodes.push({
+      id: nodeId,
+      entityId: asset.id,
+      type: "ECONOMIC_ASSET",
+      label: asset.name,
+      status: asset.status,
+      updatedAt: asset.updatedAt.toISOString(),
+      meta: { category: asset.category, description: asset.description, opportunityId: asset.opportunityId },
+    });
+    if (asset.opportunityId && opportunities.some((o) => o.id === asset.opportunityId)) {
+      edges.push({ id: nextEdgeId(), from: `OPPORTUNITY:${asset.opportunityId}`, to: nodeId, relation: "promoted_to_asset" });
     }
   }
 
@@ -345,6 +408,9 @@ export async function getBrainState(userId: string): Promise<{ state: BrainState
 
   const waitingApproval = supervisorRuns.find((s) => s.status === "WAITING_FOR_APPROVAL");
   if (waitingApproval) return { state: "waiting", detail: `Approval needed to continue ${objectiveTitle(waitingApproval.objectiveId)}` };
+
+  const blocked = supervisorRuns.find((s) => s.status === "BLOCKED");
+  if (blocked) return { state: "waiting", detail: `Plan ready for ${objectiveTitle(blocked.objectiveId)} — awaiting your go-ahead (MANUAL mode)` };
 
   const supervising = supervisorRuns.find((s) => s.status === "RUNNING" || s.status === "PLANNING" || s.status === "REPLANNING");
   if (supervising) return { state: "executing", detail: `Working on ${objectiveTitle(supervising.objectiveId)}` };

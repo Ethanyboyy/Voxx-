@@ -28,6 +28,9 @@ export interface ObjectiveDTO {
   status: ObjectiveStatus;
   createdAt: Date;
   updatedAt: Date;
+  /// Set when this Objective was created to validate/pursue an Opportunity
+  /// (Economic Engine) — see createValidationObjective() below.
+  sourceOpportunityId: string | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -55,6 +58,7 @@ function toObjectiveDTO(row: Objective): ObjectiveDTO {
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    sourceOpportunityId: row.sourceOpportunityId,
   };
 }
 
@@ -182,6 +186,30 @@ export async function deleteObjective(userId: string, id: string): Promise<boole
 // Opportunities
 // ---------------------------------------------------------------------------
 
+/** Evidence-item provenance — every claim behind an opportunity's numbers
+ * must say which of these it is. Never blended into unlabeled prose. */
+export type EvidenceType = "FACT" | "SOURCED" | "ESTIMATE" | "ASSUMPTION" | "UNKNOWN";
+export interface EvidenceItem {
+  type: EvidenceType;
+  text: string;
+}
+
+function parseEvidence(raw: string | null): EvidenceItem[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Back-compat: earlier rows may hold plain strings — treat those as UNKNOWN provenance.
+    return parsed.map((item) =>
+      typeof item === "string"
+        ? { type: "UNKNOWN" as EvidenceType, text: item }
+        : { type: (item.type as EvidenceType) ?? "UNKNOWN", text: String(item.text ?? "") }
+    );
+  } catch {
+    return [];
+  }
+}
+
 export interface OpportunityDTO {
   id: string;
   userId: string;
@@ -193,12 +221,28 @@ export interface OpportunityDTO {
   confidence: Confidence;
   risk: RiskLevel | null;
   nextAction: string | null;
-  evidence: string[];
+  evidence: EvidenceItem[];
   status: OpportunityStatus;
   /// Set once this opportunity has been promoted into a real Project.
   projectId: string | null;
   createdAt: Date;
   updatedAt: Date;
+
+  // --- Economic Engine: structured opportunity intelligence ---
+  category: string | null;
+  source: string | null;
+  discoveredAt: Date;
+  estimatedStartupCost: number | null;
+  estimatedOperatingCost: number | null;
+  estimatedMargin: number | null;
+  estimatedTimeToRevenueDays: number | null;
+  complexity: RiskLevel | null;
+  competition: RiskLevel | null;
+  scalability: RiskLevel | null;
+  requiredHumanInvolvement: RiskLevel | null;
+  requiredCapabilities: string[];
+  dependencies: string[];
+  rationale: string | null;
 }
 
 function toOpportunityDTO(row: Opportunity): OpportunityDTO {
@@ -213,11 +257,25 @@ function toOpportunityDTO(row: Opportunity): OpportunityDTO {
     confidence: row.confidence,
     risk: row.risk,
     nextAction: row.nextAction,
-    evidence: parseStringArray(row.evidence),
+    evidence: parseEvidence(row.evidence),
     status: row.status,
     projectId: row.projectId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    category: row.category,
+    source: row.source,
+    discoveredAt: row.discoveredAt,
+    estimatedStartupCost: row.estimatedStartupCost,
+    estimatedOperatingCost: row.estimatedOperatingCost,
+    estimatedMargin: row.estimatedMargin,
+    estimatedTimeToRevenueDays: row.estimatedTimeToRevenueDays,
+    complexity: row.complexity,
+    competition: row.competition,
+    scalability: row.scalability,
+    requiredHumanInvolvement: row.requiredHumanInvolvement,
+    requiredCapabilities: parseStringArray(row.requiredCapabilities),
+    dependencies: parseStringArray(row.dependencies),
+    rationale: row.rationale,
   };
 }
 
@@ -231,8 +289,21 @@ export interface CreateOpportunityInput {
   confidence?: Confidence;
   risk?: RiskLevel;
   nextAction?: string;
-  evidence?: string[];
+  evidence?: EvidenceItem[];
   status?: OpportunityStatus;
+  category?: string;
+  source?: string;
+  estimatedStartupCost?: number;
+  estimatedOperatingCost?: number;
+  estimatedMargin?: number;
+  estimatedTimeToRevenueDays?: number;
+  complexity?: RiskLevel;
+  competition?: RiskLevel;
+  scalability?: RiskLevel;
+  requiredHumanInvolvement?: RiskLevel;
+  requiredCapabilities?: string[];
+  dependencies?: string[];
+  rationale?: string;
 }
 
 export async function createOpportunity(input: CreateOpportunityInput): Promise<OpportunityDTO | null> {
@@ -252,6 +323,19 @@ export async function createOpportunity(input: CreateOpportunityInput): Promise<
       nextAction: input.nextAction,
       evidence: input.evidence ? JSON.stringify(input.evidence) : undefined,
       status: input.status ?? "IDEA",
+      category: input.category,
+      source: input.source,
+      estimatedStartupCost: input.estimatedStartupCost,
+      estimatedOperatingCost: input.estimatedOperatingCost,
+      estimatedMargin: input.estimatedMargin,
+      estimatedTimeToRevenueDays: input.estimatedTimeToRevenueDays,
+      complexity: input.complexity,
+      competition: input.competition,
+      scalability: input.scalability,
+      requiredHumanInvolvement: input.requiredHumanInvolvement,
+      requiredCapabilities: input.requiredCapabilities ? JSON.stringify(input.requiredCapabilities) : undefined,
+      dependencies: input.dependencies ? JSON.stringify(input.dependencies) : undefined,
+      rationale: input.rationale,
     },
   });
 
@@ -279,8 +363,21 @@ export interface UpdateOpportunityInput {
   confidence?: Confidence;
   risk?: RiskLevel | null;
   nextAction?: string | null;
-  evidence?: string[] | null;
+  evidence?: EvidenceItem[] | null;
   status?: OpportunityStatus;
+  category?: string | null;
+  source?: string | null;
+  estimatedStartupCost?: number | null;
+  estimatedOperatingCost?: number | null;
+  estimatedMargin?: number | null;
+  estimatedTimeToRevenueDays?: number | null;
+  complexity?: RiskLevel | null;
+  competition?: RiskLevel | null;
+  scalability?: RiskLevel | null;
+  requiredHumanInvolvement?: RiskLevel | null;
+  requiredCapabilities?: string[] | null;
+  dependencies?: string[] | null;
+  rationale?: string | null;
 }
 
 export async function updateOpportunity(
@@ -296,6 +393,10 @@ export async function updateOpportunity(
     data: {
       ...updates,
       evidence: updates.evidence === undefined ? undefined : updates.evidence === null ? null : JSON.stringify(updates.evidence),
+      requiredCapabilities:
+        updates.requiredCapabilities === undefined ? undefined : updates.requiredCapabilities === null ? null : JSON.stringify(updates.requiredCapabilities),
+      dependencies:
+        updates.dependencies === undefined ? undefined : updates.dependencies === null ? null : JSON.stringify(updates.dependencies),
     },
   });
 
@@ -377,21 +478,65 @@ export async function promoteOpportunityToProject(
 const EFFORT_WEIGHT: Record<EffortLevel, number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
 const RISK_PENALTY: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 0.15, HIGH: 0.35 };
 const CONFIDENCE_WEIGHT: Record<Confidence, number> = { LOW: 0.5, MEDIUM: 0.75, HIGH: 1, CONFIRMED: 1.15 };
+/// HIGH scalability is a BONUS (multiplies score up), unlike risk/complexity/
+/// competition/human-involvement, which are penalties (multiply score down).
+const SCALABILITY_BONUS: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 0.15, HIGH: 0.35 };
+
+/// Unlike the original `risk` field (which defaults an unset value to a
+/// MEDIUM penalty — an established convention this function deliberately
+/// does not disturb), these newer Economic Engine factors default to a
+/// TRUE neutral (no penalty at all) when unset, so an opportunity with no
+/// complexity/competition/human-involvement data scores identically to how
+/// it did before these fields existed.
+function factorPenalty(level: RiskLevel | null): number {
+  return level ? RISK_PENALTY[level] : 0;
+}
 
 /**
  * Score = (estimatedValue, or 1 if unset so effort/confidence still rank it)
  *         / effort weight
  *         * confidence weight
  *         * (1 - risk penalty)
- * Purely a re-ranking of numbers the user already entered — never generates
- * a value that wasn't already on the row.
+ *         / capital divisor          (Economic Engine: startup cost drag)
+ *         / operating-cost divisor   (Economic Engine: recurring cost drag)
+ *         * margin multiplier        (Economic Engine: 0-1 margin fraction)
+ *         * speed multiplier         (Economic Engine: time-to-revenue)
+ *         * (1 - complexity penalty)
+ *         * (1 - competition penalty)
+ *         * (1 + scalability bonus)
+ *         * (1 - human-involvement penalty)
+ * Every Economic Engine factor defaults to neutral (no change to the score)
+ * when the corresponding field is null — an unset field is never treated as
+ * zero or as "bad", only as "not yet known". Purely a re-ranking of numbers
+ * already on the row; never generates a value that wasn't already there.
  */
 export function scoreOpportunity(o: OpportunityDTO): number {
   const value = o.estimatedValue ?? 1;
   const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
   const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
   const confidenceWeight = CONFIDENCE_WEIGHT[o.confidence];
-  return (value / effortWeight) * confidenceWeight * (1 - riskPenalty);
+
+  const capitalDivisor = 1 + (o.estimatedStartupCost ?? 0) / 1000;
+  const operatingDivisor = 1 + (o.estimatedOperatingCost ?? 0) / 500;
+  const marginMultiplier = o.estimatedMargin == null ? 1 : 0.5 + Math.max(0, Math.min(1, o.estimatedMargin));
+  const speedMultiplier =
+    o.estimatedTimeToRevenueDays == null ? 1 : Math.max(0.3, Math.min(2, 30 / Math.max(7, o.estimatedTimeToRevenueDays)));
+  const complexityPenalty = factorPenalty(o.complexity);
+  const competitionPenalty = factorPenalty(o.competition);
+  const scalabilityBonus = o.scalability ? SCALABILITY_BONUS[o.scalability] : 0;
+  const humanInvolvementPenalty = factorPenalty(o.requiredHumanInvolvement);
+
+  return (
+    ((value / effortWeight) * confidenceWeight * (1 - riskPenalty)) /
+    capitalDivisor /
+    operatingDivisor *
+    marginMultiplier *
+    speedMultiplier *
+    (1 - complexityPenalty) *
+    (1 - competitionPenalty) *
+    (1 + scalabilityBonus) *
+    (1 - humanInvolvementPenalty)
+  );
 }
 
 export interface OpportunityScoreBreakdown {
@@ -404,6 +549,22 @@ export interface OpportunityScoreBreakdown {
   confidenceWeight: number;
   risk: RiskLevel | null;
   riskPenalty: number;
+  estimatedStartupCost: number | null;
+  capitalDivisor: number;
+  estimatedOperatingCost: number | null;
+  operatingDivisor: number;
+  estimatedMargin: number | null;
+  marginMultiplier: number;
+  estimatedTimeToRevenueDays: number | null;
+  speedMultiplier: number;
+  complexity: RiskLevel | null;
+  complexityPenalty: number;
+  competition: RiskLevel | null;
+  competitionPenalty: number;
+  scalability: RiskLevel | null;
+  scalabilityBonus: number;
+  requiredHumanInvolvement: RiskLevel | null;
+  humanInvolvementPenalty: number;
 }
 
 /**
@@ -411,12 +572,17 @@ export interface OpportunityScoreBreakdown {
  * every intermediate factor exposed — this is what the Brain's "Why?" panel
  * renders, so the ranking is never a black box. Never recomputes the score
  * differently than scoreOpportunity() does; this is that function with its
- * work shown.
+ * work shown, so "why did this rank #1" always has a real, decomposable answer.
  */
 export function explainOpportunityScore(o: OpportunityDTO): OpportunityScoreBreakdown {
   const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
   const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
   const confidenceWeight = CONFIDENCE_WEIGHT[o.confidence];
+  const capitalDivisor = 1 + (o.estimatedStartupCost ?? 0) / 1000;
+  const operatingDivisor = 1 + (o.estimatedOperatingCost ?? 0) / 500;
+  const marginMultiplier = o.estimatedMargin == null ? 1 : 0.5 + Math.max(0, Math.min(1, o.estimatedMargin));
+  const speedMultiplier =
+    o.estimatedTimeToRevenueDays == null ? 1 : Math.max(0.3, Math.min(2, 30 / Math.max(7, o.estimatedTimeToRevenueDays)));
   return {
     score: scoreOpportunity(o),
     value: o.estimatedValue ?? 1,
@@ -427,6 +593,22 @@ export function explainOpportunityScore(o: OpportunityDTO): OpportunityScoreBrea
     confidenceWeight,
     risk: o.risk,
     riskPenalty,
+    estimatedStartupCost: o.estimatedStartupCost,
+    capitalDivisor,
+    estimatedOperatingCost: o.estimatedOperatingCost,
+    operatingDivisor,
+    estimatedMargin: o.estimatedMargin,
+    marginMultiplier,
+    estimatedTimeToRevenueDays: o.estimatedTimeToRevenueDays,
+    speedMultiplier,
+    complexity: o.complexity,
+    complexityPenalty: factorPenalty(o.complexity),
+    competition: o.competition,
+    competitionPenalty: factorPenalty(o.competition),
+    scalability: o.scalability,
+    scalabilityBonus: o.scalability ? SCALABILITY_BONUS[o.scalability] : 0,
+    requiredHumanInvolvement: o.requiredHumanInvolvement,
+    humanInvolvementPenalty: factorPenalty(o.requiredHumanInvolvement),
   };
 }
 
@@ -455,4 +637,62 @@ export async function getNextBestAction(userId: string): Promise<NextBestAction 
     opportunity: top,
     action: top.nextAction ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Economic Engine: Opportunity -> Objective bridge. Creates the Objective a
+// SupervisorRun will actually work against, WITHOUT creating a second
+// execution engine — the existing Supervisor/Agent infrastructure remains
+// the only thing that ever executes anything.
+// ---------------------------------------------------------------------------
+
+export interface CreateValidationObjectiveInput {
+  userId: string;
+  opportunityId: string;
+  /** Free text — defaults to a generic "validate this can work" framing if omitted. */
+  title?: string;
+  description?: string;
+}
+
+export interface CreateValidationObjectiveResult {
+  objective: ObjectiveDTO;
+  opportunity: OpportunityDTO;
+}
+
+/** Turns an Opportunity into a real Objective the Supervisor can pursue —
+ * e.g. "Potential local lead-generation service" becomes "Validate whether
+ * this opportunity can acquire its first paying customer within budget."
+ * Advances the opportunity's pipeline status to PLANNING (unless it's
+ * already further along) so the pipeline stays honest about what's
+ * actually being worked. */
+export async function createValidationObjective(
+  input: CreateValidationObjectiveInput
+): Promise<CreateValidationObjectiveResult | null> {
+  const opportunity = await db.opportunity.findFirst({ where: { id: input.opportunityId, userId: input.userId } });
+  if (!opportunity) return null;
+
+  const title = input.title?.trim() || `Validate: ${opportunity.title}`;
+  const objective = await createObjective({
+    userId: input.userId,
+    title,
+    description: input.description ?? opportunity.description ?? undefined,
+  });
+
+  await db.objective.update({ where: { id: objective.id }, data: { sourceOpportunityId: opportunity.id } });
+
+  const advancingStatuses = new Set(["IDEA", "DISCOVERED", "RESEARCHING", "EVALUATING", "WATCHLIST", "APPROVED"]);
+  const updatedOpportunity = advancingStatuses.has(opportunity.status)
+    ? await updateOpportunity(input.userId, opportunity.id, { status: "PLANNING" })
+    : toOpportunityDTO(opportunity);
+
+  await recordEvent({
+    userId: input.userId,
+    type: "opportunity.objective_created",
+    subjectType: "Opportunity",
+    subjectId: opportunity.id,
+    payload: { objectiveId: objective.id, title },
+  });
+
+  const reloadedObjective = await db.objective.findUniqueOrThrow({ where: { id: objective.id } });
+  return { objective: toObjectiveDTO(reloadedObjective), opportunity: updatedOpportunity! };
 }

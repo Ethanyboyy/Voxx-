@@ -231,3 +231,77 @@ export async function getEconomicOverview(userId: string) {
     profitUsd: totalRevenueUsd - totalExpenseUsd,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Economic Engine: capability-gated agent spend. Unlike the rest of this
+// file (direct, ungated user CRUD — see the header comment), this path is
+// reached only through the economic.record_expense Tool Registry entry,
+// which requires the "economic.spend" capability at ACT level AND passes
+// evaluateSpendPolicy()'s budget-ceiling check — two independent gates, so
+// a granted capability alone is never sufficient for an agent to spend.
+// ---------------------------------------------------------------------------
+
+/** Finds the opportunity's promoted EconomicAsset, or creates a minimal one
+ * — same "promoted, not just labeled" posture as promoteOpportunityToProject.
+ * Never silently reuses a DIFFERENT opportunity's asset (opportunityId is
+ * @unique on EconomicAsset). */
+async function findOrCreateAssetForOpportunity(userId: string, opportunityId: string): Promise<EconomicAsset> {
+  const existing = await db.economicAsset.findUnique({ where: { opportunityId } });
+  if (existing) return existing;
+
+  const opportunity = await db.opportunity.findFirstOrThrow({ where: { id: opportunityId, userId } });
+  const created = await db.economicAsset.create({
+    data: { userId, opportunityId, name: opportunity.title, category: "OTHER", status: "IDEA" },
+  });
+  await recordEvent({
+    userId,
+    type: "economic_asset.created",
+    subjectType: "EconomicAsset",
+    subjectId: created.id,
+    payload: { name: created.name, category: created.category, autoCreatedForOpportunity: opportunityId },
+  });
+  return created;
+}
+
+export interface RecordOpportunitySpendInput {
+  opportunityId: string;
+  amountUsd: number;
+  category?: string;
+  notes?: string;
+}
+
+export async function recordOpportunitySpend(userId: string, input: RecordOpportunitySpendInput): Promise<EconomicExpense> {
+  const asset = await findOrCreateAssetForOpportunity(userId, input.opportunityId);
+  const expense = await addEconomicExpense(userId, asset.id, {
+    amountUsd: input.amountUsd,
+    category: input.category,
+    occurredAt: new Date(),
+    notes: input.notes,
+  });
+  if (!expense) throw new Error("Failed to record expense — asset disappeared.");
+  return expense;
+}
+
+export interface BudgetSummary {
+  maxAutonomousSpendUsd: number;
+  totalSpentUsd: number;
+  /** Real sum of every EconomicExpense ever logged, autonomous or manual —
+   * never a projection. `remainingAutonomousUsd` compares this against the
+   * ceiling only as an at-a-glance signal; each individual spend action is
+   * still evaluated independently against the ceiling, not against a
+   * running "budget balance" that could drift or double-count. */
+  remainingAutonomousUsd: number;
+}
+
+export async function getBudgetSummary(userId: string): Promise<BudgetSummary> {
+  const [user, expenses] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { id: userId }, select: { maxAutonomousSpendUsd: true } }),
+    db.economicExpense.findMany({ where: { asset: { userId } }, select: { amountUsd: true } }),
+  ]);
+  const totalSpentUsd = sumAmount(expenses);
+  return {
+    maxAutonomousSpendUsd: user.maxAutonomousSpendUsd,
+    totalSpentUsd,
+    remainingAutonomousUsd: Math.max(0, user.maxAutonomousSpendUsd - totalSpentUsd),
+  };
+}

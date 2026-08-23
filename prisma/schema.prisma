@@ -72,6 +72,13 @@ model User {
   /// Global default for how the Supervisor is allowed to authorize new
   /// agents it creates — never grants more than Permission/capability would.
   autonomyMode AutonomyMode @default(AUTONOMOUS_APPROVAL_GATES)
+  /// The economic decision/control layer's spending ceiling: the maximum
+  /// amountUsd the economic.record_expense tool may execute WITHOUT the
+  /// step still separately pausing for approval — see
+  /// src/lib/economic/policy.ts#evaluateSpendPolicy(). Defaults to 0 (no
+  /// autonomous spend at all) — this is a decision layer only; it is never
+  /// wired to a real payment method in this milestone.
+  maxAutonomousSpendUsd Float @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -105,6 +112,7 @@ model User {
   brainGroups           BrainGroup[]
   brainViews            BrainView[]
   supervisorRuns        SupervisorRun[]
+  outcomes              Outcome[]
 
   labProjects         LabProject[]
   labSuits            LabSuit[]
@@ -1008,6 +1016,12 @@ model Objective {
   currentValue Float?
   targetDate  DateTime?
   status      ObjectiveStatus @default(ACTIVE)
+  /// Set when this Objective was created specifically to validate/pursue an
+  /// Opportunity (Economic Engine) — e.g. "Validate whether this can
+  /// acquire a paying customer within budget." Null for ordinary objectives.
+  /// Distinct from Opportunity.objectiveId (an Opportunity's own parent).
+  sourceOpportunity   Opportunity? @relation("OpportunitySourcesObjectives", fields: [sourceOpportunityId], references: [id], onDelete: SetNull)
+  sourceOpportunityId String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -1015,11 +1029,23 @@ model Objective {
   supervisorRuns SupervisorRun[]
 }
 
+/// IDEA/EVALUATING/ACTIVE/PAUSED/COMPLETED/REJECTED are the original
+/// lightweight statuses. DISCOVERED..VALIDATING are the Economic Engine's
+/// pipeline additions (see the Economic Engine section below) — additive,
+/// existing rows/behavior on the original statuses are unaffected.
 enum OpportunityStatus {
   IDEA
+  DISCOVERED
+  RESEARCHING
   EVALUATING
+  WATCHLIST
+  APPROVED
+  PLANNING
+  EXECUTING
+  VALIDATING
   ACTIVE
   PAUSED
+  FAILED
   COMPLETED
   REJECTED
 }
@@ -1051,7 +1077,9 @@ model Opportunity {
   risk        RiskLevel?
   /// The single concrete next step, in the user's or VOX's own words — not a status label.
   nextAction  String?
-  /// JSON string[] — reasoning/evidence behind the estimate, so it stays inspectable.
+  /// JSON string[] of {type: "FACT"|"SOURCED"|"ESTIMATE"|"ASSUMPTION"|"UNKNOWN", text}
+  /// — reasoning/evidence behind the estimate, so it stays inspectable and
+  /// every claim's provenance is visible rather than blended into prose.
   evidence    String?
   status      OpportunityStatus @default(IDEA)
   /// Set once this opportunity has been promoted into a real Project (Brain
@@ -1061,8 +1089,47 @@ model Opportunity {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
+  // --- Economic Engine: structured opportunity intelligence (all optional —
+  // never fabricated when unknown; a null field means "not yet known", not zero). ---
+  /// Free-text category (e.g. "micro-saas", "lead-generation") — deliberately
+  /// not an enum, since real opportunity categories are open-ended and this
+  /// mirrors EconomicAssetCategory only loosely once promoted.
+  category                 String?
+  /// Where this was discovered — "user", "vox.research", a specific tool name, etc.
+  source                   String?
+  discoveredAt             DateTime  @default(now())
+  estimatedStartupCost     Float?
+  /// Recurring, e.g. per month — distinct from the one-time startup cost.
+  estimatedOperatingCost   Float?
+  /// 0-1 fraction of revenue retained as margin, when estimable.
+  estimatedMargin          Float?
+  estimatedTimeToRevenueDays Int?
+  complexity               RiskLevel?
+  competition              RiskLevel?
+  /// How much upside scales with effort — reuses RiskLevel purely as a
+  /// LOW/MEDIUM/HIGH magnitude scale, not as a risk judgment.
+  scalability              RiskLevel?
+  requiredHumanInvolvement RiskLevel?
+  /// JSON string[] of Tool Registry capability keys this opportunity would
+  /// likely need if pursued — informational only, never auto-granted.
+  requiredCapabilities     String?
+  /// JSON string[] — free-text dependencies (e.g. "needs a payment processor").
+  dependencies             String?
+  /// VOX's or the user's own explanation for the ranking — free text, never
+  /// a fabricated "AI confidence" claim.
+  rationale                String?
+  /// Cached snapshot of scoreOpportunity()/explainOpportunityScore()'s last
+  /// computed output, refreshed on read — so the UI never shows a stale
+  /// number without also being able to recompute and compare live.
+  scoreSnapshot            Float?
+  scoreBreakdown           String?
+
   researchItems ResearchItem[]
   economicAsset EconomicAsset?
+  /// Objectives created specifically to validate/pursue this opportunity —
+  /// see Objective.sourceOpportunityId below. Distinct from `objective`
+  /// above (this opportunity's own parent Objective).
+  sourcedObjectives Objective[] @relation("OpportunitySourcesObjectives")
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,6 +1184,45 @@ model SupervisorRun {
   completedAt DateTime?
 
   agentRuns AgentRun[]
+  outcome   Outcome?
+}
+
+enum OutcomeStatus {
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  BLOCKED
+  ABANDONED
+  UNKNOWN
+}
+
+/// A structured, honest record of what a SupervisorRun actually accomplished
+/// — distinct from AgentRun.status, which only reflects whether the
+/// *planned steps* finished executing. AgentRun COMPLETED means the work
+/// ran; it does NOT by itself mean the objective's real-world goal was
+/// verified. Outcome.summary must say so explicitly rather than let
+/// "COMPLETED" be read as "succeeded" (see src/lib/supervisor/service.ts).
+model Outcome {
+  id              String        @id @default(uuid())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  supervisorRun   SupervisorRun @relation(fields: [supervisorRunId], references: [id], onDelete: Cascade)
+  supervisorRunId String        @unique
+  status          OutcomeStatus @default(UNKNOWN)
+  summary         String
+  expectedResult  String?
+  observedResult  String?
+  variance        String?
+  costUsd         Float?
+  timeSpentMinutes Int?
+  /// Only ever populated from real evidence tied to this run — never a
+  /// fabricated interpretation. Null when there's nothing yet to learn.
+  lessons         String?
+  confidence      Confidence    @default(LOW)
+  /// JSON string[] — same {type, text} evidence-item convention as
+  /// Opportunity.evidence.
+  evidence        String?
+  createdAt       DateTime      @default(now())
 }
 
 // ---------------------------------------------------------------------------

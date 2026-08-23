@@ -1,16 +1,20 @@
 import { getCurrentUser } from "@/lib/auth/session";
-import { listEconomicAssets, getEconomicOverview } from "@/lib/economic/service";
+import { listEconomicAssets, getEconomicOverview, getBudgetSummary } from "@/lib/economic/service";
+import { getAutonomyMode } from "@/lib/supervisor/service";
 import { listOpportunities } from "@/lib/objectives/service";
 import { EconomicCommandClient } from "@/components/economic/EconomicCommandClient";
+import { BudgetAutonomyPanel } from "@/components/economic/BudgetAutonomyPanel";
 
 export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities] = await Promise.all([
+  const [assets, overview, opportunities, budget, autonomyMode] = await Promise.all([
     listEconomicAssets(user.id),
     getEconomicOverview(user.id),
     listOpportunities(user.id),
+    getBudgetSummary(user.id),
+    getAutonomyMode(user.id),
   ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -23,6 +27,10 @@ export default async function FinancePage() {
         Real assets, real revenue and expense entries you log yourself — nothing here is a projection, a forecast, or
         invented income. An asset starts as an Opportunity (see Objectives) and becomes real once you record it here.
       </p>
+
+      <div className="mt-6">
+        <BudgetAutonomyPanel initialBudget={budget} initialAutonomyMode={autonomyMode} />
+      </div>
 
       <EconomicCommandClient
         initialAssets={assets.map((a) => ({ ...a, createdAt: a.createdAt.toISOString(), updatedAt: a.updatedAt.toISOString() }))}
