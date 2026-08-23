@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Line } from "@react-three/drei";
 import { cn } from "@/lib/utils/cn";
 import { useEventStream } from "@/lib/events/useEventStream";
 import type { LiveEvent } from "@/lib/events/bus";
@@ -10,11 +11,21 @@ import { InspectorPanel, type GraphPatch } from "@/components/brain/InspectorPan
 import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
 import { BrainScene } from "@/components/brain/three/BrainScene";
-import { SystemAnchorPoint } from "@/components/brain/three/SystemAnchorPoint";
-import { EntityNodePoint } from "@/components/brain/three/EntityNodePoint";
-import { EdgeLines, type ResolvedEdge } from "@/components/brain/three/EdgeLines";
-import { computeBrainLayout, DISSECT_RADIUS, SYSTEM_RADIUS, type Vec3 } from "@/components/brain/three/layout3d";
-import { SYSTEM_OF, SYSTEM_ORDER, SYSTEM_LABEL, SYSTEM_COLOR, SUBJECT_TYPE_TO_SYSTEM, type BrainSystem } from "@/components/brain/three/systems";
+import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
+import { RegionMarker } from "@/components/brain/three/RegionMarker";
+import { EntitySatellite } from "@/components/brain/three/EntitySatellite";
+import { computeSatelliteOffsets, SATELLITE_REVEAL_CAP } from "@/components/brain/three/regionLayout";
+import { importanceOf } from "@/components/brain/importance";
+import {
+  SYSTEM_OF,
+  SYSTEM_ORDER,
+  SYSTEM_LABEL,
+  SYSTEM_COLOR,
+  SYSTEM_ANCHOR,
+  SUBJECT_TYPE_TO_SYSTEM,
+  type BrainSystem,
+  type Vec3,
+} from "@/components/brain/three/anatomy";
 
 const PULSE_MS = 1600;
 
@@ -32,6 +43,10 @@ function usePrefersReducedMotion(): boolean {
   );
 }
 
+function add(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
 export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPayload; onSwitchToStructural?: () => void }) {
   const [nodes, setNodes] = useState<BrainNode[]>(initial.nodes);
   const [edges, setEdges] = useState(initial.edges);
@@ -40,20 +55,25 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [focusedSystem, setFocusedSystem] = useState<BrainSystem | null>(null);
-  const [dissected, setDissected] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [showActivity, setShowActivity] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pulses, setPulses] = useState<Partial<Record<BrainSystem, number>>>({});
+
+  const [explodeAmount, setExplodeAmount] = useState(0);
+  const [xray, setXray] = useState(false);
+  const [clipEnabled, setClipEnabled] = useState(false);
+  const [clipAxis, setClipAxis] = useState<ClipAxis>("x");
+  const [clipPosition, setClipPosition] = useState(0);
+
   const reducedMotion = usePrefersReducedMotion();
 
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const selectedNode = selectedNodeId ? (nodesById.get(selectedNodeId) ?? null) : null;
 
-  // Real authoritative refetch — same pattern as BrainWorkspace's own
-  // refreshGraph/handleLiveEvent (see src/components/brain/BrainWorkspace.tsx):
-  // a live event never mutates local state by guesswork, it just triggers a
-  // debounced re-read of the real graph from the server.
+  // Real authoritative refetch — identical pattern to BrainWorkspace's own
+  // refreshGraph/handleLiveEvent: a live event never guesses at what
+  // changed, it just triggers a debounced re-read of the real graph.
   const refreshGraph = useCallback(async () => {
     try {
       const res = await fetch("/api/brain/graph");
@@ -89,8 +109,11 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const { status: liveStatus } = useEventStream({ onEvent: handleLiveEvent });
   useEffect(() => () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); }, []);
 
+  // Which systems currently show their real entity satellites — the brain
+  // itself is always fully visible (it's the hero, not something that
+  // needs "revealing"); this only controls the small supplementary markers.
   const revealedSystems = useMemo(() => {
-    if (dissected) return new Set(SYSTEM_ORDER);
+    if (explodeAmount > 0.15) return new Set(SYSTEM_ORDER);
     const set = new Set<BrainSystem>();
     if (focusedSystem) set.add(focusedSystem);
     if (selectedNode) {
@@ -106,10 +129,30 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
       }
     }
     return set;
-  }, [dissected, focusedSystem, selectedNode, edges, nodesById]);
+  }, [explodeAmount, focusedSystem, selectedNode, edges, nodesById]);
 
-  const layout = useMemo(() => computeBrainLayout(nodes, dissected, revealedSystems), [nodes, dissected, revealedSystems]);
-  const anchorPositionBySystem = useMemo(() => new Map(layout.anchors.map((a) => [a.system, a.position])), [layout.anchors]);
+  const nodesBySystem = useMemo(() => {
+    const map = new Map<BrainSystem, BrainNode[]>();
+    for (const system of SYSTEM_ORDER) map.set(system, []);
+    for (const node of nodes) map.get(SYSTEM_OF[node.type])?.push(node);
+    return map;
+  }, [nodes]);
+
+  const { entityPositions, systemOverflow } = useMemo(() => {
+    const positions = new Map<string, Vec3>();
+    const overflow = new Map<BrainSystem, number>();
+    for (const system of SYSTEM_ORDER) {
+      if (!revealedSystems.has(system)) continue;
+      const members = nodesBySystem.get(system) ?? [];
+      const shown = members.length > SATELLITE_REVEAL_CAP ? [...members].sort((a, b) => importanceOf(b) - importanceOf(a)).slice(0, SATELLITE_REVEAL_CAP) : members;
+      overflow.set(system, Math.max(0, members.length - SATELLITE_REVEAL_CAP));
+      const offsets = computeSatelliteOffsets(shown.length);
+      shown.forEach((node, i) => positions.set(node.id, add(SYSTEM_ANCHOR[system], offsets[i])));
+    }
+    return { entityPositions: positions, systemOverflow: overflow };
+  }, [revealedSystems, nodesBySystem]);
+
+  const revealedNodes = useMemo(() => nodes.filter((n) => entityPositions.has(n.id)), [nodes, entityPositions]);
 
   const relatedIds = useMemo(() => {
     if (!selectedNode) return new Set<string>();
@@ -121,41 +164,38 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     return set;
   }, [selectedNode, edges]);
 
-  const highlightedEdgeIds = useMemo(() => {
-    if (!selectedNode) return new Set<string>();
-    return new Set(edges.filter((e) => e.from === selectedNode.id || e.to === selectedNode.id).map((e) => e.id));
-  }, [selectedNode, edges]);
-
-  const resolvedEdges: ResolvedEdge[] = useMemo(() => {
+  // Only the edges touching the current selection are ever drawn — "only
+  // emphasize meaningful relationships," never a permanent web across the
+  // whole brain.
+  const highlightedEdges = useMemo(() => {
+    if (!selectedNode) return [];
     function resolve(nodeId: string): Vec3 {
-      const pos = layout.nodePositions.get(nodeId);
+      const pos = entityPositions.get(nodeId);
       if (pos) return pos;
       const node = nodesById.get(nodeId);
-      const anchor = node ? anchorPositionBySystem.get(SYSTEM_OF[node.type]) : undefined;
-      return anchor ?? [0, 0, 0];
+      return node ? SYSTEM_ANCHOR[SYSTEM_OF[node.type]] : [0, 0, 0];
     }
-    return edges.map((edge) => ({ edge, from: resolve(edge.from), to: resolve(edge.to) }));
-  }, [edges, layout.nodePositions, nodesById, anchorPositionBySystem]);
-
-  const revealedNodes = useMemo(() => nodes.filter((n) => layout.nodePositions.has(n.id)), [nodes, layout.nodePositions]);
+    return edges
+      .filter((e) => e.from === selectedNode.id || e.to === selectedNode.id)
+      .map((e) => ({ id: e.id, from: resolve(e.from), to: resolve(e.to) }));
+  }, [selectedNode, edges, entityPositions, nodesById]);
 
   const { focusPosition, focusDistance } = useMemo(() => {
     if (selectedNode) {
-      const pos = layout.nodePositions.get(selectedNode.id) ?? anchorPositionBySystem.get(SYSTEM_OF[selectedNode.type]) ?? ([0, 0, 0] as Vec3);
-      return { focusPosition: pos, focusDistance: 4.2 };
+      const pos = entityPositions.get(selectedNode.id) ?? SYSTEM_ANCHOR[SYSTEM_OF[selectedNode.type]];
+      return { focusPosition: pos, focusDistance: 1.15 };
     }
-    if (focusedSystem) {
-      const pos = anchorPositionBySystem.get(focusedSystem) ?? ([0, 0, 0] as Vec3);
-      return { focusPosition: pos, focusDistance: 6.5 };
-    }
-    if (dissected) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: DISSECT_RADIUS + 6.5 };
-    return { focusPosition: [0, 0, 0] as Vec3, focusDistance: SYSTEM_RADIUS + 7 };
-  }, [selectedNode, focusedSystem, dissected, layout.nodePositions, anchorPositionBySystem]);
+    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: 1.8 };
+    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: 5.4 };
+    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: 3.6 };
+  }, [selectedNode, focusedSystem, explodeAmount, entityPositions]);
 
   function resetToWholeBrain() {
     setSelectedNodeId(null);
     setFocusedSystem(null);
-    setDissected(false);
+    setExplodeAmount(0);
+    setXray(false);
+    setClipEnabled(false);
   }
 
   function applyGraphPatch(patch: GraphPatch) {
@@ -171,7 +211,6 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   }, [searchQuery, nodes]);
 
   function selectFromSearch(node: BrainNode) {
-    setDissected(false);
     setFocusedSystem(null);
     setSelectedNodeId(node.id);
     setSearchQuery("");
@@ -179,35 +218,38 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
-      <BrainScene
-        brainState={brain.state}
-        focusPosition={focusPosition}
-        focusDistance={focusDistance}
-        reducedMotion={reducedMotion}
-        onPointerMissed={() => setSelectedNodeId(null)}
-      >
-        {layout.anchors.map((anchor) => (
-          <SystemAnchorPoint
-            key={anchor.system}
-            anchor={anchor}
-            active={dissected || focusedSystem === anchor.system || revealedSystems.has(anchor.system)}
-            pulseUntil={pulses[anchor.system] ?? null}
-            onFocus={(system) => {
+      <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onPointerMissed={() => setSelectedNodeId(null)}>
+        <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
+
+        {SYSTEM_ORDER.map((system) => (
+          <RegionMarker
+            key={system}
+            system={system}
+            anchor={SYSTEM_ANCHOR[system]}
+            count={(nodesBySystem.get(system) ?? []).length}
+            active={revealedSystems.has(system)}
+            focused={focusedSystem === system}
+            pulseUntil={pulses[system] ?? null}
+            onFocus={(s) => {
               setSelectedNodeId(null);
-              setFocusedSystem((prev) => (prev === system ? null : system));
+              setFocusedSystem((prev) => (prev === s ? null : s));
             }}
           />
         ))}
+
         {revealedNodes.map((node) => (
-          <EntityNodePoint
+          <EntitySatellite
             key={node.id}
             node={node}
-            targetPosition={layout.nodePositions.get(node.id)!}
+            targetPosition={entityPositions.get(node.id)!}
             visualState={!selectedNode ? "normal" : node.id === selectedNode.id ? "focused" : relatedIds.has(node.id) ? "normal" : "dimmed"}
             onSelect={(id) => setSelectedNodeId(id)}
           />
         ))}
-        <EdgeLines resolved={resolvedEdges} highlightedIds={highlightedEdgeIds} dimmed={Boolean(selectedNode)} />
+
+        {highlightedEdges.map((e) => (
+          <Line key={e.id} points={[e.from, e.to]} color="#e9d5ff" lineWidth={1.4} transparent opacity={0.85} dashed dashSize={0.05} gapSize={0.03} />
+        ))}
       </BrainScene>
 
       {/* Top overlay bar */}
@@ -218,50 +260,63 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             <BrainStateBadge state={brain.state} detail={brain.detail} />
           </div>
 
-          <button
-            type="button"
-            onClick={resetToWholeBrain}
-            className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-          >
+          <button type="button" onClick={resetToWholeBrain} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Whole Brain
           </button>
-          {focusedSystem && !dissected ? (
-            <span className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-accent">
-              {SYSTEM_LABEL[focusedSystem]}
-            </span>
-          ) : null}
 
           <button
             type="button"
-            onClick={() => {
-              setDissected((d) => !d);
-              setFocusedSystem(null);
-              setSelectedNodeId(null);
-            }}
+            onClick={() => setXray((v) => !v)}
             className={cn(
               "lab-mono rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
-              dissected ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+              xray ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            {dissected ? "Reassemble" : "Dissect"}
+            X-Ray
           </button>
+
+          <button
+            type="button"
+            onClick={() => setClipEnabled((v) => !v)}
+            className={cn(
+              "lab-mono rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
+              clipEnabled ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Cutaway
+          </button>
+          {clipEnabled ? (
+            <div className="glass-panel-strong flex items-center gap-1.5 rounded-full px-2.5 py-1">
+              {(["x", "y", "z"] as ClipAxis[]).map((axis) => (
+                <button
+                  key={axis}
+                  type="button"
+                  onClick={() => setClipAxis(axis)}
+                  className={cn("lab-mono rounded-full px-1.5 py-0.5 text-[10px] uppercase", clipAxis === axis ? "bg-accent-muted text-accent" : "text-muted-foreground")}
+                >
+                  {axis}
+                </button>
+              ))}
+              <input type="range" min={-1.1} max={1.1} step={0.02} value={clipPosition} onChange={(e) => setClipPosition(Number(e.target.value))} className="w-20 accent-[var(--accent)]" />
+            </div>
+          ) : null}
+
+          <div className="glass-panel-strong flex items-center gap-1.5 rounded-full px-3 py-1.5">
+            <span className="lab-mono text-[11px] uppercase tracking-wider text-muted-foreground">Dissect</span>
+            <input type="range" min={0} max={100} value={Math.round(explodeAmount * 100)} onChange={(e) => setExplodeAmount(Number(e.target.value) / 100)} className="w-20 accent-[var(--accent)]" />
+          </div>
 
           <div className="relative ml-auto">
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search the Brain…"
-              className="glass-panel-strong w-40 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none"
+              className="glass-panel-strong w-36 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none"
             />
             {searchResults.length > 0 ? (
               <div className="glass-panel-strong absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-[var(--radius-sm)] p-1">
                 {searchResults.map((n) => (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => selectFromSearch(n)}
-                    className="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-hover"
-                  >
+                  <button key={n.id} type="button" onClick={() => selectFromSearch(n)} className="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-hover">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[SYSTEM_OF[n.type]] }} />
                     <span className="truncate">{n.label}</span>
                   </button>
@@ -270,46 +325,43 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowActivity((v) => !v)}
-            className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-          >
+          <button type="button" onClick={() => setShowActivity((v) => !v)} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Activity
           </button>
           {onSwitchToStructural ? (
-            <button
-              type="button"
-              onClick={onSwitchToStructural}
-              className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-            >
+            <button type="button" onClick={onSwitchToStructural} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
               Structural View
             </button>
           ) : null}
         </div>
 
-        {/* System legend — real, keyboard-reachable buttons mirroring the 3D anchors, satisfying the same navigation without requiring pointer/orbit interaction. */}
+        {/* Region legend — real, keyboard-reachable buttons mirroring the anatomical markers. */}
         <div className="pointer-events-auto flex flex-wrap gap-1.5">
-          {layout.anchors.map((anchor) => (
-            <button
-              key={anchor.system}
-              type="button"
-              onClick={() => {
-                setSelectedNodeId(null);
-                setFocusedSystem((prev) => (prev === anchor.system ? null : anchor.system));
-              }}
-              className={cn(
-                "lab-mono flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
-                focusedSystem === anchor.system || dissected
-                  ? "border-[var(--border-strong)] bg-surface text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: SYSTEM_COLOR[anchor.system] }} />
-              {SYSTEM_LABEL[anchor.system]}
-              <span className="text-muted-foreground/70">{anchor.count}</span>
-            </button>
-          ))}
+          {SYSTEM_ORDER.map((system) => {
+            const count = (nodesBySystem.get(system) ?? []).length;
+            const overflow = systemOverflow.get(system) ?? 0;
+            return (
+              <button
+                key={system}
+                type="button"
+                onClick={() => {
+                  setSelectedNodeId(null);
+                  setFocusedSystem((prev) => (prev === system ? null : system));
+                }}
+                className={cn(
+                  "lab-mono flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
+                  focusedSystem === system ? "border-[var(--border-strong)] bg-surface text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: SYSTEM_COLOR[system] }} />
+                {SYSTEM_LABEL[system]}
+                <span className="text-muted-foreground/70">
+                  {count}
+                  {overflow > 0 ? ` (+${overflow})` : ""}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {liveStatus !== "open" ? (
@@ -319,7 +371,6 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
         ) : null}
       </div>
 
-      {/* Inspector — reused verbatim from the 2D graph so entity fields, AI actions, and relationship navigation stay identical. */}
       {selectedNode ? (
         <div className="pointer-events-auto absolute inset-y-0 right-0 z-10 w-full max-w-sm overflow-y-auto scrollbar-thin border-l border-border bg-background/95 backdrop-blur-md sm:p-3">
           <InspectorPanel
@@ -350,7 +401,6 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
         </div>
       ) : null}
 
-      {/* Recent activity — the temporal-replay foundation: real, timestamped Event rows, reused from the 2D graph's own timeline. Full scrub-through-time replay is not built this pass. */}
       {showActivity ? (
         <div className="pointer-events-auto absolute bottom-0 left-0 z-10 max-h-[60vh] w-full overflow-hidden border-t border-border bg-background/95 backdrop-blur-md sm:bottom-3 sm:left-3 sm:max-h-[70vh] sm:w-96 sm:rounded-[var(--radius-md)] sm:border">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">

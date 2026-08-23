@@ -30,6 +30,7 @@
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "simplex-noise": "^4.0.3",
     "three": "^0.180.0",
     "voyageai": "^0.4.0",
     "zod": "^4"
