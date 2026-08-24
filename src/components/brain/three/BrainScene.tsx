@@ -34,7 +34,7 @@ export function BrainScene({
     <Canvas
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-      camera={{ position: [0.6, 0.5, 3.6], fov: 42, near: 0.05, far: 40 }}
+      camera={{ position: [0.42, 0.35, 2.55], fov: 42, near: 0.05, far: 40 }}
       onPointerMissed={onPointerMissed}
       onCreated={({ gl }) => {
         // localClippingEnabled is a post-construction instance property in

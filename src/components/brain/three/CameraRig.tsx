@@ -90,8 +90,8 @@ export function CameraRig({
       enablePan={false}
       enableDamping
       dampingFactor={0.08}
-      minDistance={2.5}
-      maxDistance={26}
+      minDistance={0.5}
+      maxDistance={9}
       rotateSpeed={0.6}
       zoomSpeed={0.8}
       autoRotate={autoRotate && !reducedMotion}

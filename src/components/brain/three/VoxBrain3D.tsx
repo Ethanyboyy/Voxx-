@@ -185,9 +185,12 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
       const pos = entityPositions.get(selectedNode.id) ?? SYSTEM_ANCHOR[SYSTEM_OF[selectedNode.type]];
       return { focusPosition: pos, focusDistance: 1.15 };
     }
-    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: 1.8 };
-    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: 5.4 };
-    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: 3.6 };
+    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: 1.3 };
+    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: 4 };
+    // The brain is the hero — this is tuned so it fills most of the frame by
+    // default rather than sitting as a small object in a lot of empty
+    // black space (the composition problem called out explicitly).
+    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: 2.55 };
   }, [selectedNode, focusedSystem, explodeAmount, entityPositions]);
 
   function resetToWholeBrain() {
