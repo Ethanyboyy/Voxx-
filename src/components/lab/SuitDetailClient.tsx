@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Field";
-import { HolographicPanel, LabSectionLabel, LabStatusBadge, RealityStatusTag, StatBar, UnitStat, ConfidenceTag } from "@/components/lab/primitives";
+import { HolographicPanel, LabSectionLabel, LabStatusBadge, RealityStatusTag, StatBar } from "@/components/lab/primitives";
 import { HolographicModel, type SuitLayer } from "@/components/lab/HolographicModel";
+import { SuitOverviewPanel } from "@/components/lab/SuitOverviewPanel";
 import type {
   ArmorLevel,
   MaskLensStyle,
@@ -139,7 +140,10 @@ export function SuitDetailClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [layers, setLayers] = useState<Set<SuitLayer>>(new Set(ALL_LAYERS));
+  // Read-only now that the Engineering view's own layer toggle buttons have
+  // moved into SuitOverviewPanel's View Modes (which manage their own local
+  // state) — Cinematic still wants the full-layer render, unconditionally.
+  const layers = useMemo(() => new Set<SuitLayer>(ALL_LAYERS), []);
   const [noteText, setNoteText] = useState("");
   const [localNotes, setLocalNotes] = useState(notes);
   const [aiBusy, setAiBusy] = useState(false);
@@ -175,15 +179,6 @@ export function SuitDetailClient({
     if (next) params.set("subsystem", next);
     else params.delete("subsystem");
     router.replace(params.size > 0 ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
-  }
-
-  function toggleLayer(l: SuitLayer) {
-    setLayers((prev) => {
-      const next = new Set(prev);
-      if (next.has(l)) next.delete(l);
-      else next.add(l);
-      return next;
-    });
   }
 
   async function askAi(message: string) {
@@ -331,9 +326,6 @@ export function SuitDetailClient({
       ) : (
         <EngineeringView
           suit={suit}
-          layers={layers}
-          toggleLayer={toggleLayer}
-          keysToShow={keysToShow}
           mode={mode}
           components={components}
           requirements={visibleRequirements}
@@ -478,9 +470,6 @@ function CinematicView({
 
 function EngineeringView({
   suit,
-  layers,
-  toggleLayer,
-  keysToShow,
   mode,
   components,
   requirements,
@@ -500,9 +489,6 @@ function EngineeringView({
   setImages,
 }: {
   suit: Parameters<typeof SuitDetailClient>[0]["suit"];
-  layers: Set<SuitLayer>;
-  toggleLayer: (l: SuitLayer) => void;
-  keysToShow: readonly string[];
   mode: "ENGINEERING" | "EVERYTHING";
   components: InspectionNode[];
   requirements: RequirementDTO[];
@@ -522,112 +508,61 @@ function EngineeringView({
   setImages: (images: SuitImageDTO[]) => void;
 }) {
   return (
-    <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
-      <div className="flex flex-col gap-4">
-        <HolographicPanel corners scanline className="flex flex-col items-center p-5">
-          <LabSectionLabel className="self-start">Holographic Model</LabSectionLabel>
-          <HolographicModel
-            colorPrimary={suit.colorPrimary}
-            colorSecondary={suit.colorSecondary}
-            silhouette={suit.silhouette}
-            materialLanguage={suit.materialLanguage}
-            patternStyle={suit.patternStyle}
-            armorLevel={suit.armorLevel}
-            maskLensStyle={suit.maskLensStyle}
-            modelUrl={suit.modelUrl}
-            visibleLayers={layers}
-            className="mt-3"
-          />
-          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-            {ALL_LAYERS.map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => toggleLayer(l)}
-                className={cn(
-                  "lab-mono rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-                  layers.has(l) ? "border-[var(--border-strong)] bg-accent-muted text-accent" : "border-border text-muted-foreground"
-                )}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        </HolographicPanel>
+    <div className="flex flex-col gap-5">
+      <SuitOverviewPanel suit={suit} components={components} />
 
-        <HolographicPanel className="p-4">
-          <LabSectionLabel>Component Inspection</LabSectionLabel>
-          <div className="mt-3">
-            <HolographicInspectionTree nodes={components} />
-          </div>
-        </HolographicPanel>
-
-        <HolographicPanel className="p-4">
-          <LabSectionLabel>Design Notes</LabSectionLabel>
-          <div className="mt-3 flex gap-2">
-            <Textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={1} placeholder="Add a note…" />
-            <Button size="sm" onClick={addNote}>
-              Add
-            </Button>
-          </div>
-          <div className="mt-3 space-y-2">
-            {localNotes.map((n) => (
-              <div key={n.id} className="text-xs text-muted">
-                <span className="text-foreground">{n.content}</span>
-                <span className="ml-2 text-muted-foreground">{new Date(n.createdAt).toLocaleDateString()}</span>
-              </div>
-            ))}
-          </div>
-        </HolographicPanel>
-
-        <ConceptImagesPanel suitId={suit.id} images={images} onImagesChange={setImages} />
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <HolographicPanel className="p-4">
-          <div className="flex items-center justify-between">
-            <LabSectionLabel>Statistics</LabSectionLabel>
-            {mode === "EVERYTHING" ? <ConfidenceTag confidence={suit.stats.confidence} /> : null}
-          </div>
-          <div className="mt-3 space-y-2">
-            {keysToShow.map((k) => (
-              <StatBar key={k} statKey={k} value={(suit.stats as unknown as Record<string, number>)[k]} />
-            ))}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-x-6 border-t border-border pt-3 sm:grid-cols-3">
-            <UnitStat label="Weight" value={suit.stats.weightKg} unit="kg" />
-            <UnitStat label="Thermal load" value={suit.stats.thermalLoadC} unit="°C" />
-            <UnitStat label="Energy req." value={suit.stats.energyRequirementW} unit="W" />
-            {mode === "EVERYTHING" ? (
-              <>
-                <UnitStat label="Build time" value={suit.stats.estimatedBuildHours} unit="hrs" />
-                <UnitStat label="Est. cost" value={suit.stats.estimatedCostUsd} unit="USD" />
-                <UnitStat label="Mfg. complexity" value={suit.stats.manufacturingComplexity} />
-              </>
-            ) : null}
-          </div>
-        </HolographicPanel>
-
-        <RequirementsPanel suitId={suit.id} requirements={requirements} selectedSubsystem={selectedSubsystem} onCreated={onRequirementCreated} onUpdated={onRequirementUpdated} />
-        <QuestionsPanel suitId={suit.id} questions={questions} selectedSubsystem={selectedSubsystem} onCreated={onQuestionCreated} onUpdated={onQuestionUpdated} />
-        <DecisionsPanel suitId={suit.id} decisions={decisions} onCreated={onDecisionCreated} />
-
-        {mode === "EVERYTHING" ? (
+      <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
+        <div className="flex flex-col gap-4">
           <HolographicPanel className="p-4">
-            <LabSectionLabel>Version History</LabSectionLabel>
+            <LabSectionLabel>Component Inspection</LabSectionLabel>
+            <div className="mt-3">
+              <HolographicInspectionTree nodes={components} />
+            </div>
+          </HolographicPanel>
+
+          <HolographicPanel className="p-4">
+            <LabSectionLabel>Design Notes</LabSectionLabel>
+            <div className="mt-3 flex gap-2">
+              <Textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={1} placeholder="Add a note…" />
+              <Button size="sm" onClick={addNote}>
+                Add
+              </Button>
+            </div>
             <div className="mt-3 space-y-2">
-              {suit.versions.map((v) => (
-                <div key={v.id} className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className={v.isCurrent ? "font-semibold text-accent" : "text-foreground"}>{v.label}</span>
-                    {v.note ? <span className="ml-2 text-xs text-muted">{v.note}</span> : null}
-                  </div>
-                  <span className="lab-mono text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString()}</span>
+              {localNotes.map((n) => (
+                <div key={n.id} className="text-xs text-muted">
+                  <span className="text-foreground">{n.content}</span>
+                  <span className="ml-2 text-muted-foreground">{new Date(n.createdAt).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>
           </HolographicPanel>
-        ) : null}
+
+          <ConceptImagesPanel suitId={suit.id} images={images} onImagesChange={setImages} />
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <RequirementsPanel suitId={suit.id} requirements={requirements} selectedSubsystem={selectedSubsystem} onCreated={onRequirementCreated} onUpdated={onRequirementUpdated} />
+          <QuestionsPanel suitId={suit.id} questions={questions} selectedSubsystem={selectedSubsystem} onCreated={onQuestionCreated} onUpdated={onQuestionUpdated} />
+          <DecisionsPanel suitId={suit.id} decisions={decisions} onCreated={onDecisionCreated} />
+
+          {mode === "EVERYTHING" ? (
+            <HolographicPanel className="p-4">
+              <LabSectionLabel>Version History</LabSectionLabel>
+              <div className="mt-3 space-y-2">
+                {suit.versions.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between text-sm">
+                    <div>
+                      <span className={v.isCurrent ? "font-semibold text-accent" : "text-foreground"}>{v.label}</span>
+                      {v.note ? <span className="ml-2 text-xs text-muted">{v.note}</span> : null}
+                    </div>
+                    <span className="lab-mono text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            </HolographicPanel>
+          ) : null}
+        </div>
       </div>
     </div>
   );
