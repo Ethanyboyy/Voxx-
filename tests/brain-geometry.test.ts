@@ -126,4 +126,57 @@ describe("buildNeuralWeb", () => {
     expect(fine.positions.length).toBeGreaterThan(coarse.positions.length);
     expect(fine.edges.length).toBeGreaterThan(coarse.edges.length);
   });
+
+  it("gives every node a real, finite RGB color and shifts hue from low (cyan) to high (violet) Y", () => {
+    const web = buildNeuralWeb(2);
+    const nodeCount = web.positions.length / 3;
+    expect(web.colors.length).toBe(web.positions.length);
+    for (let i = 0; i < web.colors.length; i++) {
+      expect(Number.isFinite(web.colors[i])).toBe(true);
+      expect(web.colors[i]).toBeGreaterThanOrEqual(0);
+      expect(web.colors[i]).toBeLessThanOrEqual(1);
+    }
+
+    // Find the lowest- and highest-Y real nodes and confirm the color
+    // actually differs between them (a real gradient, not one flat color
+    // baked everywhere).
+    let lowestY = Infinity;
+    let highestY = -Infinity;
+    let lowestIdx = 0;
+    let highestIdx = 0;
+    for (let i = 0; i < nodeCount; i++) {
+      const y = web.positions[i * 3 + 1];
+      if (y < lowestY) {
+        lowestY = y;
+        lowestIdx = i;
+      }
+      if (y > highestY) {
+        highestY = y;
+        highestIdx = i;
+      }
+    }
+    const lowColor = [web.colors[lowestIdx * 3], web.colors[lowestIdx * 3 + 1], web.colors[lowestIdx * 3 + 2]];
+    const highColor = [web.colors[highestIdx * 3], web.colors[highestIdx * 3 + 1], web.colors[highestIdx * 3 + 2]];
+    const diff = Math.abs(lowColor[0] - highColor[0]) + Math.abs(lowColor[1] - highColor[1]) + Math.abs(lowColor[2] - highColor[2]);
+    expect(diff).toBeGreaterThan(0.1);
+  });
+
+  it("picks real high-degree nodes as hubs — in range, distinct, and no less connected than a typical node", () => {
+    const web = buildNeuralWeb(2);
+    const nodeCount = web.positions.length / 3;
+    expect(web.hubs.length).toBeGreaterThan(0);
+    expect(new Set(web.hubs).size).toBe(web.hubs.length);
+
+    const degree = new Array(nodeCount).fill(0);
+    for (let i = 0; i < web.edges.length; i += 2) {
+      degree[web.edges[i]]++;
+      degree[web.edges[i + 1]]++;
+    }
+    const avgDegree = degree.reduce((a, b) => a + b, 0) / nodeCount;
+    for (const hub of web.hubs) {
+      expect(hub).toBeGreaterThanOrEqual(0);
+      expect(hub).toBeLessThan(nodeCount);
+      expect(degree[hub]).toBeGreaterThanOrEqual(avgDegree);
+    }
+  });
 });

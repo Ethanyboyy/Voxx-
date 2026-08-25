@@ -27,11 +27,16 @@ export function CameraRig({
   focusDistance,
   reducedMotion,
   onControlsReady,
+  forceRotate,
 }: {
   focusPosition: Vec3;
   focusDistance: number;
   reducedMotion: boolean;
   onControlsReady?: (controls: OrbitControlsImpl) => void;
+  /** Explicit "Rotate" toolbar button — keeps spinning regardless of the
+      idle-yield timer below, until the user turns it off again or grabs
+      the brain (which still yields immediately, same as idle auto-rotate). */
+  forceRotate?: boolean;
 }) {
   const { camera } = useThree();
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -94,7 +99,7 @@ export function CameraRig({
       maxDistance={9}
       rotateSpeed={0.6}
       zoomSpeed={0.8}
-      autoRotate={autoRotate && !reducedMotion}
+      autoRotate={(autoRotate || Boolean(forceRotate)) && !reducedMotion}
       autoRotateSpeed={0.35}
     />
   );

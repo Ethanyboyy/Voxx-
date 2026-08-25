@@ -141,9 +141,12 @@ function PartMesh({
       {/* Rim-glow shell — same proven BackSide-additive technique as the
           prior milestone's CoreOrb, now wrapping real anatomy instead of a
           sphere: a holographic edge treatment that enhances the brain
-          rather than hiding it (per the brief's material hierarchy). */}
+          rather than hiding it (per the brief's material hierarchy).
+          vertexColors reads the baked cyan (low) -> violet (high) gradient
+          from applyGradientVertexColors instead of one flat accent —
+          `color` stays white so it multiplies the vertex colors unchanged. */}
       <mesh ref={rimRef} geometry={part.geometry} scale={1.015}>
-        <meshBasicMaterial color="#a855f7" transparent opacity={0.1} side={THREE.BackSide} toneMapped={false} depthWrite={false} />
+        <meshBasicMaterial color="#ffffff" vertexColors transparent opacity={0.16} side={THREE.BackSide} toneMapped={false} depthWrite={false} />
       </mesh>
     </group>
   );

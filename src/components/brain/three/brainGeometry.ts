@@ -158,6 +158,43 @@ function splitByX(geometry: THREE.BufferGeometry): { positiveX: THREE.BufferGeom
   return { positiveX: build(positivePos, positiveNorm), negativeX: build(negativePos, negativeNorm) };
 }
 
+// The reference's holographic material reads as a cool cyan glow low in the
+// brain (brainstem/cerebellum) rising into a warmer violet/magenta glow
+// across the upper cortex — not one flat accent color. This is a real,
+// deterministic function of vertex position (world-space Y, accounting for
+// each anatomical part's own placement offset), baked once into a per-vertex
+// `color` attribute rather than requiring a custom shader.
+const GRADIENT_LOW = new THREE.Color("#22d3ee");
+const GRADIENT_HIGH = new THREE.Color("#c084fc");
+const GRADIENT_Y_MIN = -1.05;
+const GRADIENT_Y_MAX = 0.95;
+
+export function gradientColorAt(worldY: number): THREE.Color {
+  const t = THREE.MathUtils.clamp((worldY - GRADIENT_Y_MIN) / (GRADIENT_Y_MAX - GRADIENT_Y_MIN), 0, 1);
+  // Biased toward the high (violet) end — cyan should read as an accent
+  // concentrated near the very bottom, not half the brain, matching the
+  // reference's actual color balance.
+  const eased = Math.pow(t, 0.55);
+  return new THREE.Color().lerpColors(GRADIENT_LOW, GRADIENT_HIGH, eased);
+}
+
+/** Bakes gradientColorAt() into a `color` BufferAttribute, one call per
+ * anatomical part with that part's own world-space Y placement offset so
+ * the gradient reads continuously across all 5 separately-positioned parts
+ * rather than each restarting its own local gradient. */
+export function applyGradientVertexColors(geometry: THREE.BufferGeometry, worldYOffset: number): void {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const colors = new Float32Array(position.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < position.count; i++) {
+    c.copy(gradientColorAt(position.getY(i) + worldYOffset));
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+}
+
 export interface BrainParts {
   /** +X side */
   right: THREE.BufferGeometry;
@@ -173,6 +210,10 @@ export interface NeuralWeb {
   positions: Float32Array;
   /** Pairs of node indices — the mesh's own real triangle-edge topology at this resolution, not an arbitrary/random graph. */
   edges: Uint32Array;
+  /** One [r,g,b] triple per node — the same world-space gradient as the solid shell (see gradientColorAt), so the network and the anatomy it traces read as one coherent material. */
+  colors: Float32Array;
+  /** Indices of the highest-degree nodes (most edges touching them) — real mesh topology, not arbitrary picks. Rendered as larger "landmark" markers distinct from the uniform point cloud, matching the reference's brighter hub nodes. */
+  hubs: number[];
 }
 
 /**
@@ -193,9 +234,19 @@ export function buildNeuralWeb(detail = 2): NeuralWeb {
   const position = welded.getAttribute("position") as THREE.BufferAttribute;
   const positions = new Float32Array(position.array);
 
+  const colors = new Float32Array(position.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < position.count; i++) {
+    c.copy(gradientColorAt(position.getY(i)));
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+
   const index = welded.getIndex()!;
   const seen = new Set<string>();
   const edgePairs: number[] = [];
+  const degree = new Array<number>(position.count).fill(0);
   for (let i = 0; i < index.count; i += 3) {
     const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
     for (let e = 0; e < 3; e++) {
@@ -205,12 +256,31 @@ export function buildNeuralWeb(detail = 2): NeuralWeb {
       if (seen.has(key)) continue;
       seen.add(key);
       edgePairs.push(a, b);
+      degree[a]++;
+      degree[b]++;
     }
   }
   welded.dispose();
 
-  return { positions, edges: new Uint32Array(edgePairs) };
+  // The reference's brighter "landmark" nodes read as a handful of real
+  // high-connectivity junctions, not a random sprinkle — the mesh's own
+  // vertex degree is exactly that, already computed above from real
+  // topology.
+  const hubs = degree
+    .map((d, i) => [d, i] as const)
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, 7)
+    .map(([, i]) => i);
+
+  return { positions, edges: new Uint32Array(edgePairs), colors, hubs };
 }
+
+// Same world-space Y placement each part gets in BrainMesh.tsx's useParts()
+// — kept here too (single source of truth would require threading React
+// state through a pure geometry module) so the baked gradient lines up with
+// where each part actually renders, rather than each part restarting its
+// own local gradient from y=0.
+const PART_Y_OFFSET = { right: 0, left: 0, cerebellum: -0.64, brainstem: -0.56, corpusCallosum: 0.08 } as const;
 
 export function buildBrainParts(): BrainParts {
   const cerebrumRaw = new THREE.IcosahedronGeometry(1, 5);
@@ -230,6 +300,12 @@ export function buildBrainParts(): BrainParts {
 
   const corpusCallosum = new THREE.TorusGeometry(0.27, 0.045, 8, 28, Math.PI);
   corpusCallosum.computeVertexNormals();
+
+  applyGradientVertexColors(right, PART_Y_OFFSET.right);
+  applyGradientVertexColors(left, PART_Y_OFFSET.left);
+  applyGradientVertexColors(cerebellumGeo, PART_Y_OFFSET.cerebellum);
+  applyGradientVertexColors(brainstem, PART_Y_OFFSET.brainstem);
+  applyGradientVertexColors(corpusCallosum, PART_Y_OFFSET.corpusCallosum);
 
   return { right, left, cerebellum: cerebellumGeo, brainstem, corpusCallosum };
 }

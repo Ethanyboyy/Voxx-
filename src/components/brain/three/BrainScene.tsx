@@ -21,6 +21,7 @@ export function BrainScene({
   reducedMotion,
   onControlsReady,
   onPointerMissed,
+  forceRotate,
   children,
 }: {
   focusPosition: Vec3;
@@ -28,6 +29,7 @@ export function BrainScene({
   reducedMotion: boolean;
   onControlsReady?: (controls: OrbitControlsImpl) => void;
   onPointerMissed?: () => void;
+  forceRotate?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -62,7 +64,7 @@ export function BrainScene({
         {children}
       </Suspense>
 
-      <CameraRig focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onControlsReady={onControlsReady} />
+      <CameraRig focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onControlsReady={onControlsReady} forceRotate={forceRotate} />
     </Canvas>
   );
 }

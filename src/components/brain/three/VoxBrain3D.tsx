@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Line } from "@react-three/drei";
 import { cn } from "@/lib/utils/cn";
 import { useEventStream } from "@/lib/events/useEventStream";
@@ -10,6 +10,8 @@ import type { BrainPayload } from "@/components/brain/BrainWorkspace";
 import { InspectorPanel, type GraphPatch } from "@/components/brain/InspectorPanel";
 import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
+import { BrainActivityFeedCard } from "@/components/brain/BrainActivityFeedCard";
+import { BrainInspectorCard } from "@/components/brain/BrainInspectorCard";
 import { BrainScene } from "@/components/brain/three/BrainScene";
 import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
 import { NeuralWeb } from "@/components/brain/three/NeuralWeb";
@@ -17,6 +19,7 @@ import { RegionMarker } from "@/components/brain/three/RegionMarker";
 import { EntitySatellite } from "@/components/brain/three/EntitySatellite";
 import { computeSatelliteOffsets, SATELLITE_REVEAL_CAP } from "@/components/brain/three/regionLayout";
 import { importanceOf } from "@/components/brain/importance";
+import { ChevronRightIcon, FocusIcon, LayerIcon, ResetIcon, RotateIcon, ZoomInIcon, ZoomOutIcon } from "@/components/brain/three/BrainToolbarIcons";
 import {
   SYSTEM_OF,
   SYSTEM_ORDER,
@@ -29,6 +32,22 @@ import {
 } from "@/components/brain/three/anatomy";
 
 const PULSE_MS = 1600;
+
+function ToolbarIconButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "glass-panel-strong flex flex-col items-center gap-1 rounded-[var(--radius-sm)] border border-transparent px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground",
+        active && "border-accent bg-accent-muted text-accent"
+      )}
+    >
+      {children}
+      <span className="lab-mono text-[8.5px] uppercase tracking-wide">{label}</span>
+    </button>
+  );
+}
 
 function subscribeReducedMotion(callback: () => void) {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -84,6 +103,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [showActivity, setShowActivity] = useState(false);
   const [showSystems, setShowSystems] = useState(false);
+  const [showFullInspector, setShowFullInspector] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pulses, setPulses] = useState<Partial<Record<BrainSystem, number>>>({});
 
@@ -92,6 +112,13 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const [clipEnabled, setClipEnabled] = useState(false);
   const [clipAxis, setClipAxis] = useState<ClipAxis>("x");
   const [clipPosition, setClipPosition] = useState(0);
+  // A manual multiplier on top of whatever focusDistance the current
+  // selection/system/dissect state computes — the "Zoom In/Out" toolbar
+  // buttons nudge this, "Focus" snaps it back to 1 (re-affirming the
+  // intended framing for whatever's currently selected, undoing any drift
+  // from the user's own scroll/pinch zoom), "Reset" clears it entirely.
+  const [manualZoom, setManualZoom] = useState(1);
+  const [forceRotate, setForceRotate] = useState(false);
 
   const reducedMotion = usePrefersReducedMotion();
   const isNarrowViewport = useIsNarrowViewport();
@@ -192,6 +219,34 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     return set;
   }, [selectedNode, edges]);
 
+  const relatedNodesList = useMemo(
+    () => [...relatedIds].map((id) => nodesById.get(id)).filter((n): n is BrainNode => Boolean(n)),
+    [relatedIds, nodesById]
+  );
+
+  // A real hierarchy path from what's actually selected — never a
+  // fabricated sub-region taxonomy the graph doesn't have.
+  const breadcrumbSegments = useMemo(() => {
+    const segs: { label: string; onClick?: () => void }[] = [{ label: "Brain", onClick: resetToWholeBrain }];
+    const system = focusedSystem ?? (selectedNode ? SYSTEM_OF[selectedNode.type] : null);
+    if (system) {
+      segs.push({
+        label: SYSTEM_LABEL[system],
+        onClick: selectedNode
+          ? () => {
+              setSelectedNodeId(null);
+              setFocusedSystem(system);
+            }
+          : undefined,
+      });
+    }
+    if (selectedNode) {
+      segs.push({ label: selectedNode.type.toLowerCase().replace(/_/g, " ") });
+      segs.push({ label: selectedNode.label });
+    }
+    return segs;
+  }, [focusedSystem, selectedNode]);
+
   // Only the edges touching the current selection are ever drawn — "only
   // emphasize meaningful relationships," never a permanent web across the
   // whole brain.
@@ -209,19 +264,22 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   }, [selectedNode, edges, entityPositions, nodesById]);
 
   const { focusPosition, focusDistance } = useMemo(() => {
+    function withZoom(pos: Vec3, distance: number) {
+      return { focusPosition: pos, focusDistance: distance * manualZoom };
+    }
     if (selectedNode) {
       const pos = entityPositions.get(selectedNode.id) ?? SYSTEM_ANCHOR[SYSTEM_OF[selectedNode.type]];
-      return { focusPosition: pos, focusDistance: isNarrowViewport ? 1.55 : 1.15 };
+      return withZoom(pos, isNarrowViewport ? 1.55 : 1.15);
     }
-    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: isNarrowViewport ? 1.75 : 1.3 };
-    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: isNarrowViewport ? 5.2 : 4 };
+    if (focusedSystem) return withZoom(SYSTEM_ANCHOR[focusedSystem], isNarrowViewport ? 1.75 : 1.3);
+    if (explodeAmount > 0.4) return withZoom([0, 0, 0], isNarrowViewport ? 5.2 : 4);
     // The brain is the hero on both — but a narrow (phone-width) viewport
     // shows a much narrower horizontal slice at any given distance than a
     // wide desktop one does for the same vertical fov, so the desktop
     // hero-framing distance crops the brain edge-to-edge with zero breathing
     // room on a phone. Give mobile real margin instead of maximum fill.
-    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: isNarrowViewport ? 3.5 : 2.55 };
-  }, [selectedNode, focusedSystem, explodeAmount, entityPositions, isNarrowViewport]);
+    return withZoom([0, 0.05, 0], isNarrowViewport ? 3.5 : 2.55);
+  }, [selectedNode, focusedSystem, explodeAmount, entityPositions, isNarrowViewport, manualZoom]);
 
   function resetToWholeBrain() {
     setSelectedNodeId(null);
@@ -229,6 +287,30 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     setExplodeAmount(0);
     setXray(false);
     setClipEnabled(false);
+    setManualZoom(1);
+    setForceRotate(false);
+    setShowFullInspector(false);
+  }
+
+  function zoomIn() {
+    setManualZoom((z) => Math.max(0.45, z * 0.8));
+  }
+  function zoomOut() {
+    setManualZoom((z) => Math.min(2.2, z * 1.25));
+  }
+  function refocus() {
+    setManualZoom(1);
+  }
+  function cycleLayer() {
+    if (!xray && !clipEnabled) {
+      setXray(true);
+    } else if (xray && !clipEnabled) {
+      setXray(false);
+      setClipEnabled(true);
+    } else {
+      setXray(false);
+      setClipEnabled(false);
+    }
   }
 
   function applyGraphPatch(patch: GraphPatch) {
@@ -251,14 +333,15 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
-      <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onPointerMissed={() => setSelectedNodeId(null)}>
+      <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} forceRotate={forceRotate} onPointerMissed={() => setSelectedNodeId(null)}>
         <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
-        {/* The connectome is an INFORMATION LAYER, not the permanent hero
-            surface: at rest (Idle) it recedes to a faint trace so the
-            anatomy reads first; the moment the brain is actually doing
-            something it comes forward, same as the state badge/pulse
-            elsewhere already communicate real activity. */}
-        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.35 : brain.state === "idle" ? 0.22 : 0.85} />
+        {/* The reference's own Idle-state screenshot shows the connectome at
+            full brightness — the network IS the brain's primary material,
+            not a layer that hides at rest. It still brightens further on
+            real activity (see NeuralWeb's per-state intensity/pulse-speed),
+            just from a baseline that already matches what "Idle" actually
+            looks like in the reference, not a faded-out default. */}
+        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} />
 
         {SYSTEM_ORDER.map((system) => (
           <RegionMarker
@@ -400,13 +483,21 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
           ) : null}
         </div>
 
-        {/* Region legend — real, keyboard-reachable buttons mirroring the
-            anatomical markers. Collapsed behind the "Systems" toggle on
-            narrow viewports (it's a full-width pill grid that would
-            otherwise sit directly on top of the brain, dominating it);
-            always visible on desktop, where it fits alongside the object. */}
-        {!isNarrowViewport || showSystems ? (
-          <div className="pointer-events-auto flex flex-wrap gap-1.5">
+        {liveStatus !== "open" ? (
+          <span className="lab-mono pointer-events-none text-[10px] uppercase tracking-wider text-muted-foreground/70">
+            {liveStatus === "connecting" ? "Reconnecting to live activity…" : "Live updates unsupported in this browser"}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Region sidebar — a plain vertical list (dot, label, count, chevron)
+          against the open canvas, not a wall of pill buttons. Collapsed
+          behind the "Systems" toggle on narrow viewports (still occupies
+          real space over the object there); always visible on desktop,
+          floating in the canvas's own left margin. */}
+      {!isNarrowViewport || showSystems ? (
+        <div className="pointer-events-none absolute left-3 top-20 z-[1] sm:left-5 sm:top-28">
+          <div className="pointer-events-auto flex w-fit flex-col gap-2.5">
             {SYSTEM_ORDER.map((system) => {
               const count = (nodesBySystem.get(system) ?? []).length;
               const overflow = systemOverflow.get(system) ?? 0;
@@ -418,31 +509,27 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
                     setSelectedNodeId(null);
                     setFocusedSystem((prev) => (prev === system ? null : system));
                   }}
-                  className={cn(
-                    "lab-mono flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
-                    focusedSystem === system ? "border-[var(--border-strong)] bg-surface text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-                  )}
+                  className="group flex items-center gap-2 text-left"
                 >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: SYSTEM_COLOR[system] }} />
-                  {SYSTEM_LABEL[system]}
-                  <span className="text-muted-foreground/70">
-                    {count}
-                    {overflow > 0 ? ` (+${overflow})` : ""}
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[system] }} />
+                  <span className="flex flex-col leading-tight">
+                    <span className={cn("lab-mono text-[10px] uppercase tracking-wide", focusedSystem === system ? "text-foreground" : "text-muted-foreground/90 group-hover:text-foreground")}>
+                      {SYSTEM_LABEL[system]}
+                    </span>
+                    <span className="lab-mono text-[9px] text-muted-foreground/60">
+                      {count}
+                      {overflow > 0 ? ` (+${overflow})` : ""}
+                    </span>
                   </span>
+                  <ChevronRightIcon />
                 </button>
               );
             })}
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {liveStatus !== "open" ? (
-          <span className="lab-mono pointer-events-none text-[10px] uppercase tracking-wider text-muted-foreground/70">
-            {liveStatus === "connecting" ? "Reconnecting to live activity…" : "Live updates unsupported in this browser"}
-          </span>
-        ) : null}
-      </div>
-
-      {selectedNode ? (
+      {selectedNode && showFullInspector ? (
         <div className="pointer-events-auto absolute inset-y-0 right-0 z-10 w-full max-w-sm overflow-y-auto scrollbar-thin border-l border-border bg-background/95 backdrop-blur-md sm:p-3">
           <InspectorPanel
             node={selectedNode}
@@ -453,8 +540,8 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             focusedLabels={[...relatedIds].map((id) => nodesById.get(id)?.label).filter((v): v is string => Boolean(v))}
             isPinned={pinnedIds.has(selectedNode.id)}
             canCompare={false}
-            onClose={() => setSelectedNodeId(null)}
-            onFocus={() => {}}
+            onClose={() => setShowFullInspector(false)}
+            onFocus={refocus}
             onSelectNode={(id) => setSelectedNodeId(id)}
             onGraphPatch={applyGraphPatch}
             onTogglePin={() =>
@@ -473,7 +560,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
       ) : null}
 
       {showActivity ? (
-        <div className="pointer-events-auto absolute bottom-0 left-0 z-10 max-h-[60vh] w-full overflow-hidden border-t border-border bg-background/95 backdrop-blur-md sm:bottom-3 sm:left-3 sm:max-h-[70vh] sm:w-96 sm:rounded-[var(--radius-md)] sm:border">
+        <div className="pointer-events-auto absolute bottom-0 left-0 z-20 max-h-[60vh] w-full overflow-hidden border-t border-border bg-background/95 backdrop-blur-md sm:bottom-3 sm:left-3 sm:max-h-[70vh] sm:w-96 sm:rounded-[var(--radius-md)] sm:border">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">
             <span className="vox-eyebrow">Recent activity</span>
             <button type="button" onClick={() => setShowActivity(false)} className="text-xs text-muted-foreground hover:text-foreground">
@@ -485,6 +572,59 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
           </div>
         </div>
       ) : null}
+
+      {/* Bottom HUD: a real hierarchy breadcrumb, a scene-control icon
+          toolbar, and always-on compact Activity/Inspector cards — the
+          persistent "instrument panel" that replaces one-off full-screen
+          overlays as the default way to see what's selected and what's
+          happening. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:gap-2.5 sm:p-4">
+        <div className="pointer-events-auto glass-panel-strong flex max-w-full items-center gap-1 overflow-x-auto scrollbar-none rounded-full px-3 py-1.5">
+          {breadcrumbSegments.map((seg, i) => (
+            <span key={i} className="flex shrink-0 items-center gap-1">
+              {i > 0 ? <ChevronRightIcon /> : null}
+              {seg.onClick ? (
+                <button type="button" onClick={seg.onClick} className="lab-mono whitespace-nowrap text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground">
+                  {seg.label}
+                </button>
+              ) : (
+                <span className="lab-mono whitespace-nowrap text-[10px] uppercase tracking-wide text-foreground">{seg.label}</span>
+              )}
+            </span>
+          ))}
+        </div>
+
+        <div className="pointer-events-auto flex items-center gap-1.5">
+          <ToolbarIconButton label="Zoom Out" onClick={zoomOut}>
+            <ZoomOutIcon />
+          </ToolbarIconButton>
+          <ToolbarIconButton label="Zoom In" onClick={zoomIn}>
+            <ZoomInIcon />
+          </ToolbarIconButton>
+          <ToolbarIconButton label="Rotate" active={forceRotate} onClick={() => setForceRotate((v) => !v)}>
+            <RotateIcon />
+          </ToolbarIconButton>
+          <ToolbarIconButton label="Reset" onClick={resetToWholeBrain}>
+            <ResetIcon />
+          </ToolbarIconButton>
+          <ToolbarIconButton label="Focus" onClick={refocus}>
+            <FocusIcon />
+          </ToolbarIconButton>
+          <ToolbarIconButton label="Layer" active={xray || clipEnabled} onClick={cycleLayer}>
+            <LayerIcon />
+          </ToolbarIconButton>
+        </div>
+
+        <div className="pointer-events-auto flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:justify-center">
+          <BrainActivityFeedCard events={events} nodes={nodes} liveStatus={liveStatus} onSelectNode={setSelectedNodeId} onViewAll={() => setShowActivity(true)} />
+          <BrainInspectorCard
+            node={selectedNode}
+            relatedNodes={relatedNodesList}
+            onSelectNode={setSelectedNodeId}
+            onOpenFull={() => setShowFullInspector(true)}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -75,10 +75,31 @@ export function RegionMarker({
         <meshBasicMaterial color={color} transparent opacity={hovered || focused ? 0.22 : 0.09} toneMapped={false} depthWrite={false} />
       </mesh>
       {hovered || focused ? (
-        <Html distanceFactor={7} center style={{ pointerEvents: "none" }}>
-          <div className="lab-mono flex flex-col items-center whitespace-nowrap rounded-lg border border-white/10 bg-black/75 px-2.5 py-1.5 text-center backdrop-blur-sm">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-white">{SYSTEM_LABEL[system]}</span>
-            <span className="text-[9px] text-white/50">{SYSTEM_REGION_LABEL[system]} · {count} {count === 1 ? "item" : "items"}</span>
+        // No distanceFactor: this is a fixed-screen-size HUD pin, not a 3D
+        // billboard sprite — it should read the same size whether the
+        // camera is close or far, like the reference's callout card.
+        <Html style={{ pointerEvents: "none" }}>
+          {/* A pin callout — leader dot + card, anchored to this exact
+              surface point, matching the reference's "FRONTAL LOBE /
+              Prefrontal Cortex / View Details" style. The subtitle is the
+              app's own existing real anatomical-metaphor mapping
+              (SYSTEM_REGION_LABEL), not a fabricated sub-region. */}
+          <div className="flex -translate-x-1/2 flex-col items-start gap-0" style={{ marginLeft: 10, marginTop: -8 }}>
+            <div className="h-px w-6 bg-white/25" style={{ marginLeft: -10 }} />
+            <div className="lab-mono flex flex-col whitespace-nowrap rounded-lg border border-white/10 bg-black/80 px-3 py-2 backdrop-blur-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-white">{SYSTEM_LABEL[system]}</span>
+              <span className="text-[10px] text-white/55">{SYSTEM_REGION_LABEL[system]}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFocus(system);
+                }}
+                className="pointer-events-auto mt-1 text-left text-[10px] uppercase tracking-wide text-accent hover:underline"
+              >
+                {count} {count === 1 ? "item" : "items"} · View details →
+              </button>
+            </div>
           </div>
         </Html>
       ) : null}

@@ -3,36 +3,53 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import type { Points, LineSegments } from "three";
+import type { Points, LineSegments, Mesh } from "three";
 import type { BrainState } from "@/lib/brain/graph";
 import { buildNeuralWeb } from "@/components/brain/three/brainGeometry";
 
-// Cooler, telemetry-toned blues/cyans for the network itself — the same
-// --accent-blue/--core-listening role this app already reserves for
-// data-dense surfaces, kept distinct from the violet identity accent used
-// on the shell's rim glow and the region hub markers.
-const STATE_NODE_COLOR: Record<BrainState, string> = {
-  idle: "#67e8f9",
-  thinking: "#c084fc",
-  researching: "#818cf8",
-  executing: "#fbbf24",
-  waiting: "#fbbf24",
-  learning: "#38bdf8",
-  error: "#f87171",
+// A per-state emissive-intensity multiplier, not a flat replacement color —
+// the network's actual hue now comes from the real cyan (low) -> violet
+// (high) gradient baked into its own vertex colors (see brainGeometry.ts's
+// gradientColorAt), matching the solid shell's rim glow. State still reads
+// through brightness/pulse-speed (busier states glow harder and pulse
+// faster), same as the rest of the app's telemetry convention, just without
+// flattening the material to one hue.
+const STATE_INTENSITY: Record<BrainState, number> = {
+  idle: 0.85,
+  thinking: 1.15,
+  researching: 1.1,
+  executing: 1.35,
+  waiting: 1.2,
+  learning: 1.1,
+  error: 1.3,
+};
+const STATE_PULSE_SPEED: Record<BrainState, number> = {
+  idle: 0.5,
+  thinking: 0.9,
+  researching: 1.0,
+  executing: 1.4,
+  waiting: 1.5,
+  learning: 0.85,
+  error: 1.8,
 };
 
 /**
  * The connectome presentation from the reference: a constellation of
  * glowing nodes tracing the real cortical surface (the exact same
  * anatomical shaping as the solid shell, just at low subdivision — see
- * buildNeuralWeb), connected by the mesh's own real triangle edges. This
- * is the PRIMARY visual read; the solid shell in BrainMesh is now a faint
- * translucent silhouette behind it, not the hero surface.
+ * buildNeuralWeb), connected by the mesh's own real triangle edges, colored
+ * by the same world-space gradient as the shell's rim glow. A handful of
+ * real high-degree "hub" nodes render as larger, brighter landmark markers
+ * — the reference's bigger glowing junctions — distinct from the uniform
+ * point cloud carrying the smaller dots. This is the PRIMARY visual read;
+ * the solid shell in BrainMesh is now a faint translucent silhouette
+ * behind it, not the hero surface.
  */
 export function NeuralWeb({ brainState, opacity }: { brainState: BrainState; opacity: number }) {
-  const { positions, edges } = useMemo(() => buildNeuralWeb(2), []);
+  const { positions, edges, colors, hubs } = useMemo(() => buildNeuralWeb(2), []);
   const pointsRef = useRef<Points>(null);
   const linesRef = useRef<LineSegments>(null);
+  const hubRefs = useRef<(Mesh | null)[]>([]);
 
   const linePositions = useMemo(() => {
     const arr = new Float32Array(edges.length * 3);
@@ -45,19 +62,43 @@ export function NeuralWeb({ brainState, opacity }: { brainState: BrainState; opa
     return arr;
   }, [positions, edges]);
 
-  const color = useMemo(() => new THREE.Color(STATE_NODE_COLOR[brainState]), [brainState]);
+  const lineColors = useMemo(() => {
+    const arr = new Float32Array(edges.length * 3);
+    for (let i = 0; i < edges.length; i++) {
+      const nodeIndex = edges[i];
+      arr[i * 3] = colors[nodeIndex * 3];
+      arr[i * 3 + 1] = colors[nodeIndex * 3 + 1];
+      arr[i * 3 + 2] = colors[nodeIndex * 3 + 2];
+    }
+    return arr;
+  }, [colors, edges]);
+
+  const hubData = useMemo(
+    () =>
+      hubs.map((i) => ({
+        position: [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]] as [number, number, number],
+        color: new THREE.Color(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]),
+      })),
+    [hubs, positions, colors]
+  );
+
+  const intensity = STATE_INTENSITY[brainState];
+  const pulseSpeed = STATE_PULSE_SPEED[brainState];
 
   useFrame(({ clock }) => {
-    const pulse = 0.75 + Math.sin(clock.elapsedTime * 0.6) * 0.15;
+    const pulse = 0.75 + Math.sin(clock.elapsedTime * pulseSpeed) * 0.15;
     const pointsMat = pointsRef.current?.material as THREE.PointsMaterial | undefined;
-    if (pointsMat) {
-      pointsMat.color.copy(color);
-      pointsMat.opacity = opacity * pulse;
-    }
+    if (pointsMat) pointsMat.opacity = opacity * pulse * intensity;
     const lineMat = linesRef.current?.material as THREE.LineBasicMaterial | undefined;
-    if (lineMat) {
-      lineMat.color.copy(color);
-      lineMat.opacity = opacity * 0.55 * pulse;
+    if (lineMat) lineMat.opacity = opacity * 0.55 * pulse * intensity;
+
+    const hubPulse = 0.8 + Math.sin(clock.elapsedTime * pulseSpeed * 1.3) * 0.2;
+    for (const mesh of hubRefs.current) {
+      if (!mesh) continue;
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.min(1, opacity * 1.3 * hubPulse * intensity);
+      const s = 0.052 * hubPulse;
+      mesh.scale.setScalar(s);
     }
   });
 
@@ -66,15 +107,31 @@ export function NeuralWeb({ brainState, opacity }: { brainState: BrainState; opa
       <lineSegments ref={linesRef}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[linePositions, 3]} />
+          <bufferAttribute attach="attributes-color" args={[lineColors, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={color} transparent opacity={opacity * 0.55} toneMapped={false} depthWrite={false} />
+        <lineBasicMaterial vertexColors transparent opacity={opacity * 0.55} toneMapped={false} depthWrite={false} />
       </lineSegments>
       <points ref={pointsRef}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+          <bufferAttribute attach="attributes-color" args={[colors, 3]} />
         </bufferGeometry>
-        <pointsMaterial color={color} size={0.028} sizeAttenuation transparent opacity={opacity} toneMapped={false} depthWrite={false} />
+        <pointsMaterial vertexColors size={0.028} sizeAttenuation transparent opacity={opacity} toneMapped={false} depthWrite={false} />
       </points>
+      {/* Landmark hub markers — brighter, larger real-degree junctions with
+          their own soft glow halo, matching the reference's bigger nodes. */}
+      {hubData.map((hub, i) => (
+        <group key={i} position={hub.position}>
+          <mesh ref={(el) => { hubRefs.current[i] = el; }}>
+            <sphereGeometry args={[1, 12, 10]} />
+            <meshBasicMaterial color={hub.color} transparent opacity={opacity} toneMapped={false} depthWrite={false} />
+          </mesh>
+          <mesh scale={0.11}>
+            <sphereGeometry args={[1, 10, 8]} />
+            <meshBasicMaterial color={hub.color} transparent opacity={opacity * 0.18} toneMapped={false} depthWrite={false} />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }
