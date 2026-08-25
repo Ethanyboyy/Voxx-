@@ -83,6 +83,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const [focusedSystem, setFocusedSystem] = useState<BrainSystem | null>(null);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [showActivity, setShowActivity] = useState(false);
+  const [showSystems, setShowSystems] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pulses, setPulses] = useState<Partial<Record<BrainSystem, number>>>({});
 
@@ -252,7 +253,12 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     <div className="relative h-full w-full overflow-hidden bg-background">
       <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onPointerMissed={() => setSelectedNodeId(null)}>
         <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
-        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.35 : 0.85} />
+        {/* The connectome is an INFORMATION LAYER, not the permanent hero
+            surface: at rest (Idle) it recedes to a faint trace so the
+            anatomy reads first; the moment the brain is actually doing
+            something it comes forward, same as the state badge/pulse
+            elsewhere already communicate real activity. */}
+        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.35 : brain.state === "idle" ? 0.22 : 0.85} />
 
         {SYSTEM_ORDER.map((system) => (
           <RegionMarker
@@ -285,15 +291,47 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
         ))}
       </BrainScene>
 
-      {/* Top overlay bar */}
+      {/* Top overlay bar. On narrow viewports this is a minimal, horizontally-
+          scrolling strip rather than a stack of flex-wrap rows — the 3D
+          object is the primary environment, so contextual controls occupy a
+          single thin band instead of pushing the brain down and eating a
+          third of the screen. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3 sm:p-4">
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
-          <div className="glass-panel-strong flex items-center gap-2 rounded-full px-3 py-1.5">
+        {/* Row A: always-visible essentials only — state + search. Never
+            scrolls, never wraps, so these two are reachable with zero
+            interaction on any viewport. */}
+        <div className="pointer-events-auto flex items-center gap-2">
+          <div className="glass-panel-strong flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5">
             <span className="vox-eyebrow text-[10px] text-foreground">VOX Brain</span>
             <BrainStateBadge state={brain.state} detail={brain.detail} />
           </div>
 
-          <button type="button" onClick={resetToWholeBrain} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+          <div className="relative ml-auto shrink-0">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search the Brain…"
+              className="glass-panel-strong w-28 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none sm:w-36"
+            />
+            {searchResults.length > 0 ? (
+              <div className="glass-panel-strong absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-[var(--radius-sm)] p-1">
+                {searchResults.map((n) => (
+                  <button key={n.id} type="button" onClick={() => selectFromSearch(n)} className="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-hover">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[SYSTEM_OF[n.type]] }} />
+                    <span className="truncate">{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Row B: secondary tools — a single horizontally-scrolling strip on
+            narrow viewports instead of a multi-row wall of pills, so the
+            brain gets its vertical space back; unchanged wrap layout on
+            desktop, where there's room. */}
+        <div className="pointer-events-auto flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-none sm:flex-wrap sm:overflow-visible">
+          <button type="button" onClick={resetToWholeBrain} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Whole Brain
           </button>
 
@@ -301,7 +339,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             type="button"
             onClick={() => setXray((v) => !v)}
             className={cn(
-              "lab-mono rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
+              "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
               xray ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
@@ -312,14 +350,14 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             type="button"
             onClick={() => setClipEnabled((v) => !v)}
             className={cn(
-              "lab-mono rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
+              "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
               clipEnabled ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             Cutaway
           </button>
           {clipEnabled ? (
-            <div className="glass-panel-strong flex items-center gap-1.5 rounded-full px-2.5 py-1">
+            <div className="glass-panel-strong flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1">
               {(["x", "y", "z"] as ClipAxis[]).map((axis) => (
                 <button
                   key={axis}
@@ -334,68 +372,68 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             </div>
           ) : null}
 
-          <div className="glass-panel-strong flex items-center gap-1.5 rounded-full px-3 py-1.5">
+          <div className="glass-panel-strong flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5">
             <span className="lab-mono text-[11px] uppercase tracking-wider text-muted-foreground">Dissect</span>
             <input type="range" min={0} max={100} value={Math.round(explodeAmount * 100)} onChange={(e) => setExplodeAmount(Number(e.target.value) / 100)} className="w-20 accent-[var(--accent)]" />
           </div>
 
-          <div className="relative ml-auto">
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search the Brain…"
-              className="glass-panel-strong w-36 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none"
-            />
-            {searchResults.length > 0 ? (
-              <div className="glass-panel-strong absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-[var(--radius-sm)] p-1">
-                {searchResults.map((n) => (
-                  <button key={n.id} type="button" onClick={() => selectFromSearch(n)} className="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-hover">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[SYSTEM_OF[n.type]] }} />
-                    <span className="truncate">{n.label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <button type="button" onClick={() => setShowActivity((v) => !v)} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+          <button type="button" onClick={() => setShowActivity((v) => !v)} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Activity
           </button>
           {onSwitchToStructural ? (
-            <button type="button" onClick={onSwitchToStructural} className="glass-panel-strong lab-mono rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+            <button type="button" onClick={onSwitchToStructural} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
               Structural View
+            </button>
+          ) : null}
+
+          {isNarrowViewport ? (
+            <button
+              type="button"
+              onClick={() => setShowSystems((v) => !v)}
+              className={cn(
+                "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
+                showSystems ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Systems
             </button>
           ) : null}
         </div>
 
-        {/* Region legend — real, keyboard-reachable buttons mirroring the anatomical markers. */}
-        <div className="pointer-events-auto flex flex-wrap gap-1.5">
-          {SYSTEM_ORDER.map((system) => {
-            const count = (nodesBySystem.get(system) ?? []).length;
-            const overflow = systemOverflow.get(system) ?? 0;
-            return (
-              <button
-                key={system}
-                type="button"
-                onClick={() => {
-                  setSelectedNodeId(null);
-                  setFocusedSystem((prev) => (prev === system ? null : system));
-                }}
-                className={cn(
-                  "lab-mono flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
-                  focusedSystem === system ? "border-[var(--border-strong)] bg-surface text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: SYSTEM_COLOR[system] }} />
-                {SYSTEM_LABEL[system]}
-                <span className="text-muted-foreground/70">
-                  {count}
-                  {overflow > 0 ? ` (+${overflow})` : ""}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Region legend — real, keyboard-reachable buttons mirroring the
+            anatomical markers. Collapsed behind the "Systems" toggle on
+            narrow viewports (it's a full-width pill grid that would
+            otherwise sit directly on top of the brain, dominating it);
+            always visible on desktop, where it fits alongside the object. */}
+        {!isNarrowViewport || showSystems ? (
+          <div className="pointer-events-auto flex flex-wrap gap-1.5">
+            {SYSTEM_ORDER.map((system) => {
+              const count = (nodesBySystem.get(system) ?? []).length;
+              const overflow = systemOverflow.get(system) ?? 0;
+              return (
+                <button
+                  key={system}
+                  type="button"
+                  onClick={() => {
+                    setSelectedNodeId(null);
+                    setFocusedSystem((prev) => (prev === system ? null : system));
+                  }}
+                  className={cn(
+                    "lab-mono flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
+                    focusedSystem === system ? "border-[var(--border-strong)] bg-surface text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: SYSTEM_COLOR[system] }} />
+                  {SYSTEM_LABEL[system]}
+                  <span className="text-muted-foreground/70">
+                    {count}
+                    {overflow > 0 ? ` (+${overflow})` : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         {liveStatus !== "open" ? (
           <span className="lab-mono pointer-events-none text-[10px] uppercase tracking-wider text-muted-foreground/70">
