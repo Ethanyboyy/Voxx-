@@ -74,28 +74,39 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3
     if (obj.name === "Z_UP") hasZUpRoot = true;
   });
 
+  // Measure ONCE, at identity, before any rotation/scale/skinning mutation —
+  // see CESIUM_MAN_CORRECTIVE_ROTATION's doc comment for why re-measuring
+  // with Box3 AFTER rotating (or after the plain-mesh swap below) is
+  // unreliable on a SkeletonUtils-cloned hierarchy. Every asset's height
+  // axis is derived from this one trusted measurement.
+  const box0 = new THREE.Box3().setFromObject(scene);
+  const center0 = new THREE.Vector3();
+  box0.getCenter(center0);
+
+  let trueHeight: number;
+  let positioningCenter: THREE.Vector3;
   if (hasZUpRoot) {
-    // Measure and transform BEFORE touching skinning — see this asset's own
-    // doc comments above for why the post-rotation Box3 path is unreliable
-    // on this hierarchy, and CESIUM_SKINNING_UNRELIABLE below for why
-    // skinning itself gets swapped out afterward, not before.
-    const box0 = new THREE.Box3().setFromObject(scene);
-    const trueHeight = box0.max.x - box0.min.x;
-    const center0 = new THREE.Vector3();
-    box0.getCenter(center0);
-
+    // CesiumMan-specific: height lands on this scene's local X axis once its
+    // own loader-baked node matrices are composed (see corrective rotation's
+    // own doc comment) — not the Y axis a standard Y-up glTF would use.
+    trueHeight = box0.max.x - box0.min.x;
     scene.quaternion.copy(CESIUM_MAN_CORRECTIVE_ROTATION);
-    const rotatedCenter = center0.clone().applyQuaternion(CESIUM_MAN_CORRECTIVE_ROTATION);
+    positioningCenter = center0.clone().applyQuaternion(CESIUM_MAN_CORRECTIVE_ROTATION);
+  } else {
+    // Standard Y-up glTF (e.g. Xbot): no corrective rotation needed, height
+    // is already on Y.
+    trueHeight = box0.max.y - box0.min.y;
+    positioningCenter = center0;
+  }
 
-    if (trueHeight > 0) {
-      const scale = CANONICAL_BODY_HEIGHT / trueHeight;
-      scene.scale.setScalar(scale);
-      scene.position.set(
-        -rotatedCenter.x * scale,
-        CANONICAL_FEET_Y - (rotatedCenter.y - trueHeight / 2) * scale,
-        -rotatedCenter.z * scale,
-      );
-    }
+  if (trueHeight > 0) {
+    const scale = CANONICAL_BODY_HEIGHT / trueHeight;
+    scene.scale.setScalar(scale);
+    scene.position.set(
+      -positioningCenter.x * scale,
+      CANONICAL_FEET_Y - (positioningCenter.y - trueHeight / 2) * scale,
+      -positioningCenter.z * scale,
+    );
   }
 
   const suitMeshes: THREE.Mesh[] = [];
@@ -103,15 +114,18 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3
     if ((obj as THREE.Mesh).isMesh) {
       obj.frustumCulled = false;
       const mesh = obj as THREE.Mesh;
-      // CESIUM_SKINNING_UNRELIABLE: CesiumMan ships no AnimationClip (there
-      // is nothing to pose it with), yet its cloned SkinnedMesh renders in a
-      // dramatically different, badly-distorted silhouette from its own
-      // rest-pose geometry.boundingBox — confirmed by comparing the two
-      // directly. Since there is no animation to lose, this swaps in a
-      // plain Mesh sharing the same (rest-pose) geometry instead of paying
-      // the live GPU-skinning cost for a pose that isn't usable anyway. A
-      // future animated asset should NOT get this treatment.
-      if (hasZUpRoot && (mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+      // SKINNING_UNRELIABLE: every SkeletonUtils-cloned SkinnedMesh tried in
+      // this pipeline so far (CesiumMan, then Xbot) either renders a badly
+      // distorted live-skinned pose or fails to render at all, despite its
+      // own rest-pose geometry.boundingBox being correct — confirmed by
+      // rendering each and looking, not assumed. This pipeline doesn't
+      // currently drive any animation off these clips anyway, so every
+      // SkinnedMesh gets swapped for a plain Mesh sharing the same
+      // (rest-pose) geometry instead of paying for broken live GPU skinning.
+      // If a future suit genuinely needs live animation, that asset needs
+      // its own investigation into why skinning fails here, not a silent
+      // opt-out of this swap.
+      if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) {
         const plain = new THREE.Mesh(mesh.geometry, mesh.material);
         plain.frustumCulled = false;
         mesh.parent?.add(plain);
@@ -122,22 +136,6 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3
       }
     }
   });
-
-  if (hasZUpRoot) {
-    return { scene, suitMeshes };
-  }
-
-  const box = new THREE.Box3().setFromObject(scene);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-
-  if (size.y > 0) {
-    const scale = CANONICAL_BODY_HEIGHT / size.y;
-    scene.scale.setScalar(scale);
-    scene.position.set(-center.x * scale, CANONICAL_FEET_Y - box.min.y * scale, -center.z * scale);
-  }
 
   return { scene, suitMeshes };
 }
