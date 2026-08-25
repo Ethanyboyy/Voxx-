@@ -67,12 +67,18 @@ export interface HolographicSuitCanvasProps extends SuitRigProps {
    * suit today has this unset and renders procedurally. Falls back to the
    * procedural rig if the file is missing or fails to load. */
   modelUrl?: string | null;
+  /** Visual QA mode (directive §21): forces a neutral clay material with no
+   * pattern/emissive/rim-glow/emblem layers on a GLB-backed body, so raw
+   * geometry can be judged under plain studio lighting alone. Procedural-rig
+   * suits don't yet have an equivalent neutral-material path. */
+  rawGeometry?: boolean;
 }
 
 export function HolographicSuitCanvas({
   autoRotate = false,
   showEffects = true,
   modelUrl,
+  rawGeometry = false,
   ...rigProps
 }: HolographicSuitCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -82,7 +88,7 @@ export function HolographicSuitCanvas({
   // T-pose bind pose — see GltfSuitModel.tsx) is a full CANONICAL_BODY_HEIGHT
   // figure with arms held out from its sides, needing a further-back, more
   // head-on framing to fit the whole figure instead of cropping into one limb.
-  const cameraPosition: [number, number, number] = modelUrl ? [0, -0.15, 6.5] : [1.5, -0.05, 2.7];
+  const cameraPosition: [number, number, number] = modelUrl ? [0, -0.15, 4.4] : [1.5, -0.05, 2.7];
   const orbitTarget: [number, number, number] = modelUrl ? [0, -0.45, 0] : [0, -0.2, 0];
 
   return (
@@ -123,7 +129,16 @@ export function HolographicSuitCanvas({
       <Suspense fallback={null}>
         {modelUrl ? (
           <GltfErrorBoundary fallback={<SuitRig {...rigProps} />}>
-            <GltfSuitModel url={modelUrl} />
+            <GltfSuitModel
+              url={modelUrl}
+              colorPrimary={rigProps.colorPrimary}
+              colorSecondary={rigProps.colorSecondary}
+              materialLanguage={rigProps.materialLanguage}
+              patternStyle={rigProps.patternStyle}
+              xray={rigProps.xray}
+              showEffects={showEffects}
+              rawGeometry={rawGeometry}
+            />
           </GltfErrorBoundary>
         ) : (
           <SuitRig {...rigProps} />

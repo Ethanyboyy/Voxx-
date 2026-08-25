@@ -73,6 +73,12 @@ export function HolographicModel({
   const [explodeAmount, setExplodeAmount] = useState(0);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showEffects, setShowEffects] = useState(true);
+  // Visual QA / debug mode (directive §21): a neutral clay material with no
+  // pattern/emissive map and no rim-glow/emblem layers, so raw geometry and
+  // anatomy can be judged with every material and holographic layer removed
+  // — "if the hologram is removed, the object should still look
+  // professionally modeled" is a claim this makes checkable, not assumed.
+  const [rawGeometry, setRawGeometry] = useState(false);
 
   return (
     <div className={cn("relative flex flex-col items-center", className)}>
@@ -94,7 +100,8 @@ export function HolographicModel({
           xray={xray}
           explodeAmount={explodeAmount}
           autoRotate={autoRotate}
-          showEffects={showEffects}
+          showEffects={showEffects && !rawGeometry}
+          rawGeometry={rawGeometry}
           modelUrl={modelUrl}
         />
         {controls ? (
@@ -122,18 +129,16 @@ export function HolographicModel({
             >
               {autoRotate ? "⏸ Auto-rotate" : "▶ Auto-rotate"}
             </button>
-            {!modelUrl ? (
-              <button
-                type="button"
-                onClick={() => setXray((v) => !v)}
-                className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
-                  xray ? "border-[var(--border-strong)] bg-accent-muted text-accent" : "border-border text-muted hover:bg-surface-hover hover:text-foreground"
-                )}
-              >
-                {xray ? "✕ Exit X-Ray" : "◎ X-Ray Inspection"}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setXray((v) => !v)}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
+                xray ? "border-[var(--border-strong)] bg-accent-muted text-accent" : "border-border text-muted hover:bg-surface-hover hover:text-foreground"
+              )}
+            >
+              {xray ? "✕ Exit X-Ray" : "◎ X-Ray Inspection"}
+            </button>
             <button
               type="button"
               onClick={() => setShowEffects((v) => !v)}
@@ -144,6 +149,17 @@ export function HolographicModel({
               )}
             >
               {showEffects ? "Effects on" : "Studio lighting only"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRawGeometry((v) => !v)}
+              title="Visual QA: strip every material/pattern/hologram layer down to neutral clay geometry under plain lighting"
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs transition-colors",
+                rawGeometry ? "border-[var(--border-strong)] bg-accent-muted text-accent" : "border-border text-muted hover:bg-surface-hover hover:text-foreground"
+              )}
+            >
+              {rawGeometry ? "✕ Exit Raw Geometry" : "◇ Raw Geometry"}
             </button>
           </div>
           {!modelUrl ? (
