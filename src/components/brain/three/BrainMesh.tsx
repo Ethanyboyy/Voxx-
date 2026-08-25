@@ -107,12 +107,16 @@ function PartMesh({
     if (mat) {
       mat.emissive.copy(emissiveColor);
       mat.emissiveIntensity = pulseRef.current;
-      const targetOpacity = part.fadesWhenExploded ? Math.max(0, 1 - explodeAmount * 2.2) : xray ? 0.32 : 1;
+      // The solid shell is deliberately a faint translucent "ghost" silhouette
+      // now, not the hero surface — the NeuralWeb connectome layer (rendered
+      // alongside this) carries the primary visual read, matching the
+      // reference's translucent-outline-plus-glowing-network look.
+      const targetOpacity = part.fadesWhenExploded ? Math.max(0, 1 - explodeAmount * 2.2) : xray ? 0.08 : 0.15;
       mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, Math.min(1, 0.12 * delta * 60));
-      mat.depthWrite = !xray && !(part.fadesWhenExploded && explodeAmount > 0.4);
+      mat.depthWrite = false;
     }
     const rimMat = rimRef.current?.material as THREE.MeshBasicMaterial | undefined;
-    if (rimMat) rimMat.opacity = xray ? 0.22 : 0.1;
+    if (rimMat) rimMat.opacity = xray ? 0.24 : 0.16;
   });
 
   return (

@@ -12,6 +12,7 @@ import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
 import { BrainScene } from "@/components/brain/three/BrainScene";
 import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
+import { NeuralWeb } from "@/components/brain/three/NeuralWeb";
 import { RegionMarker } from "@/components/brain/three/RegionMarker";
 import { EntitySatellite } from "@/components/brain/three/EntitySatellite";
 import { computeSatelliteOffsets, SATELLITE_REVEAL_CAP } from "@/components/brain/three/regionLayout";
@@ -43,6 +44,31 @@ function usePrefersReducedMotion(): boolean {
   );
 }
 
+const NARROW_VIEWPORT_QUERY = "(max-width: 640px)";
+
+function subscribeNarrowViewport(callback: () => void) {
+  const mq = window.matchMedia(NARROW_VIEWPORT_QUERY);
+  mq.addEventListener("change", callback);
+  return () => mq.removeEventListener("change", callback);
+}
+
+/**
+ * A narrow (phone-width) viewport shows a much narrower horizontal FOV at
+ * the same camera distance than a wide desktop viewport does, for the same
+ * fixed vertical fov — so the same "hero" distance that looks right on
+ * desktop crops the brain edge-to-edge with no breathing room on a phone.
+ * Confirmed empirically via screenshot, not just computed: the desktop
+ * hero-framing fix (focusDistance 3.6 -> 2.55) made mobile framing worse,
+ * not better, because both viewports were sharing one distance.
+ */
+function useIsNarrowViewport(): boolean {
+  return useSyncExternalStore(
+    subscribeNarrowViewport,
+    () => window.matchMedia(NARROW_VIEWPORT_QUERY).matches,
+    () => false
+  );
+}
+
 function add(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 }
@@ -67,6 +93,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const [clipPosition, setClipPosition] = useState(0);
 
   const reducedMotion = usePrefersReducedMotion();
+  const isNarrowViewport = useIsNarrowViewport();
 
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const selectedNode = selectedNodeId ? (nodesById.get(selectedNodeId) ?? null) : null;
@@ -183,15 +210,17 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const { focusPosition, focusDistance } = useMemo(() => {
     if (selectedNode) {
       const pos = entityPositions.get(selectedNode.id) ?? SYSTEM_ANCHOR[SYSTEM_OF[selectedNode.type]];
-      return { focusPosition: pos, focusDistance: 1.15 };
+      return { focusPosition: pos, focusDistance: isNarrowViewport ? 1.55 : 1.15 };
     }
-    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: 1.3 };
-    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: 4 };
-    // The brain is the hero — this is tuned so it fills most of the frame by
-    // default rather than sitting as a small object in a lot of empty
-    // black space (the composition problem called out explicitly).
-    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: 2.55 };
-  }, [selectedNode, focusedSystem, explodeAmount, entityPositions]);
+    if (focusedSystem) return { focusPosition: SYSTEM_ANCHOR[focusedSystem], focusDistance: isNarrowViewport ? 1.75 : 1.3 };
+    if (explodeAmount > 0.4) return { focusPosition: [0, 0, 0] as Vec3, focusDistance: isNarrowViewport ? 5.2 : 4 };
+    // The brain is the hero on both — but a narrow (phone-width) viewport
+    // shows a much narrower horizontal slice at any given distance than a
+    // wide desktop one does for the same vertical fov, so the desktop
+    // hero-framing distance crops the brain edge-to-edge with zero breathing
+    // room on a phone. Give mobile real margin instead of maximum fill.
+    return { focusPosition: [0, 0.05, 0] as Vec3, focusDistance: isNarrowViewport ? 3.5 : 2.55 };
+  }, [selectedNode, focusedSystem, explodeAmount, entityPositions, isNarrowViewport]);
 
   function resetToWholeBrain() {
     setSelectedNodeId(null);
@@ -223,6 +252,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     <div className="relative h-full w-full overflow-hidden bg-background">
       <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} onPointerMissed={() => setSelectedNodeId(null)}>
         <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
+        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.35 : 0.85} />
 
         {SYSTEM_ORDER.map((system) => (
           <RegionMarker

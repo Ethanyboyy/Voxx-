@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { buildBrainParts } from "@/components/brain/three/brainGeometry";
+import { buildBrainParts, buildNeuralWeb } from "@/components/brain/three/brainGeometry";
 
 function boundsOf(geometry: THREE.BufferGeometry) {
   geometry.computeBoundingBox();
@@ -72,5 +72,58 @@ describe("buildBrainParts", () => {
   it("builds a real, non-degenerate brainstem cylinder and corpus callosum arc", () => {
     expect(parts.brainstem.getAttribute("position").count).toBeGreaterThan(0);
     expect(parts.corpusCallosum.getAttribute("position").count).toBeGreaterThan(0);
+  });
+});
+
+describe("buildNeuralWeb", () => {
+  it("produces a real node/edge network sharing the cerebrum's own anatomical shape (not a random point cloud)", () => {
+    const web = buildNeuralWeb(2);
+    const nodeCount = web.positions.length / 3;
+    expect(nodeCount).toBeGreaterThan(50);
+
+    for (let i = 0; i < web.positions.length; i++) {
+      expect(Number.isFinite(web.positions[i])).toBe(true);
+    }
+
+    // Every edge must reference two real, in-range, distinct node indices.
+    expect(web.edges.length % 2).toBe(0);
+    for (let i = 0; i < web.edges.length; i += 2) {
+      const a = web.edges[i];
+      const b = web.edges[i + 1];
+      expect(a).not.toBe(b);
+      expect(a).toBeGreaterThanOrEqual(0);
+      expect(a).toBeLessThan(nodeCount);
+      expect(b).toBeGreaterThanOrEqual(0);
+      expect(b).toBeLessThan(nodeCount);
+    }
+
+    // Euler's formula for a closed triangulated sphere-topology mesh:
+    // edges = vertices + faces - 2. A low-detail icosahedron subdivision
+    // has 4x as many faces as vertices roughly at this level — the real
+    // check here is just that the edge count is in the same order of
+    // magnitude as the node count (a real mesh topology), not e.g. a full
+    // dense N^2 graph or a near-empty one.
+    const edgeCount = web.edges.length / 2;
+    expect(edgeCount).toBeGreaterThan(nodeCount);
+    expect(edgeCount).toBeLessThan(nodeCount * 5);
+  });
+
+  it("stays anatomically proportioned like the solid cerebrum (elongated front-to-back), confirming it shares the same shaping function", () => {
+    const web = buildNeuralWeb(2);
+    const box = new THREE.Box3();
+    for (let i = 0; i < web.positions.length; i += 3) {
+      box.expandByPoint(new THREE.Vector3(web.positions[i], web.positions[i + 1], web.positions[i + 2]));
+    }
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    expect(size.z).toBeGreaterThan(size.y);
+    expect(size.x).toBeGreaterThan(1);
+  });
+
+  it("increases node/edge density with subdivision detail", () => {
+    const coarse = buildNeuralWeb(1);
+    const fine = buildNeuralWeb(3);
+    expect(fine.positions.length).toBeGreaterThan(coarse.positions.length);
+    expect(fine.edges.length).toBeGreaterThan(coarse.edges.length);
   });
 });

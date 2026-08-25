@@ -168,6 +168,50 @@ export interface BrainParts {
   corpusCallosum: THREE.BufferGeometry;
 }
 
+export interface NeuralWeb {
+  /** One [x,y,z] triple per node — real anatomically-shaped points, not random scatter. */
+  positions: Float32Array;
+  /** Pairs of node indices — the mesh's own real triangle-edge topology at this resolution, not an arbitrary/random graph. */
+  edges: Uint32Array;
+}
+
+/**
+ * A sparse node/edge network sharing the exact same shaping (ellipsoid,
+ * fissure, lobe bulges, ridged folds) as the solid cerebrum in
+ * buildBrainParts, just at much lower subdivision — the "connectome"
+ * presentation: a constellation of glowing points along the real cortical
+ * surface, connected by the mesh's own triangle edges, rather than a solid
+ * shaded shell. detail=2 keeps node/edge counts small enough for legible,
+ * uncluttered glowing points+lines instead of a dense mesh smear.
+ */
+export function buildNeuralWeb(detail = 2): NeuralWeb {
+  const raw = new THREE.IcosahedronGeometry(1, detail);
+  const welded = weldGeometry(raw);
+  raw.dispose();
+  displaceCortex(welded, CEREBRUM_SCALE, cerebrumShapeFactor, 2.6, 0.042);
+
+  const position = welded.getAttribute("position") as THREE.BufferAttribute;
+  const positions = new Float32Array(position.array);
+
+  const index = welded.getIndex()!;
+  const seen = new Set<string>();
+  const edgePairs: number[] = [];
+  for (let i = 0; i < index.count; i += 3) {
+    const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e];
+      const b = tri[(e + 1) % 3];
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edgePairs.push(a, b);
+    }
+  }
+  welded.dispose();
+
+  return { positions, edges: new Uint32Array(edgePairs) };
+}
+
 export function buildBrainParts(): BrainParts {
   const cerebrumRaw = new THREE.IcosahedronGeometry(1, 5);
   const cerebrumBase = weldGeometry(cerebrumRaw);
