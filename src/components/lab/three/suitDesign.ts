@@ -44,26 +44,14 @@ export const MATERIAL_SPECS: Record<MaterialLanguage, MaterialSpec> = {
   EXPERIMENTAL_MATERIAL: { metalness: 0.55, roughness: 0.12, emissiveIntensity: 0.28, iridescent: true },
 };
 
-/** Procedural CanvasTexture — the suit's pattern language rendered as a
- * tileable holographic surface detail (panel lines, web geometry, circuitry)
- * rather than a photographic image. */
-export function createPatternTexture(style: PatternStyle, colorPrimary: string, colorSecondary: string): THREE.CanvasTexture {
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  // Base fill is colorPrimary — the suit's dominant, iconic hero color — with
-  // colorSecondary drawn as the panel-line/trim pattern on top. (Previously
-  // reversed: a colorSecondary fill made the suit read as flat near-black
-  // with only faint accent lines, since colorSecondary palette entries are
-  // deliberately dark trim/contrast tones, not a base worth covering 100% of
-  // the surface in.)
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = colorPrimary;
-  ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = colorSecondary;
-  ctx.globalAlpha = 0.55;
-
+/**
+ * Strokes the pattern's line geometry into whatever 2D context is passed —
+ * shared by both createPatternTexture (moderate-alpha lines over the dark
+ * base) and createEmissiveMaskTexture (full-bright lines over black, which
+ * becomes the material's emissiveMap so the glow only ever appears where a
+ * line actually is, not as a flat wash over the whole suit).
+ */
+function drawPatternLines(ctx: CanvasRenderingContext2D, style: PatternStyle, size: number, secondaryDotColor: string) {
   const cx = size / 2;
   const cy = size / 2;
 
@@ -136,7 +124,7 @@ export function createPatternTexture(style: PatternStyle, colorPrimary: string, 
       for (let i = 0; i < 30; i++) {
         const x = Math.floor((Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * (size / step)) * step;
         const y = Math.floor((Math.sin(i * 78.233) * 12543.231 % 1 + 1) % 1 * (size / step)) * step;
-        ctx.fillStyle = colorSecondary;
+        ctx.fillStyle = secondaryDotColor;
         ctx.fillRect(x - 2, y - 2, 4, 4);
       }
       break;
@@ -153,11 +141,122 @@ export function createPatternTexture(style: PatternStyle, colorPrimary: string, 
       break;
     }
   }
+}
+
+/**
+ * The suit's real diffuse/albedo map — a near-black base (colorSecondary,
+ * the app's own dark-trim palette entry) with the pattern's line geometry
+ * traced in colorPrimary, the suit's bright hero/accent color. Paired with
+ * createEmissiveMaskTexture below so those same lines actually glow, rather
+ * than the whole surface washing toward one flat emissive color.
+ */
+export function createPatternTexture(style: PatternStyle, colorPrimary: string, colorSecondary: string): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = colorSecondary;
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = colorPrimary;
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 2.2;
+  drawPatternLines(ctx, style, size, colorPrimary);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(2, 3);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * A black background with the SAME line geometry drawn in white at full
+ * strength — used as the material's `emissiveMap`, which multiplies against
+ * the flat `emissive` color per-pixel. This is what actually makes the
+ * circuit lines glow while the base fabric stays a real matte dark surface,
+ * instead of `emissive` (a single flat color with no spatial variation)
+ * lighting the entire suit uniformly regardless of where the lines are.
+ */
+export function createEmissiveMaskTexture(style: PatternStyle): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = "#ffffff";
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.6;
+  drawPatternLines(ctx, style, size, "#ffffff");
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2, 3);
+  return texture;
+}
+
+/**
+ * A standalone spider-silhouette decal — the chest/back emblem, drawn once
+ * on a transparent square and applied as its own small unlit plane rather
+ * than tiled across the whole body like the panel-line pattern. A simple
+ * body+legs canvas path, not a photograph: consistent with every other
+ * texture in this module (deterministic, derived from the suit's own
+ * colorPrimary, no image-generation provider involved).
+ */
+export function createEmblemTexture(colorPrimary: string): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  ctx.strokeStyle = colorPrimary;
+  ctx.fillStyle = colorPrimary;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Eight legs — four rows spanning from well above to well below the
+  // horizontal midline, mirrored left/right by flipping the X (cos)
+  // component only, so they fan out symmetrically the way a real spider
+  // silhouette does (not clustered in one quadrant), each bending once
+  // partway out for a "joint" rather than a straight spoke. Legs start
+  // just outside the body's own edge, not from the exact center point.
+  ctx.lineWidth = size * 0.026;
+  const legRows = [-0.95, -0.42, 0.42, 0.95];
+  for (const rowAngle of legRows) {
+    for (const side of [-1, 1] as const) {
+      const startR = size * 0.08;
+      const midR = size * 0.26;
+      const endR = size * 0.46;
+      const bend = rowAngle > 0 ? 0.2 : -0.2;
+      const sx = cx + side * Math.cos(rowAngle) * startR;
+      const sy = cy + Math.sin(rowAngle) * startR;
+      const mx = cx + side * Math.cos(rowAngle) * midR;
+      const my = cy + Math.sin(rowAngle) * midR;
+      const ex = cx + side * Math.cos(rowAngle + bend) * endR;
+      const ey = cy + Math.sin(rowAngle + bend) * endR;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(mx, my, ex, ey);
+      ctx.stroke();
+    }
+  }
+
+  // Body: a narrower head/thorax lobe over a larger abdomen lobe.
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - size * 0.14, size * 0.13, size * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + size * 0.14, size * 0.19, size * 0.27, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }

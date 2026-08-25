@@ -5,6 +5,8 @@ import { useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import {
+  createEmblemTexture,
+  createEmissiveMaskTexture,
   createPatternTexture,
   MATERIAL_SPECS,
   SILHOUETTE_PROPORTIONS,
@@ -182,24 +184,29 @@ export function SuitRig({
     () => createPatternTexture(patternStyle, colorPrimary, colorSecondary),
     [patternStyle, colorPrimary, colorSecondary]
   );
+  // A black background with the same line geometry in white — multiplies
+  // against the flat `emissive` color below so ONLY the traced lines
+  // actually glow, instead of `emissive` (which has no spatial variation
+  // on its own) washing the entire suit toward one flat color regardless
+  // of the diffuse map underneath it.
+  const emissiveMaskTexture = useMemo(() => createEmissiveMaskTexture(patternStyle), [patternStyle]);
+  const emblemTexture = useMemo(() => createEmblemTexture(colorPrimary), [colorPrimary]);
 
   const show = (l: SuitLayer) => visibleLayers.has(l);
   const outerOpacity = xray ? 0.14 : 1;
 
-  // `map` already bakes colorSecondary (base fill) and colorPrimary (pattern
-  // lines) into its pixels — meshStandardMaterial multiplies `color` into
-  // the sampled texel, so setting `color` to colorPrimary here would crush
-  // the near-black colorSecondary fill toward black and leave the flat,
-  // non-directional `emissive` channel as almost the only visible light,
-  // which is what was making every suit read as a monochrome flat silhouette
-  // regardless of geometry. Leaving `color` white lets the map's real two-tone
-  // pattern read under the studio lights; emissive stays as a modest accent.
+  // `map` bakes a near-black colorSecondary base with the pattern's lines
+  // traced in colorPrimary — the suit's real dominant material — with
+  // `color` left white so that two-tone diffuse texture reads unmodified
+  // under the studio lights. `emissiveMap` (the mask above) is what makes
+  // those same lines actually glow.
   const outerMaterialProps = {
     color: "#ffffff",
     metalness: mat.metalness,
     roughness: mat.roughness,
     emissive: colorPrimary,
-    emissiveIntensity: mat.emissiveIntensity * (xray ? 0.4 : 0.55),
+    emissiveMap: emissiveMaskTexture,
+    emissiveIntensity: mat.emissiveIntensity * 4.5 * (xray ? 1.4 : 1),
     map: patternTexture,
     transparent: true,
     opacity: outerOpacity,
@@ -332,19 +339,22 @@ export function SuitRig({
         </mesh>
       ) : null}
 
-      {/* Armor plate */}
+      {/* Armor plate — same map/emissiveMap-driven material as the rest of the
+          shell (just higher metalness/lower roughness for a "raised plate"
+          read) so it blends into the suit's surface language instead of
+          reading as a flat, unpatterned sticker dropped on top of it. */}
       {armorLevel !== "NONE" ? (
         <RoundedBox
-          position={[0, 0.03 + p.torsoHeight * 0.2, p.torsoDepth / 2 + 0.02]}
+          position={[0, 0.03 + p.torsoHeight * 0.2, p.torsoDepth / 2 + 0.006]}
           args={[
-            p.torsoWidth * (armorLevel === "EXPERIMENTAL" ? 0.9 : armorLevel === "MODERATE" ? 0.78 : 0.6),
-            p.torsoHeight * 0.3,
-            0.05,
+            p.torsoWidth * (armorLevel === "EXPERIMENTAL" ? 0.62 : armorLevel === "MODERATE" ? 0.52 : 0.42),
+            p.torsoHeight * 0.22,
+            0.018,
           ]}
           radius={0.02}
           smoothness={3}
         >
-          <meshStandardMaterial color={colorSecondary} metalness={0.8} roughness={0.2} emissive={colorPrimary} emissiveIntensity={0.15} />
+          <meshStandardMaterial {...outerMaterialProps} metalness={0.75} roughness={0.18} />
         </RoundedBox>
       ) : null}
 
@@ -394,6 +404,23 @@ export function SuitRig({
             <meshStandardMaterial color={colorSecondary} emissive={colorPrimary} emissiveIntensity={0.6} metalness={0.6} roughness={0.3} />
           </mesh>
         </ExplodingGroup>
+      ) : null}
+
+      {/* Emblem — the suit's real identity mark: a drawn spider silhouette
+          (front and back), not part of the tiled panel-line pattern. An
+          unlit decal so it reads as a genuine glow regardless of the
+          studio lighting angle, matching the reference's "Emblem Core". */}
+      {show("outer") ? (
+        <>
+          <mesh position={[0, chestY + 0.02, p.torsoDepth / 2 + 0.022]}>
+            <planeGeometry args={[p.torsoWidth * 0.62, p.torsoWidth * 0.62]} />
+            <meshBasicMaterial map={emblemTexture} transparent opacity={xray ? 0.5 : 0.95} toneMapped={false} depthWrite={false} />
+          </mesh>
+          <mesh position={[0, chestY, -(p.torsoDepth / 2 + 0.012)]} rotation={[0, Math.PI, 0]}>
+            <planeGeometry args={[p.torsoWidth * 0.5, p.torsoWidth * 0.5]} />
+            <meshBasicMaterial map={emblemTexture} transparent opacity={xray ? 0.4 : 0.75} toneMapped={false} depthWrite={false} />
+          </mesh>
+        </>
       ) : null}
 
       {/* Arms — tapered upper segment (wide at shoulder) into a narrower

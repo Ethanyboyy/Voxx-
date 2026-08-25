@@ -28,15 +28,27 @@ function StudioEnvironment() {
 }
 
 /** Holographic projection ring beneath the suit — a stack of thin torus
- * rings standing in for the "projection platform" a lab-grade hologram
- * would emit from. Pure procedural geometry, no external assets. */
+ * rings plus a broad soft ground-glow disc, standing in for the
+ * "projection platform" a lab-grade hologram would emit from — matching
+ * the reference's dramatic under-lit pedestal rather than a few thin lines.
+ * Pure procedural geometry, no external assets. */
 function ProjectionPlatform({ color }: { color: string }) {
   return (
     <group position={[0, -1.32, 0]} rotation={[Math.PI / 2, 0, 0]}>
-      {[0, 1, 2].map((i) => (
+      {/* Broad soft glow disc — the light actually seems to emanate from
+          the floor, not just outline it. */}
+      <mesh position={[0, 0, -0.002]}>
+        <circleGeometry args={[0.95, 64]} />
+        <meshBasicMaterial color={color} transparent opacity={0.14} toneMapped={false} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0, -0.001]}>
+        <circleGeometry args={[0.7, 64]} />
+        <meshBasicMaterial color={color} transparent opacity={0.16} toneMapped={false} depthWrite={false} />
+      </mesh>
+      {[0, 1, 2, 3, 4].map((i) => (
         <mesh key={i}>
-          <ringGeometry args={[0.62 + i * 0.08, 0.625 + i * 0.08, 64]} />
-          <meshBasicMaterial color={color} transparent opacity={0.35 - i * 0.09} toneMapped={false} />
+          <ringGeometry args={[0.58 + i * 0.075, 0.588 + i * 0.075, 96]} />
+          <meshBasicMaterial color={color} transparent opacity={0.55 - i * 0.09} toneMapped={false} depthWrite={false} />
         </mesh>
       ))}
     </group>
@@ -94,6 +106,11 @@ export function HolographicSuitCanvas({
           effects are off so the studio lighting is doing the real work. */}
       <pointLight position={[-2, 0.5, -2]} intensity={showEffects ? 0.5 : 0.12} color="#38bdf8" />
       <pointLight position={[0, -1.6, 1.5]} intensity={showEffects ? 0.35 : 0.08} color="#a855f7" />
+
+      {/* Platform up-light — the suit's own hero color, cast upward from
+          floor level, so the pedestal genuinely reads as the light source
+          it's drawn as, uplighting the suit's underside. */}
+      {showEffects ? <pointLight position={[0, -1.3, 0.3]} intensity={0.9} distance={3} decay={2} color={rigProps.colorPrimary} /> : null}
 
       <Suspense fallback={null}>
         {modelUrl ? (
