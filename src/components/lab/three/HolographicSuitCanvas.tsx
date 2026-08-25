@@ -77,11 +77,19 @@ export function HolographicSuitCanvas({
 }: HolographicSuitCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
+  // The procedural SuitRig is a small, chest-focused mannequin the camera
+  // above was tuned for. A real GLB body (e.g. CesiumMan, loaded at its own
+  // T-pose bind pose — see GltfSuitModel.tsx) is a full CANONICAL_BODY_HEIGHT
+  // figure with arms held out from its sides, needing a further-back, more
+  // head-on framing to fit the whole figure instead of cropping into one limb.
+  const cameraPosition: [number, number, number] = modelUrl ? [0, -0.15, 6.5] : [1.5, -0.05, 2.7];
+  const orbitTarget: [number, number, number] = modelUrl ? [0, -0.45, 0] : [0, -0.2, 0];
+
   return (
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [1.5, -0.05, 2.7], fov: 27 }}
+      camera={{ position: cameraPosition, fov: 27 }}
       gl={{ antialias: true, alpha: true }}
     >
       <color attach="background" args={["#050212"]} />
@@ -132,13 +140,13 @@ export function HolographicSuitCanvas({
         makeDefault
         enablePan
         panSpeed={0.5}
-        minDistance={1.6}
-        maxDistance={6}
+        minDistance={modelUrl ? 2.4 : 1.6}
+        maxDistance={modelUrl ? 9 : 6}
         minPolarAngle={0.35}
         maxPolarAngle={Math.PI - 0.35}
         autoRotate={autoRotate}
         autoRotateSpeed={1.1}
-        target={[0, -0.2, 0]}
+        target={orbitTarget}
       />
     </Canvas>
   );
