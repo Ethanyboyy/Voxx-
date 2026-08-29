@@ -83,7 +83,8 @@ export type LinkableEntityType =
   | "DECISION"
   | "IDEA"
   | "EXPERIMENT"
-  | "RESEARCH_ITEM";
+  | "RESEARCH_ITEM"
+  | "OBJECTIVE";
 
 const DEFAULT_NODE_TYPE: Record<LinkableEntityType, KnowledgeNodeType> = {
   MEMORY: "ENTITY",
@@ -94,6 +95,10 @@ const DEFAULT_NODE_TYPE: Record<LinkableEntityType, KnowledgeNodeType> = {
   IDEA: "ENTITY",
   EXPERIMENT: "ENTITY",
   RESEARCH_ITEM: "TOPIC",
+  // An Objective is a thing the user is trying to achieve — the same shape
+  // as a Goal in graph terms, so it reuses that node type rather than
+  // introducing a near-duplicate one.
+  OBJECTIVE: "GOAL",
 };
 
 /**
@@ -120,6 +125,8 @@ function linkFragment(entityType: LinkableEntityType, entityId: string) {
       return { experimentId: entityId };
     case "RESEARCH_ITEM":
       return { researchItemId: entityId };
+    case "OBJECTIVE":
+      return { objectiveId: entityId };
   }
 }
 

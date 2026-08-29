@@ -630,6 +630,12 @@ model KnowledgeNode {
   experiment     Experiment?   @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   researchItemId String?       @unique
   researchItem   ResearchItem? @relation(fields: [researchItemId], references: [id], onDelete: Cascade)
+  /// Objectives are the entry point of the autonomous loop, so they are what
+  /// autonomously-created graph edges hang off: when a supervised run
+  /// finishes, its objective and the EXPERIENCE memory recording the result
+  /// are linked here (src/lib/supervisor/service.ts#linkOutcomeIntoGraph).
+  objectiveId    String?       @unique
+  objective      Objective?    @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
 
   outgoing KnowledgeConnection[] @relation("FromNode")
   incoming KnowledgeConnection[] @relation("ToNode")
@@ -1027,6 +1033,7 @@ model Objective {
 
   opportunities  Opportunity[]
   supervisorRuns SupervisorRun[]
+  knowledgeNode  KnowledgeNode?
 }
 
 /// IDEA/EVALUATING/ACTIVE/PAUSED/COMPLETED/REJECTED are the original

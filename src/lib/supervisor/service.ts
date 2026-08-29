@@ -7,6 +7,7 @@ import { planObjective, type PlanStep } from "@/lib/agents/planner";
 import { buildPlanningContext } from "@/lib/agents/context";
 import { getTool } from "@/lib/tools/registry";
 import { createMemory } from "@/lib/memory/service";
+import { ensureNodeForEntity, createConnection } from "@/lib/knowledge/service";
 import type { AgentRun, AgentStep, SupervisorRun } from "@/generated/prisma/client";
 import type { AgentRunStatus, AutonomyMode, OutcomeStatus, SupervisorRunStatus } from "@/generated/prisma/enums";
 
@@ -177,13 +178,57 @@ async function recordOutcomeMemory(
 
   const content = `${subject} ended ${statusText} — ${costText}, ${timeText} elapsed.`;
 
-  await createMemory({
+  const memory = await createMemory({
     userId,
     content,
     category: "EXPERIENCE",
     confidence: costUsd != null ? "MEDIUM" : "LOW",
     provenance: objective.sourceOpportunity ? "supervisor:economic-outcome" : "supervisor:outcome",
   });
+
+  await linkOutcomeIntoGraph(userId, objective.id, objective.title, memory.id, content, statusText);
+}
+
+/**
+ * Connects the finished work into the Knowledge Graph: the Objective gets a
+ * node, the EXPERIENCE memory recording what happened gets a node, and an
+ * edge is drawn between them.
+ *
+ * This is the first autonomous writer the graph has ever had. Until now
+ * ensureNodeForEntity() was reachable only from two detail pages and one
+ * manual API endpoint, so the graph could only ever contain what a human had
+ * clicked on — a decorative structure beside the system rather than a record
+ * of what the system actually did.
+ *
+ * Best-effort by design: a graph-linking failure must never fail or roll
+ * back a run whose real work already completed and whose Outcome and Memory
+ * are already persisted. The graph is derived connective tissue, not the
+ * system of record.
+ */
+async function linkOutcomeIntoGraph(
+  userId: string,
+  objectiveId: string,
+  objectiveTitle: string,
+  memoryId: string,
+  memoryContent: string,
+  statusText: string
+): Promise<void> {
+  try {
+    const [objectiveNode, memoryNode] = await Promise.all([
+      ensureNodeForEntity(userId, "OBJECTIVE", objectiveId, objectiveTitle),
+      ensureNodeForEntity(userId, "MEMORY", memoryId, memoryContent.slice(0, 120)),
+    ]);
+    await createConnection({
+      userId,
+      fromNodeId: objectiveNode.id,
+      toNodeId: memoryNode.id,
+      // The edge label states what this edge actually is — a recorded result
+      // of pursuing the objective — rather than a generic "related_to".
+      relation: `outcome:${statusText.replace(/\s+/g, "_")}`,
+    });
+  } catch {
+    // Intentionally swallowed — see the doc comment above.
+  }
 }
 
 /**
