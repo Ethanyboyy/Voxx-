@@ -290,7 +290,7 @@ describe("Economic Engine: honest Outcome recording", () => {
     expect(outcome!.summary).toMatch(/not.*independently verified/i);
   });
 
-  it("records an ABANDONED outcome on decline, and only writes an economic memory for opportunity-sourced objectives", async () => {
+  it("writes an outcome memory for every objective, but only opportunity-sourced ones get economic provenance", async () => {
     const plainObjective = await createObjective({ userId, title: "Plain objective, not opportunity-sourced" });
     const opportunityObjectiveSeed = await createObjective({ userId, title: "Opp parent" });
     const opportunity = await createOpportunity({ userId, objectiveId: opportunityObjectiveSeed.id, title: "Memory test opportunity" });
@@ -307,9 +307,16 @@ describe("Economic Engine: honest Outcome recording", () => {
       await applyAgentRunOutcome(userId, supRun.id, failedRun);
     }
 
-    const memories = await db.memory.findMany({ where: { userId } });
-    // Decrypted content isn't needed — just confirm exactly one economic-outcome memory exists (the opportunity-sourced one).
-    expect(memories.length).toBe(1);
+    // Every supervised run now leaves a durable EXPERIENCE memory so the
+    // planner can learn from it (src/lib/agents/context.ts). What stays
+    // economic-specific is the PROVENANCE — asserted directly here rather
+    // than inferred from a total count, which previously only distinguished
+    // the two cases because plain objectives recorded nothing at all.
+    const economic = await db.memory.findMany({ where: { userId, provenance: "supervisor:economic-outcome" } });
+    expect(economic.length).toBe(1);
+
+    const plain = await db.memory.findMany({ where: { userId, provenance: "supervisor:outcome" } });
+    expect(plain.length).toBeGreaterThan(0);
   });
 });
 

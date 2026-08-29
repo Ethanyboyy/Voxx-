@@ -4,6 +4,7 @@ import { getObjective } from "@/lib/objectives/service";
 import { createAgent, updateAgent } from "@/lib/agents/agents";
 import { startAgentRun, resumeAgentRun, cancelAgentRun, getAgentRun } from "@/lib/agents/service";
 import { planObjective, type PlanStep } from "@/lib/agents/planner";
+import { buildPlanningContext } from "@/lib/agents/context";
 import { getTool } from "@/lib/tools/registry";
 import { createMemory } from "@/lib/memory/service";
 import type { AgentRun, AgentStep, SupervisorRun } from "@/generated/prisma/client";
@@ -98,7 +99,15 @@ async function recordOutcome(
   userId: string,
   supRun: SupervisorRun,
   status: OutcomeStatus,
-  params: { summary: string; observedResult?: string | null; confidence?: "LOW" | "MEDIUM" | "HIGH" | "CONFIRMED" }
+  params: {
+    summary: string;
+    observedResult?: string | null;
+    confidence?: "LOW" | "MEDIUM" | "HIGH" | "CONFIRMED";
+    /** Real evidence about WHY this ended as it did — currently the actual
+     * failure message. Never a synthesized moral; null when the run gave us
+     * nothing to learn (see Outcome.lessons in schema.prisma). */
+    lessons?: string | null;
+  }
 ): Promise<void> {
   const costUsd = await realizedCostForObjective(supRun.objectiveId);
   const timeSpentMinutes = Math.max(0, Math.round((Date.now() - supRun.createdAt.getTime()) / 60_000));
@@ -110,6 +119,7 @@ async function recordOutcome(
       status,
       summary: params.summary,
       observedResult: params.observedResult,
+      lessons: params.lessons ?? undefined,
       costUsd: costUsd ?? undefined,
       timeSpentMinutes,
       confidence: params.confidence ?? "LOW",
@@ -123,14 +133,25 @@ async function recordOutcome(
     payload: { status, costUsd, timeSpentMinutes },
   });
 
-  await maybeRecordEconomicMemory(userId, supRun, status, costUsd, timeSpentMinutes);
+  await recordOutcomeMemory(userId, supRun, status, costUsd, timeSpentMinutes);
 }
 
-/** Only fires for a SupervisorRun whose Objective was created to validate a
- * real Opportunity — records exactly what happened (cost, time, status) as
- * an EXPERIENCE memory. Never fabricates an interpretation beyond what the
- * real numbers say. */
-async function maybeRecordEconomicMemory(
+/**
+ * Writes what actually happened as a durable EXPERIENCE memory, for EVERY
+ * supervised run — not only the economic ones.
+ *
+ * This is the write half of the learning loop: buildPlanningContext() reads
+ * these back (alongside the Outcome rows themselves) the next time VOX plans,
+ * so a run that failed for a real reason is visible to the planner instead of
+ * being rediscovered from scratch. Before this generalization only runs
+ * tracing back to an Opportunity produced a memory, which meant ordinary
+ * objectives left no durable trace at all.
+ *
+ * Content is strictly the real recorded facts — objective title, terminal
+ * status, and the measured cost/time. Confidence is MEDIUM only when a real
+ * cost figure backs it up, LOW otherwise; nothing here is an interpretation.
+ */
+async function recordOutcomeMemory(
   userId: string,
   supRun: SupervisorRun,
   status: OutcomeStatus,
@@ -141,18 +162,27 @@ async function maybeRecordEconomicMemory(
     where: { id: supRun.objectiveId },
     include: { sourceOpportunity: true },
   });
-  if (!objective?.sourceOpportunity) return;
+  if (!objective) return;
 
   const costText = costUsd != null ? `$${costUsd.toFixed(2)} spent` : "no spend recorded";
   const timeText = timeSpentMinutes >= 60 ? `${(timeSpentMinutes / 60).toFixed(1)} hours` : `${timeSpentMinutes} minutes`;
-  const content = `Validation attempt for opportunity "${objective.sourceOpportunity.title}" ended ${status.toLowerCase().replace(/_/g, " ")} — ${costText}, ${timeText} elapsed.`;
+  const statusText = status.toLowerCase().replace(/_/g, " ");
+
+  // An objective created to validate an Opportunity keeps its economic
+  // framing — that wording is what makes it useful when the Economic Engine
+  // later reasons about whether to pursue similar opportunities.
+  const subject = objective.sourceOpportunity
+    ? `Validation attempt for opportunity "${objective.sourceOpportunity.title}"`
+    : `Work on objective "${objective.title}"`;
+
+  const content = `${subject} ended ${statusText} — ${costText}, ${timeText} elapsed.`;
 
   await createMemory({
     userId,
     content,
     category: "EXPERIENCE",
     confidence: costUsd != null ? "MEDIUM" : "LOW",
-    provenance: "supervisor:economic-outcome",
+    provenance: objective.sourceOpportunity ? "supervisor:economic-outcome" : "supervisor:outcome",
   });
 }
 
@@ -235,7 +265,12 @@ export async function applyAgentRunOutcome(
     });
 
     const retryObjective = `${objective.title}${objective.description ? `: ${objective.description}` : ""}. A previous attempt failed with: "${agentRun.error}". Take a different approach that avoids the same failure.`;
-    const newPlan = await planObjective(retryObjective);
+    // Replanning is exactly where prior-outcome context earns its keep — this
+    // objective's own recorded failures are loaded first (see
+    // loadPriorOutcomes), so the retry can see what has already been tried
+    // rather than only the single error string above.
+    const retryContext = await buildPlanningContext(userId, retryObjective, { objectiveId: objective.id });
+    const newPlan = await planObjective(retryObjective, retryContext);
     const requiredCapabilities = requiredCapabilitiesFor(newPlan);
     const agent = await selectOrCreateAgent(userId, requiredCapabilities, objective.title);
 
@@ -265,6 +300,12 @@ export async function applyAgentRunOutcome(
   await recordOutcome(userId, failed, "FAILED", {
     summary: agentRun.error ?? "The run failed.",
     confidence: "MEDIUM",
+    // The real failure message, after every permitted replan was exhausted —
+    // genuine evidence about this objective, and the thing a future planning
+    // pass most needs to see. Not a synthesized takeaway.
+    lessons: agentRun.error
+      ? `Exhausted ${supRun.maxIterations} replanning attempt(s); the final failure was: ${agentRun.error}`
+      : null,
   });
   return loadSupervisorRun(userId, supervisorRunId) as Promise<SupervisorRunWithRelations>;
 }
@@ -300,7 +341,8 @@ export async function startSupervisorRun(input: StartSupervisorRunInput): Promis
   await recordEvent({ userId: input.userId, type: "objective.progress", subjectType: "Objective", subjectId: objective.id, payload: { supervisorRunId: supRun.id, phase: "started" } });
 
   const objectiveText = `${objective.title}${objective.description ? `: ${objective.description}` : ""}`;
-  const plan = await planObjective(objectiveText);
+  const planningContext = await buildPlanningContext(input.userId, objectiveText, { objectiveId: objective.id });
+  const plan = await planObjective(objectiveText, planningContext);
   await recordEvent({
     userId: input.userId,
     type: "supervisor.planning",

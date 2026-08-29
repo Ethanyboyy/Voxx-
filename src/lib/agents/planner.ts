@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getAIProvider } from "@/lib/ai";
 import { modelForJob } from "@/lib/ai/routing";
+import { renderPlanningContext, type PlanningContext } from "@/lib/agents/context";
 import { listTools } from "@/lib/tools/registry";
 
 const planStepSchema = z.object({
@@ -34,12 +35,20 @@ function fallbackPlan(objective: string): PlanStep[] {
  * bound to a tool from the registry. Uses the REASONING model job (§38) —
  * this is the one place in VOX that spends a model call purely on planning,
  * so it's worth the stronger model when one is configured.
+ *
+ * `context` carries what VOX actually knows and has already tried (see
+ * buildPlanningContext). It is optional so that callers with no user scope
+ * still work, but the supervised path always supplies it: planning without
+ * it means re-deriving an approach that may have already been recorded as
+ * failing.
  */
-export async function planObjective(objective: string): Promise<PlanStep[]> {
+export async function planObjective(objective: string, context?: PlanningContext): Promise<PlanStep[]> {
   const tools = listTools();
   const toolCatalog = tools
     .map((t) => `- ${t.name} (${t.category}): ${t.description} — input: ${t.inputSchema.toString()}`)
     .join("\n");
+
+  const contextSection = context ? renderPlanningContext(context) : "";
 
   const system = `You are VOX's planning engine. Break the user's objective into a short, ordered list of concrete steps.
 Each step may optionally use exactly one tool from this list (use the exact tool name, or null for a step that's just reasoning/response, no tool call):
@@ -47,7 +56,7 @@ ${toolCatalog}
 
 Respond with ONLY a JSON object, no prose, no markdown fences, of the exact shape:
 {"steps": [{"description": "...", "toolName": "memory.search" | null, "input": {...tool arguments matching that tool's schema, or omit if toolName is null}}]}
-Keep it to the minimum steps that actually accomplish the objective — usually 1-5. Never invent a tool name that isn't in the list above.`;
+Keep it to the minimum steps that actually accomplish the objective — usually 1-5. Never invent a tool name that isn't in the list above.${contextSection}`;
 
   const provider = getAIProvider();
   let result;
