@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StateIndicator } from "@/components/ui/StateIndicator";
 import { SupervisorPanel, type SupervisorRunItem } from "@/components/objectives/SupervisorPanel";
+import { EvidencePanel } from "@/components/objectives/EvidencePanel";
 import { useEventStream } from "@/lib/events/useEventStream";
 import type { LiveEvent } from "@/lib/events/bus";
 
@@ -491,6 +492,11 @@ function ObjectiveDetail({
       </div>
 
       <SupervisorPanel objectiveId={objective.id} runs={supervisorRuns} onRunsChange={onSupervisorRunsChange} />
+
+      {/* What VOX knows because of this objective. Sits directly under the
+          supervisor panel because the two are halves of one story: what was
+          attempted, and what was learned doing it. */}
+      <EvidencePanel objectiveId={objective.id} />
 
       <div className="mt-4 flex items-center justify-between">
         <p className="vox-eyebrow">Opportunities</p>
