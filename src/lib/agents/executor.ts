@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
+import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
 
 const MAX_RETRIES = 1;
@@ -32,6 +33,21 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
   if (run.status === "PLANNING") {
     run = await db.agentRun.update({ where: { id: run.id }, data: { status: "RUNNING" }, include: { steps: { orderBy: { order: "asc" } } } });
     await recordEvent({ userId, type: "agent.run.started", subjectType: "AgentRun", subjectId: run.id, payload: { objective: run.objective } });
+  }
+
+  // What earlier steps actually produced, keyed by step order — the source
+  // for {{stepN.output}} references below. Seeded from the persisted rows so
+  // it is correct on a fresh run and on one resumed after a permission pause,
+  // then extended in-place as this pass completes further steps.
+  const stepOutputs = new Map<number, unknown>();
+  for (const step of run.steps) {
+    if (step.status !== "COMPLETED" || !step.output) continue;
+    try {
+      stepOutputs.set(step.order, JSON.parse(step.output));
+    } catch {
+      // A step whose stored output isn't parseable simply isn't referenceable;
+      // any reference to it fails loudly at resolution time rather than here.
+    }
   }
 
   for (const step of run.steps) {
@@ -88,12 +104,45 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     } catch {
       return await failRun(userId, run.id, step.id, "Step input was not valid JSON.");
     }
+
+    // Substitute {{stepN.output...}} references with what earlier steps
+    // actually produced. Sourced from stepOutputs, which is rebuilt from the
+    // persisted rows on every call, so a run that paused for permission and
+    // resumed later still resolves its references correctly.
+    let resolvedInputJson: string | null = null;
+    if (hasStepReference(input)) {
+      const resolution = resolveStepReferences(input, stepOutputs);
+      if (resolution.unresolved.length > 0) {
+        return await failRun(
+          userId,
+          run.id,
+          step.id,
+          `Could not resolve step reference(s) ${resolution.unresolved.join(", ")} — the referenced step did not complete, or that path is absent from its output.`
+        );
+      }
+      input = resolution.value;
+      // Persist what the tool is actually being called with, so an inspected
+      // run shows the real value rather than an unresolved "{{step0.output}}"
+      // that reveals nothing about what happened. The authored template is
+      // not lost — it stays in SupervisorRun.plan, the plan's own snapshot.
+      resolvedInputJson = JSON.stringify(input);
+    }
+
     const parsedInput = tool.inputSchema.safeParse(input);
     if (!parsedInput.success) {
       return await failRun(userId, run.id, step.id, `Invalid input for tool "${tool.name}": ${parsedInput.error.message}`);
     }
 
-    await db.agentStep.update({ where: { id: step.id }, data: { status: "RUNNING", startedAt: new Date(), capability: tool.capability, requiredLevel: tool.requiredLevel } });
+    await db.agentStep.update({
+      where: { id: step.id },
+      data: {
+        status: "RUNNING",
+        startedAt: new Date(),
+        capability: tool.capability,
+        requiredLevel: tool.requiredLevel,
+        ...(resolvedInputJson ? { input: resolvedInputJson } : {}),
+      },
+    });
 
     let lastError: string | null = null;
     let succeeded = false;
@@ -104,6 +153,7 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
           where: { id: step.id },
           data: { status: "COMPLETED", output: JSON.stringify(result.output), completedAt: new Date(), retryCount: attempt },
         });
+        stepOutputs.set(step.order, result.output);
         await recordEvent({
           userId,
           type: "agent.step.completed",

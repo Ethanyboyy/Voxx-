@@ -56,7 +56,9 @@ ${toolCatalog}
 
 Respond with ONLY a JSON object, no prose, no markdown fences, of the exact shape:
 {"steps": [{"description": "...", "toolName": "memory.search" | null, "input": {...tool arguments matching that tool's schema, or omit if toolName is null}}]}
-Keep it to the minimum steps that actually accomplish the objective — usually 1-5. Never invent a tool name that isn't in the list above.${contextSection}`;
+Keep it to the minimum steps that actually accomplish the objective — usually 1-5. Never invent a tool name that isn't in the list above.
+
+A later step can use what an earlier step returned by putting {{stepN.output}} (or a path into it, e.g. {{step0.output.items.0.id}}) inside its input, where N is that earlier step's 0-based position. Use this when a step genuinely depends on an earlier result instead of guessing the value at planning time. Only reference steps that come before the one using them.${contextSection}`;
 
   const provider = getAIProvider();
   let result;
