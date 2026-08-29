@@ -107,19 +107,57 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): {
     );
   }
 
-  // Real joint positions, read from the asset's own skeleton after
-  // normalization. Armour mounted to a MEASURED shoulder sits on the
-  // shoulder for any rigged body; armour mounted to a guessed coordinate
-  // floats next to it the moment the pose differs from the guess — which is
-  // exactly what happened when these were hardcoded against an imagined
-  // arms-down pose and the asset turned out to be in a T-pose.
-  const anchors = new Map<string, THREE.Vector3>();
-  scene.updateWorldMatrix(true, true);
-  scene.traverse((obj) => {
-    const match = /^mixamorig:?(.+)$/.exec(obj.name);
-    if (!match) return;
-    anchors.set(match[1], obj.getWorldPosition(new THREE.Vector3()));
-  });
+  // Mount points for the armour rig, derived from the body's own MEASURED
+  // bounding box rather than from its skeleton.
+  //
+  // Reading the skeleton was the obvious approach and it does not work on
+  // this asset: the mesh geometry is authored at 0.018 units tall while the
+  // bones sit at Mixamo centimetre scale (a sternum at y=127), reconciled
+  // only through the skin's inverse bind matrices. Since this pipeline
+  // deliberately swaps SkinnedMesh for plain Mesh (see SKINNING_UNRELIABLE
+  // below), those two spaces never get reconciled and every plate rendered
+  // ~70x too large and far above the camera. Measured numbers, not a guess:
+  // trueHeight 0.0181, scale 96.7, bone y 127.69.
+  //
+  // The box, by contrast, is the one measurement this file already trusts
+  // for height. Deriving from it means the rig fits ANY body asset whose
+  // proportions are human, and the half-span term is what makes it correct
+  // for a T-pose specifically — the previous hardcoded attempt assumed
+  // arms-down and put the forearm guards beside the hips.
+  const width = box0.max.x - box0.min.x;
+  const depth = box0.max.z - box0.min.z;
+  const halfSpan = (width / 2) * (CANONICAL_BODY_HEIGHT / trueHeight);
+  const halfDepth = (depth / 2) * (CANONICAL_BODY_HEIGHT / trueHeight);
+  const bodyY = (fraction: number) => CANONICAL_FEET_Y + CANONICAL_BODY_HEIGHT * fraction;
+  // In a T-pose the box's X extent IS the arm span, so shoulder/elbow/wrist
+  // fall at known fractions along it. A relaxed-arms asset collapses these
+  // toward the body, which is the correct behaviour rather than a failure.
+  const armed = halfSpan > CANONICAL_BODY_HEIGHT * 0.22;
+  const shoulderX = armed ? halfSpan * 0.22 : CANONICAL_BODY_HEIGHT * 0.105;
+  const anchors = new Map<string, THREE.Vector3>([
+    ["Hips", new THREE.Vector3(0, bodyY(0.53), 0)],
+    ["Spine", new THREE.Vector3(0, bodyY(0.6), 0)],
+    ["Spine1", new THREE.Vector3(0, bodyY(0.68), 0)],
+    ["Spine2", new THREE.Vector3(0, bodyY(0.74), 0)],
+    ["Neck", new THREE.Vector3(0, bodyY(0.83), 0)],
+    ["Head", new THREE.Vector3(0, bodyY(0.9), 0)],
+    ["LeftArm", new THREE.Vector3(-shoulderX, bodyY(0.81), 0)],
+    ["RightArm", new THREE.Vector3(shoulderX, bodyY(0.81), 0)],
+    ["LeftForeArm", new THREE.Vector3(armed ? -halfSpan * 0.58 : -shoulderX, bodyY(armed ? 0.805 : 0.66), 0)],
+    ["RightForeArm", new THREE.Vector3(armed ? halfSpan * 0.58 : shoulderX, bodyY(armed ? 0.805 : 0.66), 0)],
+    ["LeftHand", new THREE.Vector3(armed ? -halfSpan * 0.87 : -shoulderX, bodyY(armed ? 0.8 : 0.52), 0)],
+    ["RightHand", new THREE.Vector3(armed ? halfSpan * 0.87 : shoulderX, bodyY(armed ? 0.8 : 0.52), 0)],
+    ["LeftHandMiddle1", new THREE.Vector3(armed ? -halfSpan * 0.97 : -shoulderX, bodyY(armed ? 0.8 : 0.47), 0)],
+    ["RightHandMiddle1", new THREE.Vector3(armed ? halfSpan * 0.97 : shoulderX, bodyY(armed ? 0.8 : 0.47), 0)],
+    ["LeftUpLeg", new THREE.Vector3(-CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.5), 0)],
+    ["RightUpLeg", new THREE.Vector3(CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.5), 0)],
+    ["LeftLeg", new THREE.Vector3(-CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.28), 0)],
+    ["RightLeg", new THREE.Vector3(CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.28), 0)],
+    ["LeftFoot", new THREE.Vector3(-CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.04), 0)],
+    ["RightFoot", new THREE.Vector3(CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.04), 0)],
+    ["LeftToeBase", new THREE.Vector3(-CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.01), halfDepth * 0.6)],
+    ["RightToeBase", new THREE.Vector3(CANONICAL_BODY_HEIGHT * 0.05, bodyY(0.01), halfDepth * 0.6)],
+  ]);
 
   const suitMeshes: THREE.Mesh[] = [];
   scene.traverse((obj) => {
@@ -269,7 +307,12 @@ export function GltfSuitModel({
       neutral: rawGeometry,
     });
     const material = surfaces[build.underlayer] ?? surfaces.FABRIC;
-    const rim = new THREE.MeshBasicMaterial({ color: colorPrimary, transparent: true, opacity: xray ? 0.16 : 0.07, side: THREE.BackSide, toneMapped: false, depthWrite: false });
+    // An unlit accent-coloured shell over the whole body reads as a wash,
+    // not an edge: at 7% it was tinting every surface underneath it purple
+    // and cancelling the palette. Halved, and it now only survives at all
+    // because a thin edge highlight genuinely helps separate the silhouette
+    // from a near-black background.
+    const rim = new THREE.MeshBasicMaterial({ color: colorPrimary, transparent: true, opacity: xray ? 0.16 : 0.035, side: THREE.BackSide, toneMapped: false, depthWrite: false });
     const rimClones: THREE.Mesh[] = [];
     for (const mesh of result.suitMeshes) {
       mesh.material = material;
@@ -316,8 +359,8 @@ export function GltfSuitModel({
           decal, not the mesh. */}
       {!rawGeometry ? (
         <>
-          <mesh position={[0, ESTIMATED_CHEST_Y + 0.04, ESTIMATED_HALF_DEPTH + 0.055]}>
-            <planeGeometry args={[0.115, 0.115]} />
+          <mesh position={[0, ESTIMATED_CHEST_Y + 0.012, ESTIMATED_HALF_DEPTH + 0.078]}>
+            <planeGeometry args={[0.062, 0.062]} />
             <meshBasicMaterial map={emblemTexture} transparent opacity={xray ? 0.5 : 0.95} toneMapped={false} depthWrite={false} />
           </mesh>
           <mesh position={[0, ESTIMATED_CHEST_Y, -ESTIMATED_HALF_DEPTH]} rotation={[0, Math.PI, 0]}>

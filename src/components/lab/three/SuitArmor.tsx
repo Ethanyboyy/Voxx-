@@ -51,20 +51,35 @@ interface Mount {
 }
 
 const MOUNTS: Record<ArmorSlot, Mount> = {
-  collar: { bone: "Neck", offset: [0, -0.03, 0], size: [0.1, 0.03, 0.075], radius: 0.02, bulkAxis: "depth" },
-  chest: { bone: "Spine2", offset: [0, 0.02, 0.075], size: [0.115, 0.11, 0.025], radius: 0.026, bulkAxis: "depth" },
-  backpack: { bone: "Spine1", offset: [0, 0.06, -0.095], size: [0.095, 0.125, 0.035], radius: 0.028, bulkAxis: "depth" },
-  shoulderL: { bone: "LeftArm", offset: [0, 0.03, 0], size: [0.058, 0.05, 0.058], radius: 0.028, bulkAxis: "all" },
-  shoulderR: { bone: "RightArm", offset: [0, 0.03, 0], size: [0.058, 0.05, 0.058], radius: 0.028, bulkAxis: "all" },
-  // Between elbow and wrist, aligned to the forearm — correct in any pose.
-  forearmL: { bone: "LeftForeArm", toBone: "LeftHand", along: 0.55, size: [0.035, 0.035, 0.07], radius: 0.015, bulkAxis: "depth", alignToBone: true },
-  forearmR: { bone: "RightForeArm", toBone: "RightHand", along: 0.55, size: [0.035, 0.035, 0.07], radius: 0.015, bulkAxis: "depth", alignToBone: true },
-  belt: { bone: "Hips", offset: [0, 0.02, 0.012], size: [0.1, 0.026, 0.07], radius: 0.013, bulkAxis: "depth" },
-  thighL: { bone: "LeftUpLeg", toBone: "LeftLeg", along: 0.5, size: [0.048, 0.048, 0.08], radius: 0.02, bulkAxis: "depth", alignToBone: true },
-  thighR: { bone: "RightUpLeg", toBone: "RightLeg", along: 0.5, size: [0.048, 0.048, 0.08], radius: 0.02, bulkAxis: "depth", alignToBone: true },
-  shinL: { bone: "LeftLeg", toBone: "LeftFoot", along: 0.45, size: [0.04, 0.04, 0.085], radius: 0.016, bulkAxis: "depth", alignToBone: true },
-  shinR: { bone: "RightLeg", toBone: "RightFoot", along: 0.45, size: [0.04, 0.04, 0.085], radius: 0.016, bulkAxis: "depth", alignToBone: true },
+  // Fitted, not bulky. The first pass that actually rendered was oversized
+  // across the board — a chest plate the width of the torso, forearm blocks
+  // wider than the arms inside them — and the figure read as a toy in armour
+  // rather than a person wearing a technical garment. Armour that fits is
+  // narrower than the body part it covers is deep, and stands off it by
+  // millimetres, not centimetres.
+  collar: { bone: "Neck", offset: [0, -0.018, 0.008], size: [0.062, 0.026, 0.058], radius: 0.014, bulkAxis: "depth" },
+  chest: { bone: "Spine2", offset: [0, 0.012, 0.072], size: [0.078, 0.082, 0.018], radius: 0.02, bulkAxis: "depth" },
+  backpack: { bone: "Spine1", offset: [0, 0.055, -0.082], size: [0.062, 0.088, 0.022], radius: 0.018, bulkAxis: "depth" },
+  shoulderL: { bone: "LeftArm", offset: [-0.008, 0.022, 0], size: [0.044, 0.038, 0.044], radius: 0.02, bulkAxis: "all" },
+  shoulderR: { bone: "RightArm", offset: [0.008, 0.022, 0], size: [0.044, 0.038, 0.044], radius: 0.02, bulkAxis: "all" },
+  forearmL: { bone: "LeftForeArm", toBone: "LeftHand", along: 0.5, size: [0.03, 0.03, 0.062], radius: 0.012, bulkAxis: "depth", alignToBone: true },
+  forearmR: { bone: "RightForeArm", toBone: "RightHand", along: 0.5, size: [0.03, 0.03, 0.062], radius: 0.012, bulkAxis: "depth", alignToBone: true },
+  belt: { bone: "Hips", offset: [0, 0.022, 0.012], size: [0.086, 0.02, 0.062], radius: 0.01, bulkAxis: "depth" },
+  thighL: { bone: "LeftUpLeg", toBone: "LeftLeg", along: 0.45, size: [0.045, 0.045, 0.07], radius: 0.016, bulkAxis: "depth", alignToBone: true },
+  thighR: { bone: "RightUpLeg", toBone: "RightLeg", along: 0.45, size: [0.045, 0.045, 0.07], radius: 0.016, bulkAxis: "depth", alignToBone: true },
+  shinL: { bone: "LeftLeg", toBone: "LeftFoot", along: 0.46, size: [0.036, 0.036, 0.072], radius: 0.013, bulkAxis: "depth", alignToBone: true },
+  shinR: { bone: "RightLeg", toBone: "RightFoot", along: 0.46, size: [0.036, 0.036, 0.072], radius: 0.013, bulkAxis: "depth", alignToBone: true },
+  kneeL: { bone: "LeftLeg", offset: [0, 0, 0.032], size: [0.032, 0.03, 0.018], radius: 0.012, bulkAxis: "all" },
+  kneeR: { bone: "RightLeg", offset: [0, 0, 0.032], size: [0.032, 0.03, 0.018], radius: 0.012, bulkAxis: "all" },
+  gloveL: { bone: "LeftHand", toBone: "LeftHandMiddle1", along: 0.9, size: [0.032, 0.026, 0.042], radius: 0.012, bulkAxis: "all", alignToBone: true },
+  gloveR: { bone: "RightHand", toBone: "RightHandMiddle1", along: 0.9, size: [0.032, 0.026, 0.042], radius: 0.012, bulkAxis: "all", alignToBone: true },
+  bootL: { bone: "LeftFoot", toBone: "LeftToeBase", along: 0.5, size: [0.042, 0.042, 0.058], radius: 0.014, bulkAxis: "all", alignToBone: true },
+  bootR: { bone: "RightFoot", toBone: "RightToeBase", along: 0.5, size: [0.042, 0.042, 0.058], radius: 0.014, bulkAxis: "all", alignToBone: true },
 };
+
+/** Slots drawn in the suit's TRIM colour rather than its plate colour — the
+ *  third pigment that stops the figure reading as one swatch. */
+const TRIM_SLOTS = new Set<ArmorSlot>(["gloveL", "gloveR", "bootL", "bootR", "collar", "belt"]);
 
 /** Visor proportions per mask style — a wide recon lens and a narrow
  *  tactical slit are genuinely different faces, not a renamed same one. */
@@ -127,7 +142,9 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
         // not sprout a forearm guard at its feet.
         if (!from) return null;
         const to = mount.toBone ? anchors.get(mount.toBone) : undefined;
-        const material = materials[piece.surface] ?? materials.FABRIC;
+        const material = TRIM_SLOTS.has(piece.slot)
+          ? (materials.TRIM ?? materials[piece.surface] ?? materials.FABRIC)
+          : (materials[piece.surface] ?? materials.FABRIC);
 
         const [sx, sy, sz] = mount.size;
         const size: [number, number, number] =
@@ -175,47 +192,88 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
       })}
 
 
-      {/* Helmet and visor. A suit without a head covering is a person in
-          leggings — this is the single element that makes the figure read as
-          wearing equipment rather than being an undressed mannequin. The
-          shell is plate material so it shares the suit's construction, and
-          the lens is the only genuinely reflective surface on the body,
-          which is what draws the eye to the head where it belongs. */}
+      {/* Helmet. Built as separate components rather than one sphere: a
+          shell, a brow ridge that casts a shadow into the visor recess, a
+          jaw guard, and the lens itself set INTO a housing. A single squashed
+          sphere over a face reads as a bike helmet; the recess and the brow
+          are what make it read as engineered headgear. */}
       {anchors.get("Head") ? (
-        <group position={anchors.get("Head")!.clone().add(new THREE.Vector3(0, 0.055, 0)).toArray()}>
-          <mesh material={materials[build.plate] ?? materials.ARMOR} castShadow>
-            <sphereGeometry args={[0.105, 32, 24]} />
+        <group position={anchors.get("Head")!.clone().add(new THREE.Vector3(0, 0.028, 0.004)).toArray()}>
+          {/* Shell — slightly ovoid, wider than tall, so it reads as a helmet
+              over a head rather than a ball. */}
+          <mesh material={materials[build.plate] ?? materials.ARMOR} castShadow scale={[1.0, 1.12, 1.08]}>
+            <sphereGeometry args={[0.093, 32, 24]} />
           </mesh>
-          {/* Visor — a lens set INTO the shell, sized by the suit's own mask
-              style so recon and combat suits do not wear the same face. */}
-          <mesh position={[0, 0.012, 0.062]} scale={LENS_SCALE[maskLensStyle]}>
+
+          {/* Brow ridge — the single element that gives the head a readable
+              front. Without it the helmet has no orientation from any angle. */}
+          <mesh
+            position={[0, 0.036, 0.062]}
+            rotation={[0.35, 0, 0]}
+            material={materials.TRIM ?? materials[build.plate] ?? materials.ARMOR}
+            castShadow
+          >
+            <boxGeometry args={[0.125, 0.02, 0.04]} />
+          </mesh>
+
+          {/* Jaw / breather guard. */}
+          <mesh position={[0, -0.05, 0.062]} material={materials.TRIM ?? materials.ELASTOMER} castShadow>
+            <boxGeometry args={[0.07, 0.038, 0.036]} />
+          </mesh>
+
+          {/* Visor housing — the lens sits inside this, not on the surface. */}
+          <mesh position={[0, 0.0, 0.05]} scale={LENS_SCALE[maskLensStyle]} material={materials.ELASTOMER ?? materials.FABRIC}>
             <sphereGeometry args={[0.062, 24, 18]} />
+          </mesh>
+
+          {/* Lens. The only genuinely reflective surface on the figure, which
+              is what draws the eye to the head where it belongs. */}
+          <mesh position={[0, 0.0, 0.056]} scale={LENS_SCALE[maskLensStyle]}>
+            <sphereGeometry args={[0.057, 24, 18]} />
             <meshPhysicalMaterial
               color={accent}
               emissive={new THREE.Color(accent)}
-              emissiveIntensity={0.5 * build.emissiveStrength}
-              metalness={0.9}
-              roughness={0.08}
+              emissiveIntensity={0.42 * build.emissiveStrength}
+              metalness={0.95}
+              roughness={0.06}
               clearcoat={1}
-              clearcoatRoughness={0.05}
+              clearcoatRoughness={0.04}
               toneMapped={false}
             />
           </mesh>
         </group>
       ) : null}
 
+      {/* Torso seam. One construction line down the sternum, in trim, so the
+          body has a visible panel boundary instead of being one continuous
+          surface. Deliberately singular — scattering lines over the model is
+          what makes procedural suits look decorated rather than built. */}
+      {anchors.get("Spine") && anchors.get("Neck") ? (
+        <mesh
+          position={anchors
+            .get("Spine")!
+            .clone()
+            .lerp(anchors.get("Neck")!, 0.5)
+            .add(new THREE.Vector3(0, 0, 0.072))
+            .toArray()}
+          material={materials.TRIM ?? materials.ELASTOMER}
+        >
+          <boxGeometry args={[0.009, 0.2, 0.007]} />
+        </mesh>
+      ) : null}
+
       {/* Powered chest core — only on builds whose archetype actually
           specifies one, so it means "this suit carries a power system"
           rather than being decoration every suit wears. */}
       {build.chestCore && anchors.get("Spine2") ? (
-        <group position={anchors.get("Spine2")!.clone().add(new THREE.Vector3(0, 0.02, 0.105)).toArray()}>
+        <group position={anchors.get("Spine2")!.clone().add(new THREE.Vector3(0, 0.012, 0.098)).toArray()}>
           <mesh material={coreMaterial}>
-            <cylinderGeometry args={[0.024, 0.024, 0.012, 24]} />
+            <cylinderGeometry args={[0.017, 0.017, 0.009, 24]} />
           </mesh>
           {/* Housing ring in plate material — the core is mounted INTO
               something, not floating on the chest. */}
           <mesh rotation={[Math.PI / 2, 0, 0]} material={materials[build.plate] ?? materials.ARMOR}>
-            <torusGeometry args={[0.034, 0.008, 12, 28]} />
+            <torusGeometry args={[0.024, 0.005, 12, 28]} />
           </mesh>
         </group>
       ) : null}
@@ -246,34 +304,19 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
  * still reads far darker than an experimental one; it just stops being a
  * hole in the frame.
  */
-function liftForRender(hex: string, targetL: number, targetS: number): THREE.Color {
+function paletteColor(hex: string, l: number, sat: number, hueShift = 0): THREE.Color {
   const c = new THREE.Color(hex);
   const hsl = { h: 0, s: 0, l: 0 };
   c.getHSL(hsl);
-  // The stored hue is the suit's identity and is kept. Lightness is SET, not
-  // floored: flooring produced a 5% spread between the underlayer and its
-  // plates, which is invisible, and the whole figure read as one moulded
-  // plastic object. Layers have to differ by a value a viewer can actually
-  // see before roughness and clearcoat have anything to differentiate.
-  return new THREE.Color().setHSL(hsl.h, targetS, targetL);
+  // Hue wraps; a shift past 1 must come back round rather than clamp, or a
+  // suit near the top of the wheel loses its shift entirely.
+  const h = (hsl.h + hueShift + 1) % 1;
+  // Lightness and saturation are SET from the palette, not floored from the
+  // stored colour. Flooring gave every layer a near-identical value and the
+  // whole figure read as one moulded object; the palette is what makes the
+  // shell, the body and the trim three distinguishable pigments.
+  return new THREE.Color().setHSL(h, sat, l);
 }
-
-/**
- * Value and saturation per surface class.
- *
- * Plates are markedly lighter AND less saturated than the underlayer they
- * are mounted on: real hard components are pigmented differently from woven
- * material, and desaturating them is what stops a suit reading as one colour
- * applied to a whole mannequin. The spread here is deliberately large — it
- * is the single biggest lever on whether the render looks constructed.
- */
-const SURFACE_VALUE: Record<string, { l: number; s: number }> = {
-  FABRIC: { l: 0.085, s: 0.4 },
-  TECHNICAL_FABRIC: { l: 0.11, s: 0.32 },
-  ELASTOMER: { l: 0.07, s: 0.3 },
-  ARMOR: { l: 0.3, s: 0.16 },
-  METAL: { l: 0.46, s: 0.08 },
-};
 
 export function buildSurfaceMaterials(
   build: SuitBuild,
@@ -283,26 +326,24 @@ export function buildSurfaceMaterials(
 ): Record<string, THREE.Material> {
   const classes = new Set<string>([build.underlayer, build.plate, "ELASTOMER", "ARMOR", "FABRIC"]);
   const out: Record<string, THREE.Material> = {};
+  const p = build.palette;
 
   for (const cls of classes) {
     const spec = SURFACE_SPECS[cls as keyof typeof SURFACE_SPECS];
     if (!spec) continue;
 
     if (options.neutral) {
-      // QA clay: geometry only. Roughness still varies by class so the
-      // FORM of each component stays readable without any colour identity.
+      // QA clay: geometry only. Roughness still varies by class so the FORM
+      // of each component stays readable with all colour identity removed.
       out[cls] = new THREE.MeshPhysicalMaterial({ color: "#8b8794", metalness: 0.02, roughness: spec.roughness });
       continue;
     }
 
-    // Plates sit above the underlayer's value so panel boundaries read as a
-    // material change, not only as a geometry seam. The floor is what makes
-    // the suit visible at all; the tint is what separates its layers.
-    const value = SURFACE_VALUE[cls] ?? SURFACE_VALUE.FABRIC;
-    // A class serving as this suit's underlayer sits at its own darker
-    // value; the same class used as a plate elsewhere reads lighter.
     const isUnderlayer = cls === build.underlayer;
-    const base = liftForRender(colorSecondary, isUnderlayer ? value.l * 0.8 : value.l, value.s);
+    const base = isUnderlayer
+      ? paletteColor(colorSecondary, p.underlayerL, p.underlayerS)
+      : paletteColor(colorSecondary, p.plateL, p.plateS, p.plateHueShift);
+
     out[cls] = new THREE.MeshPhysicalMaterial({
       color: base,
       metalness: spec.metalness,
@@ -310,12 +351,31 @@ export function buildSurfaceMaterials(
       clearcoat: spec.clearcoat,
       clearcoatRoughness: spec.clearcoatRoughness,
       sheen: spec.sheen,
-      sheenColor: new THREE.Color(colorPrimary),
-      sheenRoughness: 0.6,
+      // Neutral, NOT the accent. Sheen is how woven material catches light
+      // at a grazing angle; tinting it with the suit's accent turned it into
+      // a hue injection that washed the entire body purple and defeated the
+      // palette regardless of what the base colour resolved to.
+      sheenColor: new THREE.Color("#e8e6ea"),
+      sheenRoughness: 0.55,
       transparent: options.xray === true,
       opacity: options.xray ? 0.2 : 1,
     });
   }
+
+  // The third pigment. Gloves, boots, collar, belt, brow and seams wear this
+  // rather than the plate colour, which is what stops a suit reading as one
+  // swatch at three brightnesses.
+  out.TRIM = options.neutral
+    ? new THREE.MeshPhysicalMaterial({ color: "#77737f", metalness: 0.02, roughness: 0.6 })
+    : new THREE.MeshPhysicalMaterial({
+        color: paletteColor(colorPrimary, p.trimL, p.trimS, p.trimHueShift),
+        metalness: 0.25,
+        roughness: 0.42,
+        clearcoat: 0.5,
+        clearcoatRoughness: 0.35,
+        transparent: options.xray === true,
+        opacity: options.xray ? 0.2 : 1,
+      });
 
   return out;
 }

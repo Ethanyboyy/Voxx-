@@ -20,10 +20,10 @@ import { GltfSuitModel, GltfErrorBoundary } from "@/components/lab/three/GltfSui
 function StudioEnvironment() {
   return (
     <Environment resolution={512} background={false}>
-      <Lightformer form="rect" intensity={2.4} color="#fdfbf7" position={[3, 3.5, 4]} scale={[3.5, 5, 1]} target={[0, 0, 0]} />
-      <Lightformer form="rect" intensity={0.8} color="#eef1fb" position={[-4, 1, 2.5]} scale={[3, 4, 1]} target={[0, 0, 0]} />
-      <Lightformer form="rect" intensity={1.5} color="#f5f0ff" position={[0, 2, -4]} scale={[4, 3, 1]} target={[0, 0, 0]} />
-      <Lightformer form="ring" intensity={0.4} color="#e9e4f5" position={[0, -3, 1]} scale={3} target={[0, 0, 0]} />
+      <Lightformer form="rect" intensity={1.5} color="#fffdf8" position={[3, 3.5, 4]} scale={[3.5, 5, 1]} target={[0, 0, 0]} />
+      <Lightformer form="rect" intensity={0.5} color="#eef0f4" position={[-4, 1, 2.5]} scale={[3, 4, 1]} target={[0, 0, 0]} />
+      <Lightformer form="rect" intensity={0.9} color="#f4f5f8" position={[0, 2, -4]} scale={[4, 3, 1]} target={[0, 0, 0]} />
+      <Lightformer form="ring" intensity={0.4} color="#e8e9ee" position={[0, -3, 1]} scale={3} target={[0, 0, 0]} />
     </Environment>
   );
 }
@@ -122,8 +122,8 @@ export function HolographicSuitCanvas({
       // same at the highlight regardless of its roughness.
       gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping }}
     >
-      <color attach="background" args={["#050212"]} />
-      <fog attach="fog" args={["#050212", 5, 11]} />
+      <color attach="background" args={["#07070a"]} />
+      <fog attach="fog" args={["#07070a", 5.5, 12]} />
 
       <StudioEnvironment />
 
@@ -133,15 +133,15 @@ export function HolographicSuitCanvas({
           flattens exactly the shading that distinguishes a woven panel from
           a hard plate — the plates have to earn their highlights from a real
           key light, not from a uniform wash. */}
-      <ambientLight intensity={0.14} color="#e8ecff" />
+      <ambientLight intensity={0.09} color="#f2f2f4" />
 
       {/* Key: high and to camera-right, shadow-casting. This is the light
           that reads the armour — its shadow is what proves a chest plate
           stands off the torso rather than being painted on it. */}
       <directionalLight
         position={[3.2, 4.2, 3]}
-        intensity={2.3}
-        color="#fff6ea"
+        intensity={1.3}
+        color="#fffaf2"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0008}
@@ -150,18 +150,18 @@ export function HolographicSuitCanvas({
 
       {/* Fill: cool, opposite the key, low. Keeps the shadow side readable
           without erasing the form the key just described. */}
-      <directionalLight position={[-3.6, 1.2, 2.2]} intensity={0.5} color="#cdd8ff" />
+      <directionalLight position={[-3.6, 1.2, 2.2]} intensity={0.32} color="#dfe6f2" />
 
       {/* Rim from behind: separates the silhouette from the background.
           Strong enough to draw the shoulder and helmet edge, which is what
           makes the figure sit IN the scene instead of on it. */}
-      <directionalLight position={[-1.2, 2.6, -4]} intensity={2.1} color="#e6e0ff" />
-      <directionalLight position={[2.2, 1.4, -3.4]} intensity={1.5} color="#bcd4ff" />
+      <directionalLight position={[-1.2, 2.6, -4]} intensity={1.15} color="#f0f2f8" />
+      <directionalLight position={[2.2, 1.4, -3.4]} intensity={0.7} color="#dce6f5" />
 
       {/* Accent rim — identity tint only, dimmed further (not removed) when
           effects are off so the studio lighting is doing the real work. */}
-      <pointLight position={[-2, 0.5, -2]} intensity={showEffects ? 0.5 : 0.12} color="#38bdf8" />
-      <pointLight position={[0, -1.6, 1.5]} intensity={showEffects ? 0.35 : 0.08} color="#a855f7" />
+      <pointLight position={[-2, 0.5, -2]} intensity={showEffects ? 0.28 : 0.06} color="#38bdf8" />
+      <pointLight position={[0, -1.6, 1.5]} intensity={showEffects ? 0.2 : 0.04} color="#a855f7" />
 
       {/* Platform up-light — the suit's own hero color, cast upward from
           floor level, so the pedestal genuinely reads as the light source
