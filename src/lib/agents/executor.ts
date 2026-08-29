@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
+import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
 
@@ -39,6 +40,20 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
   // for {{stepN.output}} references below. Seeded from the persisted rows so
   // it is correct on a fresh run and on one resumed after a permission pause,
   // then extended in-place as this pass completes further steps.
+  // What this run is FOR. A run started by the supervisor carries its
+  // objective into every tool call, so work performed in pursuit of a goal
+  // (research especially) retains that goal on its results — the same
+  // association a human gets by scoping the work manually. Resolved once per
+  // pass; an ad hoc run without a supervisor simply has no context.
+  let executionContext: ToolExecutionContext | undefined;
+  if (run.supervisorRunId) {
+    const supRun = await db.supervisorRun.findUnique({
+      where: { id: run.supervisorRunId },
+      select: { objectiveId: true },
+    });
+    if (supRun) executionContext = { objectiveId: supRun.objectiveId };
+  }
+
   const stepOutputs = new Map<number, unknown>();
   for (const step of run.steps) {
     if (step.status !== "COMPLETED" || !step.output) continue;
@@ -148,7 +163,7 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     let succeeded = false;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const result = await tool.execute(userId, parsedInput.data as never);
+        const result = await tool.execute(userId, parsedInput.data as never, executionContext);
         await db.agentStep.update({
           where: { id: step.id },
           data: { status: "COMPLETED", output: JSON.stringify(result.output), completedAt: new Date(), retryCount: attempt },

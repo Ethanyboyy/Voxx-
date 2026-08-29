@@ -15,6 +15,22 @@ export interface ToolResult {
   summary: string;
 }
 
+/**
+ * Where an execution came from — what the run was actually FOR. Threaded by
+ * the executor into every tool call so work a supervised run performs in
+ * pursuit of an objective retains that objective, exactly as work a human
+ * scopes by hand does. Without this, agent-run research produced evidence
+ * that fell back to "merely recent" instead of "gathered for this goal",
+ * while the identical query through the API kept its origin.
+ *
+ * Optional and additive: tools that don't care ignore it, and direct callers
+ * (tests, future non-agent invokers) may omit it entirely.
+ */
+export interface ToolExecutionContext {
+  /** The Objective behind the SupervisorRun that spawned this AgentRun, when there is one. */
+  objectiveId?: string;
+}
+
 export interface ToolDefinition<TInput = unknown> {
   /** Stable key, e.g. "memory.search" — referenced by AgentStep.toolName. */
   name: string;
@@ -26,7 +42,7 @@ export interface ToolDefinition<TInput = unknown> {
   inputSchema: z.ZodType<TInput>;
   /** True for tools that reach an external service — governs how the planner should treat failures (see stub tools). */
   isExternal?: boolean;
-  execute: (userId: string, input: TInput) => Promise<ToolResult>;
+  execute: (userId: string, input: TInput, context?: ToolExecutionContext) => Promise<ToolResult>;
 }
 
 export type AnyToolDefinition = ToolDefinition<never>;

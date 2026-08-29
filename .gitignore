@@ -54,3 +54,8 @@ next-env.d.ts
 
 # vox local data
 /data/
+
+# Agent skill installs (add-skill / plugin tooling) — tooling config, not VOX source
+.agents/
+.claude/
+skills-lock.json

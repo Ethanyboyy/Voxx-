@@ -9,6 +9,8 @@ import { buildPlanningContext, renderPlanningContext } from "@/lib/agents/contex
 import { EVIDENCE_RELATION, EXPERIENCE_PROVENANCE, isEvidenceRelation } from "@/lib/cognition/experience";
 import { recordResearchExperience } from "@/lib/research/learning";
 import { listMemoriesByProvenance } from "@/lib/memory/service";
+import { grantPermission } from "@/lib/permissions/service";
+import { executeRun } from "@/lib/agents/executor";
 import { createTestUser } from "./helpers";
 
 /**
@@ -301,6 +303,44 @@ describe("Unscoped work behaves exactly as before", () => {
     const context = await buildPlanningContext(userId, "unscoped lookup");
     expect(context.observations.length).toBeGreaterThan(0);
     expect(context.observations.every((o) => o.objectiveLinked === false)).toBe(true);
+  });
+
+  it("threads the objective from a supervised run into tool-driven research", async () => {
+    // The executor path — the one place research runs with nobody passing an
+    // objectiveId by hand. A SupervisorRun carries its objective into every
+    // tool call, so what an agent researches while pursuing a goal is that
+    // goal's evidence, exactly as if the user had scoped the query manually.
+    const user = await createTestUser();
+    await grantPermission(user.id, "research.web", "ANALYZE");
+    const objective = await createObjective({ userId: user.id, title: "Tool-driven evidence objective." });
+
+    const supRun = await db.supervisorRun.create({
+      data: { userId: user.id, objectiveId: objective.id, status: "RUNNING", maxIterations: 1 },
+    });
+    const run = await db.agentRun.create({
+      data: { userId: user.id, supervisorRunId: supRun.id, objective: objective.title, status: "PLANNING" },
+    });
+    await db.agentStep.create({
+      data: {
+        runId: run.id,
+        order: 0,
+        description: "Research the topic",
+        toolName: "research.run",
+        input: JSON.stringify({ query: "tool-driven research query" }),
+        requiredLevel: "ANALYZE",
+      },
+    });
+
+    const finished = await executeRun(user.id, run.id);
+    expect(finished.status).toBe("COMPLETED");
+
+    const items = await db.researchItem.findMany({ where: { userId: user.id, query: "tool-driven research query" } });
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.objectiveId === objective.id)).toBe(true);
+
+    // And the finding is retrievable as this objective's own evidence.
+    const context = await buildPlanningContext(user.id, "tool-driven", { objectiveId: objective.id });
+    expect(context.observations.some((o) => o.objectiveLinked)).toBe(true);
   });
 
   it("recognises evidence relations and nothing else", () => {
