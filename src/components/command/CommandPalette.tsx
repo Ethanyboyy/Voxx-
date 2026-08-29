@@ -149,7 +149,7 @@ export function CommandPalette() {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 px-4 pt-24 backdrop-blur-sm">
       <button type="button" aria-label="Close" className="absolute inset-0" onClick={() => setOpen(false)} />
-      <div className="vox-panel-in glow-border relative w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] glass-panel-strong shadow-[var(--shadow-ambient-lg)]">
+      <div className="vox-panel-in glow-border relative w-full max-w-lg overflow-hidden rounded-[var(--radius-lg)] instrument-float instrument-sheen shadow-[var(--shadow-ambient-lg)]">
         <input
           ref={inputRef}
           value={query}

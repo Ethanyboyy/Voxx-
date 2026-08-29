@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default function ContentPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Execution</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Content</h1>
-      <p className="mt-1.5 text-sm text-muted">A content-creation workspace isn&apos;t built in VOX yet.</p>
+      <RoomHeader
+        system="Execution"
+        title="Content"
+        description={<>A content-creation workspace isn&apos;t built in VOX yet.</>}
+      />
 
       <GlassPanel className="mt-6 p-6">
         <EmptyState

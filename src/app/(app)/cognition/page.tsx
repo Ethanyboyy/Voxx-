@@ -3,6 +3,7 @@ import { getCognitiveProfile } from "@/lib/cognition/profile";
 import { listPatterns } from "@/lib/cognition/patterns";
 import { listHypotheses } from "@/lib/cognition/service";
 import { CognitionClient } from "@/components/cognition/CognitionClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function CognitionPage() {
   const user = await getCurrentUser();
@@ -16,12 +17,11 @@ export default async function CognitionPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
-      <p className="vox-eyebrow">Cognition</p>
-      <h1 className="vox-headline mt-1 text-2xl text-foreground">Observed patterns, not diagnoses</h1>
-      <p className="mt-1.5 text-sm text-muted">
-        Observed behavior and derived hypotheses — never diagnoses. Estimates and trends are explicit inferences,
-        clearly separated from raw observation counts.
-      </p>
+      <RoomHeader
+        system="Cognition"
+        title="Observed patterns, not diagnoses"
+        description={<>Observed behavior and derived hypotheses — never diagnoses. Estimates and trends are explicit inferences, clearly separated from raw observation counts.</>}
+      />
       <CognitionClient
         profile={profile}
         patterns={patterns.map((p) => ({ ...p, firstDetectedAt: p.firstDetectedAt.toISOString(), lastDetectedAt: p.lastDetectedAt.toISOString() }))}

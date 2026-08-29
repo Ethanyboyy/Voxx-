@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listObjectives, listOpportunities, scoreOpportunity, explainOpportunityScore } from "@/lib/objectives/service";
 import { listSupervisorRuns } from "@/lib/supervisor/service";
 import { ObjectivesClient } from "@/components/objectives/ObjectivesClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function ObjectivesPage() {
   const user = await getCurrentUser();
@@ -15,12 +16,11 @@ export default async function ObjectivesPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Intelligence</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Objectives</h1>
-      <p className="mt-1.5 text-sm text-muted">
-        What VOX is actually helping you pursue right now. Real objectives, real opportunities — nothing here is
-        invented progress or a fake revenue number.
-      </p>
+      <RoomHeader
+        system="Intelligence"
+        title="Objectives"
+        description={<>What VOX is actually helping you pursue right now. Real objectives, real opportunities — nothing here is invented progress or a fake revenue number.</>}
+      />
 
       <ObjectivesClient
         objectives={objectives.map((o) => ({

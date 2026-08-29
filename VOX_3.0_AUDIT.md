@@ -147,9 +147,6 @@ of the failure mode §21 warns about. TODO/FIXME markers: effectively zero.
   persists a `MemoryEmbedding` row keyed by the candidate id, so ranking
   Outcome ids would write embedding rows describing memories that do not
   exist.
-- **Research and Lab still do not write to Memory or the Graph.** The
-  supervisor path now does; extending the same pattern to those domains is
-  the next integration step.
 - **Chaining references `output` only,** not `summary` — `summary` is not
   persisted on `AgentStep` and would break on resume.
 

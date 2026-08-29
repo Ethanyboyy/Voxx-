@@ -79,11 +79,11 @@ export function TrainingCenterClient({
       <HolographicPanel className="p-4">
         <LabSectionLabel>Training Progress</LabSectionLabel>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="glass-panel px-3 py-2">
+          <div className="instrument instrument-sheen px-3 py-2">
             <p className="lab-mono text-2xl font-bold text-accent">{progress.totalSessions}</p>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total sessions</p>
           </div>
-          <div className="glass-panel px-3 py-2">
+          <div className="instrument instrument-sheen px-3 py-2">
             <p className="lab-mono text-2xl font-bold text-accent">{categoryEntries.length}</p>
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Categories trained</p>
           </div>

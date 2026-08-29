@@ -7,6 +7,7 @@ import { getResearchProvider } from "@/lib/research";
 import { listConnections } from "@/lib/connections/service";
 import { db } from "@/lib/db";
 import { SettingsClient } from "@/components/settings/SettingsClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 async function probeDatabase(): Promise<boolean> {
   try {
@@ -33,9 +34,11 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Configuration</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">System Configuration</h1>
-      <p className="mt-1.5 text-sm text-muted">Account, system health, permissions, and your data.</p>
+      <RoomHeader
+        system="Configuration"
+        title="System Configuration"
+        description={<>Account, system health, permissions, and your data.</>}
+      />
 
       <SettingsClient
         userEmail={user.email}

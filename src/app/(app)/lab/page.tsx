@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getLabDashboard, getRecentFailures } from "@/lib/lab/dashboard";
 import { HolographicPanel, LabSectionLabel, LabStatusBadge, UnitStat } from "@/components/lab/primitives";
 import { HolographicModel } from "@/components/lab/HolographicModel";
+import { listMemoriesByProvenance } from "@/lib/memory/service";
+import { EXPERIENCE_PROVENANCE } from "@/lib/cognition/experience";
+import { ConfidenceBadge } from "@/components/ui/Badge";
 import type {
   ArmorLevel,
   MaskLensStyle,
@@ -53,9 +56,14 @@ const PARTICLE_POSITIONS = [
 export default async function LabHomePage() {
   const user = await getCurrentUser();
   if (!user) return null;
-  const [dashboard, recentFailures] = await Promise.all([
+  const [dashboard, recentFailures, labFindings] = await Promise.all([
     getLabDashboard(user.id),
     getRecentFailures(user.id),
+    listMemoriesByProvenance(
+      user.id,
+      [EXPERIENCE_PROVENANCE.LAB_EXPERIMENT_RESULT, EXPERIENCE_PROVENANCE.LAB_SIMULATION_RUN],
+      4
+    ),
   ]);
   const c = dashboard.counts;
   const featured = dashboard.featuredSuit;
@@ -174,6 +182,43 @@ export default async function LabHomePage() {
         </HolographicPanel>
       </div>
 
+      {/* ---- What the Lab has taught VOX ----
+           Lab work used to end at its own records. Experiment results and
+           simulation runs now write into the same memory and knowledge graph
+           the rest of VOX plans from, so this panel shows the Lab's actual
+           contribution to what VOX knows — labelled by kind, because a
+           simulated figure and a recorded experiment carry different weight. */}
+      {labFindings.length > 0 ? (
+        <HolographicPanel corners className="p-4">
+          <div className="flex items-center justify-between gap-3">
+            <LabSectionLabel>What the Lab has taught VOX</LabSectionLabel>
+            <Link href="/memory" className="vox-press vox-unit hover:text-foreground">
+              Memory
+            </Link>
+          </div>
+          <p className="mt-1.5 text-xs text-muted">
+            Written into VOX&apos;s memory and knowledge graph. Simulation entries are model outputs, not physical
+            measurements.
+          </p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {labFindings.map((f) => (
+              <li key={f.id} className="instrument-well px-3.5 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="vox-unit">
+                    {f.provenance === EXPERIENCE_PROVENANCE.LAB_SIMULATION_RUN ? "simulation" : "experiment"}
+                  </span>
+                  {/* The memory's own stored confidence, shown as-is. Mapping
+                      it back onto the Lab's vocabulary would imply a
+                      verification step that never happened. */}
+                  <ConfidenceBadge confidence={f.confidence} />
+                </div>
+                <p className="mt-1.5 line-clamp-4 text-xs leading-relaxed text-muted">{f.content}</p>
+              </li>
+            ))}
+          </ul>
+        </HolographicPanel>
+      ) : null}
+
       {/* ---- Warnings: only rendered when real FAILED runs exist ---- */}
       {recentFailures.length > 0 ? (
         <HolographicPanel className="border-danger/40 bg-danger-muted p-4">
@@ -248,9 +293,11 @@ export default async function LabHomePage() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="glass-panel px-3 py-2">
-      <p className="lab-mono text-2xl font-bold text-accent">{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+    <div className="instrument-well px-3 py-2">
+      {/* Tabular figures: a counter whose digits reflow as it changes reads
+          as a web page, not an instrument. */}
+      <p className="vox-readout text-2xl font-bold text-accent">{value}</p>
+      <p className="vox-unit mt-0.5">{label}</p>
     </div>
   );
 }

@@ -61,7 +61,7 @@ export function HolographicInspectionTree({ nodes }: { nodes: InspectionNode[] }
           <TreeRow key={n.id} node={n} depth={0} selected={selected} onSelect={setSelected} />
         ))}
       </div>
-      <div className="glass-panel p-4">
+      <div className="instrument instrument-sheen p-4">
         {selected ? (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

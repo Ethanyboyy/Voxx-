@@ -95,7 +95,7 @@ export default async function KnowledgePage() {
         <LabSectionLabel>Confidence Framework</LabSectionLabel>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {CONFIDENCE_ORDER.map((c) => (
-            <div key={c} className="glass-panel flex flex-col gap-2 p-3">
+            <div key={c} className="instrument instrument-sheen flex flex-col gap-2 p-3">
               <ConfidenceTag confidence={c} />
               <p className="text-xs text-muted">{CONFIDENCE_DESCRIPTION[c]}</p>
             </div>

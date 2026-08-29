@@ -35,7 +35,7 @@ export function MobileBottomNav({ onMore }: { onMore: () => void }) {
 
   return (
     <nav
-      className="glass-panel-strong fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around rounded-none border-x-0 border-b-0 md:hidden"
+      className="instrument-float fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around rounded-none border-x-0 border-b-0 md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="Primary"
     >

@@ -84,15 +84,15 @@ export function GoalsClient({ goals: initialGoals, projects }: { goals: GoalItem
   return (
     <div className="mt-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Total goals</p>
           <p className="vox-headline mt-1 text-2xl">{goals.length}</p>
         </div>
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Active</p>
           <p className="vox-headline mt-1 text-2xl">{active}</p>
         </div>
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Achieved</p>
           <p className="vox-headline mt-1 text-2xl">
             {goals.length > 0 ? `${Math.round((achieved / goals.length) * 100)}%` : "—"}
@@ -134,7 +134,7 @@ export function GoalsClient({ goals: initialGoals, projects }: { goals: GoalItem
             {goals.map((g) => (
               <li
                 key={g.id}
-                className="vox-lift glass-panel flex flex-col gap-2 rounded-[var(--radius-sm)] p-3 sm:flex-row sm:items-center"
+                className="vox-lift instrument instrument-sheen flex flex-col gap-2 rounded-[var(--radius-sm)] p-3 sm:flex-row sm:items-center"
               >
                 <div className="flex-1">
                   <p className="text-sm text-foreground">{g.title}</p>

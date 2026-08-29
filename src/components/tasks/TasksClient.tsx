@@ -123,15 +123,15 @@ export function TasksClient({ tasks: initialTasks, projects }: { tasks: TaskItem
   return (
     <div className="mt-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Open</p>
           <p className="vox-headline mt-1 text-2xl">{openTasks.length}</p>
         </div>
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Completed</p>
           <p className="vox-headline mt-1 text-2xl">{doneTasks.length}</p>
         </div>
-        <div className="glass-panel px-4 py-3.5">
+        <div className="instrument instrument-sheen px-4 py-3.5">
           <p className="vox-eyebrow">Total</p>
           <p className="vox-headline mt-1 text-2xl">{tasks.length}</p>
         </div>
@@ -169,7 +169,7 @@ export function TasksClient({ tasks: initialTasks, projects }: { tasks: TaskItem
         ) : (
           <ul className="flex flex-col gap-2">
             {tasks.map((t) => (
-              <li key={t.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
+              <li key={t.id} className="vox-lift instrument instrument-sheen rounded-[var(--radius-sm)] p-3">
                 <div className="flex items-center gap-3">
                   <input type="checkbox" checked={t.status === "DONE"} onChange={() => toggleTask(t)} />
                   <div className="flex-1">

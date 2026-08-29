@@ -24,6 +24,9 @@ import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MountainHero } from "@/components/dashboard/MountainHero";
 import { BrainPreview } from "@/components/dashboard/BrainPreview";
+import { InstrumentPanel, PanelHeader, Readout, Meter } from "@/components/ui/Instrument";
+import { listMemoriesByProvenance } from "@/lib/memory/service";
+import { OBSERVATION_PROVENANCES, EXPERIENCE_PROVENANCE } from "@/lib/cognition/experience";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -50,6 +53,7 @@ export default async function DashboardPage() {
     opportunities,
     brainState,
     economicOverview,
+    observations,
   ] = await Promise.all([
     listProjects(user.id, "ACTIVE"),
     listTasks(user.id),
@@ -71,6 +75,7 @@ export default async function DashboardPage() {
     listOpportunities(user.id),
     getBrainState(user.id),
     getEconomicOverview(user.id),
+    listMemoriesByProvenance(user.id, OBSERVATION_PROVENANCES, 4),
   ]);
 
   const displayName = user.name?.trim() || user.email.split("@")[0];
@@ -94,8 +99,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      {/* greeting header */}
-      <div className="glass-panel relative overflow-hidden p-6 sm:p-8" style={{ minHeight: 168 }}>
+      {/* greeting header — the one raised instrument on this screen, so the
+          depth hierarchy has a clear top */}
+      <div
+        className="instrument-raised instrument-sheen vox-registration relative overflow-hidden p-6 sm:p-8"
+        style={{ minHeight: 168 }}
+      >
         <MountainHero />
         <div className="relative flex h-full flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
@@ -118,7 +127,7 @@ export default async function DashboardPage() {
 
       {/* Command Center — what VOX is actually doing right now, no fabricated state */}
       <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-4">
-        <Link href="/objectives" className="vox-lift glass-panel block px-4 py-3.5">
+        <Link href="/objectives" className="vox-lift instrument instrument-sheen block px-4 py-3.5">
           <p className="vox-eyebrow">Current Objective</p>
           {activeObjective ? (
             <>
@@ -134,7 +143,7 @@ export default async function DashboardPage() {
           )}
         </Link>
 
-        <Link href="/objectives" className="vox-lift glass-panel block px-4 py-3.5">
+        <Link href="/objectives" className="vox-lift instrument instrument-sheen block px-4 py-3.5">
           <p className="vox-eyebrow">Next Best Action</p>
           {nextBestAction?.action ? (
             <>
@@ -154,7 +163,7 @@ export default async function DashboardPage() {
           )}
         </Link>
 
-        <Link href="/proposals" className="vox-lift glass-panel block px-4 py-3.5">
+        <Link href="/proposals" className="vox-lift instrument instrument-sheen block px-4 py-3.5">
           <p className="vox-eyebrow">Pending Approval</p>
           <p className="mt-1.5 text-sm font-semibold text-foreground">
             {pendingProposals.length > 0
@@ -166,7 +175,7 @@ export default async function DashboardPage() {
           </p>
         </Link>
 
-        <Link href="/activity" className="vox-lift glass-panel block px-4 py-3.5">
+        <Link href="/activity" className="vox-lift instrument instrument-sheen block px-4 py-3.5">
           <p className="vox-eyebrow">Recent Activity</p>
           {recentEvents.length > 0 ? (
             <ul className="mt-1.5 flex flex-col gap-0.5">
@@ -194,6 +203,43 @@ export default async function DashboardPage() {
         <StatCard label="Open Tasks" value={String(openTasksSorted.length)} sub="across projects" />
         <StatCard label="Connections" value={`${connectedCount}/${connections.length}`} sub="services live" />
       </div>
+
+      {/* What VOX has learned — real research findings and Lab results, the
+          same records the planner reads. Each is labelled with its kind, so
+          a retrieved claim and a simulated figure can never be mistaken for
+          each other or for an established fact. */}
+      <InstrumentPanel className="mt-4 pb-5" registration>
+        <PanelHeader
+          eyebrow="Observation log"
+          title="What VOX has learned"
+          description="Research findings and Lab results written into memory. These are the same entries a planning pass reads."
+          actions={
+            <Link href="/memory" className="vox-press vox-unit hover:text-foreground">
+              Memory
+            </Link>
+          }
+        />
+        <div className="mt-3 px-5">
+          {observations.length > 0 ? (
+            <ul className="flex flex-col gap-2.5">
+              {observations.map((o) => (
+                <li key={o.id} className="instrument-well px-3.5 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="vox-unit">{observationKind(o.provenance)}</span>
+                    <ConfidenceBadge confidence={o.confidence} />
+                  </div>
+                  <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted">{o.content}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              title="Nothing observed yet"
+              description="Run a research query or record a Lab result and it will appear here — and in the next plan VOX makes."
+            />
+          )}
+        </div>
+      </InstrumentPanel>
 
       {/* Today's Plan / Recent Conversations / Vox Mind */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -508,20 +554,35 @@ export default async function DashboardPage() {
 
 function StatCard({ label, value, sub, progress }: { label: string; value: string; sub: string; progress?: number | null }) {
   return (
-    <div className="glass-panel px-4 py-3.5">
-      <p className="vox-eyebrow">{label}</p>
-      <p className="vox-headline mt-1.5 text-2xl">{value}</p>
+    <div className="instrument instrument-sheen px-4 py-3.5">
+      <Readout label={label} value={value} note={sub} />
       {progress != null ? (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-accent to-accent-2"
-            style={{ width: `${Math.round(progress * 100)}%` }}
-          />
-        </div>
+        // Meter takes value/max rather than a percentage so it cannot be
+        // handed a ratio that overstates the underlying data, and renders an
+        // empty track — not a zero bar — when nothing was reported.
+        <Meter className="mt-2.5" value={progress} max={1} />
       ) : null}
-      <p className="mt-1 text-xs text-muted">{sub}</p>
     </div>
   );
+}
+
+/**
+ * Names the kind of observation from its provenance. Deliberately explicit
+ * per source rather than a generic "observation": a reader must be able to
+ * tell a retrieved web claim from a simulated model output at a glance,
+ * because those two carry very different weight.
+ */
+function observationKind(provenance: string | null): string {
+  switch (provenance) {
+    case EXPERIENCE_PROVENANCE.RESEARCH_FINDINGS:
+      return "research";
+    case EXPERIENCE_PROVENANCE.LAB_EXPERIMENT_RESULT:
+      return "lab experiment";
+    case EXPERIENCE_PROVENANCE.LAB_SIMULATION_RUN:
+      return "lab simulation";
+    default:
+      return "observation";
+  }
 }
 
 function QuickAction({ href, label, icon }: { href: string; label: string; icon: ReactNode }) {

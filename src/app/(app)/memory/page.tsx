@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { listMemories } from "@/lib/memory/service";
 import { MemoryClient } from "@/components/memory/MemoryClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function MemoryPage() {
   const user = await getCurrentUser();
@@ -10,11 +11,11 @@ export default async function MemoryPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
-      <p className="vox-eyebrow">Memory</p>
-      <h1 className="vox-headline mt-1 text-2xl text-foreground">Everything VOX remembers</h1>
-      <p className="mt-1.5 text-sm text-muted">
-        Everything VOX has stored about you. Inspect, edit, or delete anything — nothing here is hidden.
-      </p>
+      <RoomHeader
+        system="Memory"
+        title="Everything VOX remembers"
+        description={<>Everything VOX has stored about you. Inspect, edit, or delete anything — nothing here is hidden.</>}
+      />
       <MemoryClient
         initialMemories={memories.map((m) => ({
           ...m,

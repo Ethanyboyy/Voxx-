@@ -72,6 +72,45 @@
   --core-1: #a855f7;
   --core-2: #38bdf8;
   --core-3: #6366f1;
+
+  /* ---- Instrument layer ----
+     The material vocabulary shared by every room in VOX. The goal is a
+     precision instrument housing, not a glowing UI: depth comes from
+     stacked translucency, a hairline of light catching a milled edge, and
+     honest shadow. Emission is rationed — it marks live signal and nothing
+     else, so when something does glow it means something.
+
+     Depth reads as four tiers, and a screen should use them in order
+     rather than making everything float:
+       well   — recessed, things sit INSIDE it (canvases, scroll regions)
+       panel  — the resting surface for content
+       raised — an instrument lifted off the panel (primary readouts)
+       float  — overlays, inspectors, modals, command surfaces */
+  --instrument-well: rgba(6, 7, 9, 0.72);
+  --instrument-panel: linear-gradient(168deg, rgba(28, 30, 36, 0.62) 0%, rgba(14, 15, 19, 0.72) 58%, rgba(10, 11, 14, 0.78) 100%);
+  --instrument-raised: linear-gradient(168deg, rgba(38, 41, 49, 0.68) 0%, rgba(19, 20, 25, 0.76) 55%, rgba(12, 13, 17, 0.82) 100%);
+  --instrument-float: linear-gradient(168deg, rgba(34, 36, 44, 0.9) 0%, rgba(16, 17, 22, 0.94) 100%);
+
+  /* The hairline of light along a top edge. This single detail does most of
+     the work of making a surface read as a physical object. */
+  --edge-light: rgba(255, 255, 255, 0.14);
+  --edge-light-strong: rgba(255, 255, 255, 0.22);
+  /* The shadowed underside, so a panel has a bottom as well as a top. */
+  --edge-shade: rgba(0, 0, 0, 0.5);
+
+  --instrument-border: rgba(255, 255, 255, 0.09);
+  --instrument-border-lit: rgba(255, 255, 255, 0.18);
+
+  /* Atmosphere: the room the instruments sit in. Very low contrast on
+     purpose — it should register as air and distance, not as decoration. */
+  --atmosphere-near: rgba(168, 85, 247, 0.055);
+  --atmosphere-far: rgba(56, 189, 248, 0.04);
+  --atmosphere-floor: rgba(99, 102, 241, 0.05);
+  --measure-line: rgba(255, 255, 255, 0.028);
+
+  /* Bloom is a signal channel, not a finish. Applied to live values only. */
+  --bloom-signal: 0 0 18px -4px rgba(56, 189, 248, 0.55);
+  --bloom-active: 0 0 22px -4px rgba(168, 85, 247, 0.5);
 }
 
 :root[data-theme="light"] {
@@ -115,6 +154,24 @@
   --core-waiting: #7a7191;
   --core-success: #16a34a;
   --core-error: #dc2626;
+
+  /* Instrument layer, daylight. Same construction inverted: light comes from
+     above, so the hairline moves to the underside and the shade to the top. */
+  --instrument-well: rgba(236, 232, 244, 0.7);
+  --instrument-panel: linear-gradient(168deg, rgba(255, 255, 255, 0.86) 0%, rgba(250, 248, 254, 0.72) 100%);
+  --instrument-raised: linear-gradient(168deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 246, 253, 0.86) 100%);
+  --instrument-float: linear-gradient(168deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 248, 254, 0.95) 100%);
+  --edge-light: rgba(255, 255, 255, 0.9);
+  --edge-light-strong: rgba(255, 255, 255, 1);
+  --edge-shade: rgba(28, 20, 40, 0.14);
+  --instrument-border: rgba(28, 20, 40, 0.1);
+  --instrument-border-lit: rgba(28, 20, 40, 0.18);
+  --atmosphere-near: rgba(124, 58, 237, 0.05);
+  --atmosphere-far: rgba(2, 132, 199, 0.04);
+  --atmosphere-floor: rgba(79, 70, 229, 0.04);
+  --measure-line: rgba(28, 20, 40, 0.035);
+  --bloom-signal: 0 0 16px -6px rgba(2, 132, 199, 0.4);
+  --bloom-active: 0 0 18px -6px rgba(124, 58, 237, 0.35);
 }
 
 @theme inline {
@@ -211,6 +268,186 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-ambient-md);
+}
+
+/* The instrument layer lives in the `components` layer so Tailwind's
+   utilities (which come later in the cascade) still win. Without this, the
+   `position: relative` these classes need for their pseudo-elements silently
+   overrides a `fixed`/`absolute`/`sticky` utility on the same element — which
+   is exactly what broke the mobile bottom nav and the popover menus the first
+   time round. Anything positioned by a utility is still a positioned
+   ancestor, so the sheen and registration ticks keep working. */
+@layer components {
+  /* ---------- Instrument layer ----------
+     One material vocabulary for the whole environment. Dashboard, Brain, Lab,
+     Research, Memory and the Graph are different rooms in the same building,
+     not different products, so they are built from these same parts.
+
+     The construction of every instrument surface is identical: a translucent
+     body, a hairline of light along the top edge, a shaded underside, and an
+     ambient shadow whose spread matches the tier's height off the page. Only
+     the depth changes. */
+
+  .instrument {
+    position: relative;
+    background: var(--instrument-panel);
+    border: 1px solid var(--instrument-border);
+    border-radius: var(--radius-md);
+    box-shadow:
+      0 1px 0 0 var(--edge-light) inset,
+      0 -1px 0 0 var(--edge-shade) inset,
+      0 12px 32px -18px rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+  }
+
+  /* A well is a surface things sit INSIDE — a 3D canvas, a scroll region, a
+     feed. It is darker than its surroundings and its highlight is on the
+     bottom edge, which is what makes it read as recessed rather than raised. */
+  .instrument-well {
+    position: relative;
+    background: var(--instrument-well);
+    border: 1px solid var(--instrument-border);
+    border-radius: var(--radius-md);
+    box-shadow:
+      0 1px 2px 0 var(--edge-shade) inset,
+      0 -1px 0 0 var(--edge-light) inset;
+  }
+
+  /* The primary readout on a screen. Lifted further, lit slightly harder.
+     Use once or twice per screen — if everything is raised, nothing is. */
+  .instrument-raised {
+    position: relative;
+    background: var(--instrument-raised);
+    border: 1px solid var(--instrument-border-lit);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 1px 0 0 var(--edge-light-strong) inset,
+      0 -1px 0 0 var(--edge-shade) inset,
+      0 28px 64px -28px rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+  }
+
+  /* Overlays, inspectors, modals, command surfaces — the layer nearest the
+     viewer, so it is the most opaque and casts the longest shadow. */
+  .instrument-float {
+    position: relative;
+    background: var(--instrument-float);
+    border: 1px solid var(--instrument-border-lit);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 1px 0 0 var(--edge-light-strong) inset,
+      0 40px 90px -30px rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(28px) saturate(150%);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+  }
+
+  /* A single specular sweep across the top of a surface, as if one light
+     source were above and to the left. Purely material — it does not move,
+     because a highlight that animates on its own reads as an effect. */
+  .instrument-sheen::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      118deg,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.02) 22%,
+      transparent 46%
+    );
+  }
+
+  /* Atmosphere — the depth behind the instruments. Sits at the page level so
+     every room shares one horizon, which is most of what makes the app feel
+     like a single environment rather than a set of screens. */
+  .vox-atmosphere {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background-image:
+      radial-gradient(ellipse 70% 50% at 18% -8%, var(--atmosphere-near), transparent 62%),
+      radial-gradient(ellipse 55% 45% at 88% 4%, var(--atmosphere-far), transparent 66%),
+      radial-gradient(ellipse 90% 40% at 50% 108%, var(--atmosphere-floor), transparent 70%);
+  }
+
+  /* A fine measurement grid, faded out toward the edges. This is the
+     "laboratory" register: it says the space is calibrated. Kept below the
+     threshold where it becomes a visible pattern. */
+  .vox-measure-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--measure-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--measure-line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black 20%, transparent 85%);
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black 20%, transparent 85%);
+  }
+
+  /* Technical readout type. Tabular figures matter: without them a changing
+     number reflows its own digits, which instantly reads as a web page rather
+     than an instrument. */
+  .vox-readout {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* The unit or axis label beside a readout — deliberately small and quiet so
+     the value keeps the hierarchy. */
+  .vox-unit {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* Hairline rule with a lit start, like a machined seam. Used to separate
+     bands within an instrument without spending a full border. */
+  .vox-seam {
+    height: 1px;
+    border: 0;
+    background: linear-gradient(90deg, var(--instrument-border-lit), var(--instrument-border) 18%, transparent 92%);
+  }
+
+  /* Emission, rationed. `is-live` is the ONLY thing that glows: a value that
+     is currently changing, or a system that is currently doing something.
+     Anything decorative that borrowed this would spend the signal. */
+  .vox-signal {
+    box-shadow: var(--bloom-signal);
+  }
+  .vox-signal-active {
+    box-shadow: var(--bloom-active);
+  }
+
+  /* Corner ticks — a registration mark, not a frame. Two corners only, so it
+     reads as an alignment guide rather than a sci-fi border. */
+  .vox-registration::before,
+  .vox-registration::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: var(--instrument-border-lit);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .vox-registration::before {
+    top: 7px;
+    left: 7px;
+    border-width: 1px 0 0 1px;
+  }
+  .vox-registration::after {
+    bottom: 7px;
+    right: 7px;
+    border-width: 0 1px 1px 0;
+  }
 }
 
 /* ---------- Luxury motion & typography (VOX 2.0 experience layer) ---------- */

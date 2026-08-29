@@ -69,7 +69,7 @@ export function AccountMenu({ userEmail }: { userEmail: string }) {
       </button>
 
       {open ? (
-        <div role="menu" className="glass-panel-strong absolute right-0 z-50 mt-2 w-64 shadow-[var(--shadow-ambient-lg)]">
+        <div role="menu" className="instrument-float instrument-sheen absolute right-0 z-50 mt-2 w-64 shadow-[var(--shadow-ambient-lg)]">
           <div className="border-b border-border px-4 py-3">
             <p className="truncate text-sm font-medium text-foreground">{userEmail}</p>
           </div>

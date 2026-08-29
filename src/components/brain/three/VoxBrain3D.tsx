@@ -39,7 +39,7 @@ function ToolbarIconButton({ label, onClick, active, children }: { label: string
       type="button"
       onClick={onClick}
       className={cn(
-        "glass-panel-strong flex flex-col items-center gap-1 rounded-[var(--radius-sm)] border border-transparent px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground",
+        "instrument-float flex flex-col items-center gap-1 rounded-[var(--radius-sm)] border border-transparent px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground",
         active && "border-accent bg-accent-muted text-accent"
       )}
     >
@@ -384,7 +384,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             scrolls, never wraps, so these two are reachable with zero
             interaction on any viewport. */}
         <div className="pointer-events-auto flex items-center gap-2">
-          <div className="glass-panel-strong flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5">
+          <div className="instrument-float flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5">
             <span className="vox-eyebrow text-[10px] text-foreground">VOX Brain</span>
             <BrainStateBadge state={brain.state} detail={brain.detail} />
           </div>
@@ -394,10 +394,10 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search the Brain…"
-              className="glass-panel-strong w-28 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none sm:w-36"
+              className="instrument-float w-28 rounded-full px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:w-56 focus:outline-none sm:w-36"
             />
             {searchResults.length > 0 ? (
-              <div className="glass-panel-strong absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-[var(--radius-sm)] p-1">
+              <div className="instrument-float absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-[var(--radius-sm)] p-1">
                 {searchResults.map((n) => (
                   <button key={n.id} type="button" onClick={() => selectFromSearch(n)} className="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-xs text-foreground hover:bg-surface-hover">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[SYSTEM_OF[n.type]] }} />
@@ -414,7 +414,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             brain gets its vertical space back; unchanged wrap layout on
             desktop, where there's room. */}
         <div className="pointer-events-auto flex flex-nowrap items-center gap-2 overflow-x-auto scrollbar-none sm:flex-wrap sm:overflow-visible">
-          <button type="button" onClick={resetToWholeBrain} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+          <button type="button" onClick={resetToWholeBrain} className="instrument-float lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Whole Brain
           </button>
 
@@ -423,7 +423,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             onClick={() => setXray((v) => !v)}
             className={cn(
               "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
-              xray ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+              xray ? "border-accent bg-accent-muted text-accent" : "instrument-float border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             X-Ray
@@ -434,13 +434,13 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             onClick={() => setClipEnabled((v) => !v)}
             className={cn(
               "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
-              clipEnabled ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+              clipEnabled ? "border-accent bg-accent-muted text-accent" : "instrument-float border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             Cutaway
           </button>
           {clipEnabled ? (
-            <div className="glass-panel-strong flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1">
+            <div className="instrument-float flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1">
               {(["x", "y", "z"] as ClipAxis[]).map((axis) => (
                 <button
                   key={axis}
@@ -455,16 +455,16 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             </div>
           ) : null}
 
-          <div className="glass-panel-strong flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5">
+          <div className="instrument-float flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5">
             <span className="lab-mono text-[11px] uppercase tracking-wider text-muted-foreground">Dissect</span>
             <input type="range" min={0} max={100} value={Math.round(explodeAmount * 100)} onChange={(e) => setExplodeAmount(Number(e.target.value) / 100)} className="w-20 accent-[var(--accent)]" />
           </div>
 
-          <button type="button" onClick={() => setShowActivity((v) => !v)} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+          <button type="button" onClick={() => setShowActivity((v) => !v)} className="instrument-float lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
             Activity
           </button>
           {onSwitchToStructural ? (
-            <button type="button" onClick={onSwitchToStructural} className="glass-panel-strong lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
+            <button type="button" onClick={onSwitchToStructural} className="instrument-float lab-mono shrink-0 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground">
               Structural View
             </button>
           ) : null}
@@ -475,7 +475,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
               onClick={() => setShowSystems((v) => !v)}
               className={cn(
                 "lab-mono shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors",
-                showSystems ? "border-accent bg-accent-muted text-accent" : "glass-panel-strong border-transparent text-muted-foreground hover:text-foreground"
+                showSystems ? "border-accent bg-accent-muted text-accent" : "instrument-float border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
               Systems
@@ -579,7 +579,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
           overlays as the default way to see what's selected and what's
           happening. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:gap-2.5 sm:p-4">
-        <div className="pointer-events-auto glass-panel-strong flex max-w-full items-center gap-1 overflow-x-auto scrollbar-none rounded-full px-3 py-1.5">
+        <div className="pointer-events-auto instrument-float flex max-w-full items-center gap-1 overflow-x-auto scrollbar-none rounded-full px-3 py-1.5">
           {breadcrumbSegments.map((seg, i) => (
             <span key={i} className="flex shrink-0 items-center gap-1">
               {i > 0 ? <ChevronRightIcon /> : null}

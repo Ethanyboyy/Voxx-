@@ -26,7 +26,7 @@ export function BrainInspectorCard({
 }) {
   if (!node) {
     return (
-      <div className="glass-panel-strong flex w-full flex-col gap-1.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
+      <div className="instrument-float instrument-sheen flex w-full flex-col gap-1.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
         <span className="vox-eyebrow text-[10px]">Inspector</span>
         <p className="text-xs text-muted">Select anything in the graph to inspect it here.</p>
       </div>
@@ -34,7 +34,7 @@ export function BrainInspectorCard({
   }
 
   return (
-    <div className="glass-panel-strong flex w-full flex-col gap-2.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
+    <div className="instrument-float instrument-sheen flex w-full flex-col gap-2.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SYSTEM_COLOR[SYSTEM_OF[node.type]] }} />
         <span className="vox-eyebrow truncate text-[10px]">{node.label}</span>

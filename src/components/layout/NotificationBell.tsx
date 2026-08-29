@@ -86,7 +86,7 @@ export function NotificationBell() {
       </button>
 
       {open ? (
-        <div className="glass-panel-strong absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] shadow-[var(--shadow-ambient-lg)]">
+        <div className="instrument-float instrument-sheen absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] shadow-[var(--shadow-ambient-lg)]">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <span className="text-sm font-semibold text-foreground">Notifications</span>
             {unreadCount > 0 ? (

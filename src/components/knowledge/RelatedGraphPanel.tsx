@@ -52,7 +52,7 @@ export function RelatedGraphPanel({ related }: { related: RelatedNode[] }) {
               return (
                 <li
                   key={r.node.id}
-                  className="vox-lift glass-panel flex items-center justify-between rounded-[var(--radius-sm)] p-3"
+                  className="vox-lift instrument instrument-sheen flex items-center justify-between rounded-[var(--radius-sm)] p-3"
                 >
                   {href ? (
                     <Link href={href} className="flex flex-1 items-center gap-2 hover:opacity-80">

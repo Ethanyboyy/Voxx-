@@ -73,10 +73,11 @@ export interface HolographicPanelProps extends HTMLAttributes<HTMLDivElement> {
   scanline?: boolean;
 }
 
-/** Base panel surface for the Laboratory — reuses VOX's existing glass-panel
- * system (already purple/cyan on near-black, matching the requested palette)
- * with optional corner brackets + scanline for a more "equipment inspection"
- * feel on hero surfaces. */
+/** Base panel surface for the Laboratory — the same instrument material used
+ * everywhere else in VOX, with optional corner brackets and scanline for the
+ * "equipment under inspection" register on hero surfaces. The Lab's identity
+ * comes from those additions and from what it displays, not from a separate
+ * surface treatment. */
 export function HolographicPanel({
   className,
   variant = "default",
@@ -88,8 +89,12 @@ export function HolographicPanel({
   return (
     <div
       className={cn(
-        "relative",
-        variant === "strong" ? "glass-panel-strong" : "glass-panel",
+        "relative instrument-sheen",
+        // The Lab is a room in VOX, not a separate product, so its panels are
+        // built from the same instrument material as everything else — the
+        // corner frames and scanlines below are what make it read as an
+        // engineering bay rather than a different design language.
+        variant === "strong" ? "instrument-float" : "instrument",
         variant === "glow" && "glow-border",
         corners && "lab-corner-frame",
         className

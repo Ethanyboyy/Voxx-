@@ -82,7 +82,7 @@ export function BrainActivityFeedCard({
   const recent = events.slice(0, 4);
 
   return (
-    <div className="glass-panel-strong flex w-full flex-col gap-2.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
+    <div className="instrument-float flex w-full flex-col gap-2.5 rounded-[var(--radius-md)] p-3.5 sm:w-72">
       <div className="flex items-center justify-between">
         <span className="vox-eyebrow text-[10px]">Activity Feed</span>
         <span className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">

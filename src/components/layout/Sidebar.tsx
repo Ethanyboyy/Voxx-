@@ -237,7 +237,7 @@ export function Sidebar({
 
   return (
     <nav
-      className={cn("glass-panel-strong flex h-full w-64 shrink-0 flex-col gap-1 rounded-none border-y-0 border-l-0 p-3 sm:w-60", className)}
+      className={cn("instrument flex h-full w-64 shrink-0 flex-col gap-1 rounded-none border-y-0 border-l-0 p-3 sm:w-60", className)}
       aria-label="Primary"
     >
       <div className="mb-4 flex items-center gap-2.5 px-2 pt-1 pb-3">

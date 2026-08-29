@@ -1,8 +1,9 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
 
+/** The resting content surface, built from the shared instrument material. */
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("glass-panel", className)} {...props} />;
+  return <div className={cn("instrument instrument-sheen", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

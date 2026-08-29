@@ -5,6 +5,7 @@ import { listPatterns } from "@/lib/cognition/patterns";
 import { listAgentRuns } from "@/lib/agents/service";
 import { listResearchItems } from "@/lib/research/service";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function AnalyticsPage() {
   const user = await getCurrentUser();
@@ -52,12 +53,11 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Insight</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Analytics</h1>
-      <p className="mt-1.5 text-sm text-muted">
-        Every number here is computed directly from your real data — nothing is a fabricated score. A metric shows
-        &quot;not enough data&quot; rather than guessing when there isn&apos;t enough history behind it.
-      </p>
+      <RoomHeader
+        system="Insight"
+        title="Analytics"
+        description={<>Every number here is computed directly from your real data — nothing is a fabricated score. A metric shows &quot;not enough data&quot; rather than guessing when there isn&apos;t enough history behind it.</>}
+      />
 
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Task completion rate" value={completionRate !== null ? `${completionRate}%` : "—"} sub={`${doneTasks.length} of ${tasks.length} tasks`} />
@@ -125,7 +125,7 @@ export default async function AnalyticsPage() {
 
 function Metric({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="vox-lift glass-panel px-4 py-3.5">
+    <div className="vox-lift instrument instrument-sheen px-4 py-3.5">
       <p className="vox-eyebrow">{label}</p>
       <p className="vox-headline mt-1.5 text-2xl">{value}</p>
       <p className="mt-1 text-xs text-muted">{sub}</p>

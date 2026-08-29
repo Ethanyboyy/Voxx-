@@ -220,7 +220,7 @@ export function ProjectDetailClient({
             ) : (
               <ul className="flex flex-col gap-2">
                 {tasks.map((t) => (
-                  <li key={t.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
+                  <li key={t.id} className="vox-lift instrument instrument-sheen rounded-[var(--radius-sm)] p-3">
                     <div className="flex items-center gap-3">
                       <input type="checkbox" checked={t.status === "DONE"} onChange={() => toggleTask(t)} />
                       <span className={cn("flex-1 text-sm text-foreground", t.status === "DONE" && "line-through text-muted")}>
@@ -306,7 +306,7 @@ export function ProjectDetailClient({
                 {goals.map((g) => (
                   <li
                     key={g.id}
-                    className="vox-lift glass-panel flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
+                    className="vox-lift instrument instrument-sheen flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
                   >
                     <span className="text-foreground">{g.title}</span>
                     <Badge>{g.status.toLowerCase()}</Badge>
@@ -323,7 +323,7 @@ export function ProjectDetailClient({
                 {decisions.map((d) => (
                   <li
                     key={d.id}
-                    className="vox-lift glass-panel flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
+                    className="vox-lift instrument instrument-sheen flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
                   >
                     <span className="text-foreground">{d.title}</span>
                     <Badge>{d.status.toLowerCase()}</Badge>
@@ -340,7 +340,7 @@ export function ProjectDetailClient({
                 {ideas.map((i) => (
                   <li
                     key={i.id}
-                    className="vox-lift glass-panel flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
+                    className="vox-lift instrument instrument-sheen flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
                   >
                     <span className="text-foreground">{i.title}</span>
                     <Badge>{i.status.toLowerCase()}</Badge>
@@ -357,7 +357,7 @@ export function ProjectDetailClient({
                 {experiments.map((e) => (
                   <li
                     key={e.id}
-                    className="vox-lift glass-panel flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
+                    className="vox-lift instrument instrument-sheen flex items-center justify-between rounded-[var(--radius-sm)] p-3 text-sm"
                   >
                     <span className="text-foreground">{e.hypothesis}</span>
                     <Badge>{e.status.toLowerCase()}</Badge>

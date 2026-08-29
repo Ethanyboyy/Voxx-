@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { listTasks, listProjects } from "@/lib/projects/service";
 import { TasksClient } from "@/components/tasks/TasksClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function TasksPage() {
   const user = await getCurrentUser();
@@ -11,9 +12,11 @@ export default async function TasksPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Execution</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Tasks</h1>
-      <p className="mt-1.5 text-sm text-muted">Every task across every project, in one place.</p>
+      <RoomHeader
+        system="Execution"
+        title="Tasks"
+        description={<>Every task across every project, in one place.</>}
+      />
 
       <TasksClient
         projects={projects.map((p) => ({ id: p.id, name: p.name }))}

@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listConnections } from "@/lib/connections/service";
 import { listProposals } from "@/lib/cognition/proposals";
 import { ConnectionsHubClient } from "@/components/connections/ConnectionsHubClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function ConnectionsPage() {
   const user = await getCurrentUser();
@@ -15,14 +16,11 @@ export default async function ConnectionsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Trust boundary</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Connections</h1>
-      <p className="mt-1.5 max-w-2xl text-sm text-muted">
-        The trust boundary for everything outside VOX. Nothing here is connected to a real account —
-        every connection below is scaffolding: proposing, approving, and granting access all work, but
-        no real credentials exist yet, so every connect attempt ends in &quot;not configured&quot; rather
-        than actually reaching an external service.
-      </p>
+      <RoomHeader
+        system="Trust boundary"
+        title="Connections"
+        description={<>The trust boundary for everything outside VOX. Nothing here is connected to a real account — every connection below is scaffolding: proposing, approving, and granting access all work, but no real credentials exist yet, so every connect attempt ends in &quot;not configured&quot; rather than actually reaching an external service.</>}
+      />
       <ConnectionsHubClient
         initialConnections={connections.map((c) => ({
           catalog: c.catalog,

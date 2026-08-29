@@ -111,7 +111,7 @@ export function LabCommandBar() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="vox-press glass-panel flex items-center gap-2 px-3 py-1.5 text-xs text-muted transition-colors hover:text-foreground"
+        className="vox-press instrument instrument-sheen flex items-center gap-2 px-3 py-1.5 text-xs text-muted transition-colors hover:text-foreground"
       >
         <span aria-hidden="true">◎</span>
         <span>Ask the laboratory…</span>
@@ -123,7 +123,7 @@ export function LabCommandBar() {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-24" onClick={() => setOpen(false)}>
       <div
-        className="glass-panel-strong lab-corner-frame vox-panel-in w-full max-w-xl overflow-hidden shadow-[var(--shadow-ambient-lg)]"
+        className="instrument-float instrument-sheen lab-corner-frame vox-panel-in w-full max-w-xl overflow-hidden shadow-[var(--shadow-ambient-lg)]"
         onClick={(e) => e.stopPropagation()}
       >
         <input

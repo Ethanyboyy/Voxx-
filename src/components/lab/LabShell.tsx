@@ -29,7 +29,7 @@ export function LabShell({ children }: { children: ReactNode }) {
     <InfoModeProvider>
       <div className="lab-grid-bg absolute inset-0 -z-10" />
       <div className="flex min-h-full flex-col">
-        <header className="glass-panel-strong sticky top-0 z-30 mx-4 mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
+        <header className="instrument-float instrument-sheen sticky top-0 z-30 mx-4 mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
           <div className="flex items-center gap-2">
             <span className="lab-mono text-sm font-bold tracking-[0.2em] text-accent">SPIDER-MAN LABORATORY</span>
             <span className="hidden text-[10px] text-muted-foreground sm:inline">v0.1 · Foundation</span>
@@ -41,7 +41,7 @@ export function LabShell({ children }: { children: ReactNode }) {
         </header>
 
         <div className="flex flex-1 gap-4 px-4 pb-4 pt-3">
-          <nav aria-label="Laboratory sections" className="glass-panel hidden w-52 shrink-0 self-start p-2 lg:block">
+          <nav aria-label="Laboratory sections" className="instrument instrument-sheen hidden w-52 shrink-0 self-start p-2 lg:block">
             {SECTIONS.map((s) => {
               const active = pathname === s.href || (s.href !== "/lab" && pathname?.startsWith(s.href));
               return (

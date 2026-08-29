@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { listExperiments } from "@/lib/projects/service";
 import { ExperimentsClient } from "@/components/projects/ExperimentsClient";
+import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function ExperimentsPage() {
   const user = await getCurrentUser();
@@ -10,9 +11,11 @@ export default async function ExperimentsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <p className="vox-eyebrow">Laboratory</p>
-      <h1 className="vox-headline mt-1 text-2xl sm:text-3xl">Experiments</h1>
-      <p className="mt-1.5 text-sm text-muted">Hypotheses you&apos;re testing, and what you learned.</p>
+      <RoomHeader
+        system="Laboratory"
+        title="Experiments"
+        description={<>Hypotheses you&apos;re testing, and what you learned.</>}
+      />
       <ExperimentsClient
         initialExperiments={experiments.map((e) => ({
           ...e,

@@ -69,15 +69,15 @@ export function BudgetAutonomyPanel({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="glass-panel px-3 py-2.5">
+          <div className="instrument instrument-sheen px-3 py-2.5">
             <p className="vox-headline text-xl">{formatUsd(budget.totalSpentUsd)}</p>
             <p className="vox-eyebrow mt-0.5">Total spent</p>
           </div>
-          <div className="glass-panel px-3 py-2.5">
+          <div className="instrument instrument-sheen px-3 py-2.5">
             <p className="vox-headline text-xl">{formatUsd(budget.maxAutonomousSpendUsd)}</p>
             <p className="vox-eyebrow mt-0.5">Autonomous limit</p>
           </div>
-          <div className="glass-panel px-3 py-2.5">
+          <div className="instrument instrument-sheen px-3 py-2.5">
             <p className="vox-headline text-xl">{formatUsd(budget.remainingAutonomousUsd)}</p>
             <p className="vox-eyebrow mt-0.5">Remaining headroom</p>
           </div>

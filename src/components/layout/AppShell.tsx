@@ -6,6 +6,7 @@ import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { AccountMenu } from "@/components/layout/AccountMenu";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { CommandPalette } from "@/components/command/CommandPalette";
+import { Atmosphere } from "@/components/ui/Instrument";
 
 function MenuIcon() {
   return (
@@ -27,10 +28,21 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="relative flex h-screen overflow-hidden">
+      {/* One horizon behind every room. It lives on the shell rather than on
+          each page, which is what makes the Dashboard, the Brain and the Lab
+          feel like places inside a single environment instead of separate
+          screens. Fixed and inert, and BEHIND the columns — the sidebar and
+          panels are translucent, so it reads through them as depth.
+
+          It must not wrap the content: several rooms (the Brain especially)
+          size themselves with h-full against <main>, and an extra layout box
+          in that chain collapses them. */}
+      <Atmosphere className="z-0" />
+
       {/* Desktop: persistent sidebar. Hidden below md — a fixed 224px column
           has no reasonable place on an iPhone-width viewport. */}
-      <div className="hidden md:flex">
+      <div className="relative z-10 hidden md:flex">
         <Sidebar pendingProposalCount={pendingProposalCount} userEmail={userEmail} />
       </div>
 
@@ -54,9 +66,9 @@ export function AppShell({
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <header
-          className="glass-panel-strong flex h-14 shrink-0 items-center gap-3 rounded-none border-x-0 border-t-0 px-4 sm:px-6"
+          className="instrument flex h-14 shrink-0 items-center gap-3 rounded-none border-x-0 border-t-0 px-4 sm:px-6"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
           <button

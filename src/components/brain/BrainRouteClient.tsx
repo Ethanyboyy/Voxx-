@@ -57,12 +57,12 @@ export function BrainRouteClient({ initial }: { initial: BrainPayload }) {
           <button
             type="button"
             onClick={() => chooseView("3D")}
-            className="glass-panel-strong lab-mono pointer-events-auto rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            className="instrument-float lab-mono pointer-events-auto rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
           >
             Enter 3D Brain
           </button>
         ) : (
-          <span className="glass-panel-strong lab-mono pointer-events-auto rounded-full px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="instrument-float lab-mono pointer-events-auto rounded-full px-3 py-1.5 text-[11px] text-muted-foreground">
             3D rendering isn&rsquo;t available in this browser — showing the structural view.
           </span>
         )}

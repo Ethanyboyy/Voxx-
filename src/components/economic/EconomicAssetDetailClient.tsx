@@ -49,15 +49,15 @@ export function EconomicAssetDetailClient({ asset: initial }: { asset: AssetDeta
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="glass-panel px-3 py-2.5">
+        <div className="instrument instrument-sheen px-3 py-2.5">
           <p className="vox-headline text-lg text-success">{formatUsd(asset.totals.totalRevenueUsd)}</p>
           <p className="vox-eyebrow mt-0.5">Revenue</p>
         </div>
-        <div className="glass-panel px-3 py-2.5">
+        <div className="instrument instrument-sheen px-3 py-2.5">
           <p className="vox-headline text-lg text-danger">{formatUsd(asset.totals.totalExpenseUsd)}</p>
           <p className="vox-eyebrow mt-0.5">Expenses</p>
         </div>
-        <div className="glass-panel px-3 py-2.5">
+        <div className="instrument instrument-sheen px-3 py-2.5">
           <p className="vox-headline text-lg">{formatUsd(asset.totals.profitUsd)}</p>
           <p className="vox-eyebrow mt-0.5">Profit</p>
         </div>

@@ -573,7 +573,7 @@ function ObjectiveDetail({
           </p>
         ) : (
           [...opportunities].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity)).map((op) => (
-            <div key={op.id} className="vox-lift glass-panel rounded-[var(--radius-sm)] p-3">
+            <div key={op.id} className="vox-lift instrument instrument-sheen rounded-[var(--radius-sm)] p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">{op.title}</p>

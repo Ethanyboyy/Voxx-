@@ -56,7 +56,7 @@ function formatUsd(amount: number): string {
 
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="glass-panel px-3 py-2.5">
+    <div className="instrument instrument-sheen px-3 py-2.5">
       <p className="vox-headline text-xl">{value}</p>
       <p className="vox-eyebrow mt-0.5">{label}</p>
     </div>

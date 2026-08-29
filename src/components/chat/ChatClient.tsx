@@ -229,7 +229,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             onClick={() => setListOpen(false)}
           />
           <div
-            className="glass-panel-strong absolute inset-y-0 left-0 flex w-64 flex-col rounded-none p-3 shadow-xl"
+            className="instrument-float instrument-sheen absolute inset-y-0 left-0 flex w-64 flex-col rounded-none p-3 shadow-xl"
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
             {conversationList}
@@ -238,7 +238,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="glass-panel-strong flex items-center justify-between rounded-none border-x-0 border-t-0 px-4 py-3 sm:px-6">
+        <div className="instrument-float instrument-sheen flex items-center justify-between rounded-none border-x-0 border-t-0 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -323,7 +323,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               {messages.map((m) => {
                 if (m.role === "SYSTEM") {
                   return (
-                    <div key={m.id} className="glass-panel mx-auto max-w-[90%] rounded-full px-3 py-1 text-center text-xs text-muted">
+                    <div key={m.id} className="instrument instrument-sheen mx-auto max-w-[90%] rounded-full px-3 py-1 text-center text-xs text-muted">
                       {m.content}
                     </div>
                   );
@@ -339,7 +339,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                           "max-w-[85%] whitespace-pre-wrap rounded-[var(--radius-md)] px-4 py-2 text-sm",
                           m.role === "USER"
                             ? "bg-gradient-to-br from-accent to-accent-2 text-accent-foreground shadow-[var(--shadow-ambient-xs)]"
-                            : "glass-panel text-foreground"
+                            : "instrument instrument-sheen text-foreground"
                         )}
                       >
                         {m.content || (m.pending ? "…" : "")}
@@ -367,7 +367,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           {error ? <div className="mt-4"><VoxErrorPanel message={error} /></div> : null}
         </div>
 
-        <div className="glass-panel-strong rounded-none border-x-0 border-b-0 p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        <div className="instrument-float instrument-sheen rounded-none border-x-0 border-b-0 p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <button
               type="button"

@@ -11,7 +11,7 @@ export function VoxErrorPanel({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="glass-panel mx-auto flex max-w-2xl items-start gap-3 border-danger/30 p-4" style={{ boxShadow: "0 0 24px -14px var(--danger)" }}>
+    <div className="instrument mx-auto flex max-w-2xl items-start gap-3 border-danger/30 p-4" style={{ boxShadow: "0 0 24px -14px var(--danger)" }}>
       <VoxCore state="error" size="sm" className="mt-0.5 shrink-0" />
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-danger">VOX Core — {title}</p>
