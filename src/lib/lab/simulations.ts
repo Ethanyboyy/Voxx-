@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { difficultyFactor, runSimulation } from "@/lib/lab/physics";
 import { recordEvent } from "@/lib/observability/events";
+import { recordSimulationRunExperience } from "@/lib/lab/learning";
 
 export interface CreateSimulationInput {
   userId: string;
@@ -130,6 +131,42 @@ export async function executeSimulation(userId: string, simulationId: string, se
     payload: { name: simulation.name, runId: run.id, failureCategories: result.failures.map((f) => f.category) },
     subjectType: "LabSimulation",
     subjectId: simulationId,
+  });
+
+  // The telemetry is real and deterministic, and it is a model's output. It
+  // now becomes durable knowledge — with the seed and every modeled input, so
+  // the run is reproducible from the memory alone, and framed unambiguously
+  // as a simulation so no later reader can mistake it for a physical result.
+  await recordSimulationRunExperience({
+    userId,
+    simulationId,
+    simulationName: simulation.name,
+    runId: run.id,
+    scenarioName: simulation.scenario.name,
+    seed: runSeed,
+    durationS,
+    inputs: {
+      gravityMs2: simulation.scenario.gravityMs2,
+      windMs: simulation.scenario.windMs,
+      temperatureC: simulation.scenario.temperatureC,
+      elevationM: simulation.scenario.elevationM,
+      obstacleCount: simulation.scenario.obstacleCount,
+      difficulty: simulation.scenario.difficulty,
+      userMassKg: simulation.userMassKg,
+      equipmentMassKg,
+      mobility: suitStats?.mobility ?? 50,
+      reactionTimeMs: simulation.reactionTimeMs,
+      skillLevel: simulation.skillLevel,
+    },
+    measurements: {
+      peakVelocityMs: result.peakVelocityMs,
+      peakForceN: result.peakForceN,
+      peakThermalLoadC: result.peakThermalLoadC,
+      fatigueEstimatePct: result.fatigueEstimatePct,
+    },
+    warnings: result.warnings,
+    failures: result.failures,
+    suitName: simulation.suit ? `${simulation.suit.codename} ${simulation.suit.designation}` : null,
   });
 
   return run;

@@ -138,6 +138,31 @@ export async function listMemories(userId: string, filter: ListMemoriesFilter = 
 }
 
 /**
+ * Active memories carrying one of the given provenance tags, newest first.
+ *
+ * This is the read side of src/lib/cognition/experience.ts: research
+ * findings and Lab results write with a known provenance, and planning reads
+ * them back by that provenance. Deliberately NOT semantic — an exact
+ * provenance match is a fact about where a memory came from, so a planning
+ * pass can rely on seeing every recent observation rather than only the ones
+ * an embedding model happened to score highly.
+ */
+export async function listMemoriesByProvenance(
+  userId: string,
+  provenances: string[],
+  limit = 10
+): Promise<MemoryDTO[]> {
+  if (provenances.length === 0) return [];
+  const rows = await db.memory.findMany({
+    where: { userId, provenance: { in: provenances }, supersededAt: null },
+    include: { source: true },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+  return rows.map(toDTO);
+}
+
+/**
  * Ranks active memories by semantic similarity to queryText (see
  * src/lib/embeddings/ and src/lib/memory/embeddings.ts). This is what chat
  * context assembly uses instead of recency-only ordering.

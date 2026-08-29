@@ -636,6 +636,14 @@ model KnowledgeNode {
   /// are linked here (src/lib/supervisor/service.ts#linkOutcomeIntoGraph).
   objectiveId    String?       @unique
   objective      Objective?    @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  /// Lab work is a first-class source of knowledge, not a separate app: a
+  /// completed experiment or simulation run links its recorded result into
+  /// the same graph the supervisor writes to, so what the Lab measured is
+  /// reachable from the objectives and research it bears on.
+  labExperimentId String?        @unique
+  labExperiment   LabExperiment? @relation(fields: [labExperimentId], references: [id], onDelete: Cascade)
+  labSimulationId String?        @unique
+  labSimulation   LabSimulation? @relation(fields: [labSimulationId], references: [id], onDelete: Cascade)
 
   outgoing KnowledgeConnection[] @relation("FromNode")
   incoming KnowledgeConnection[] @relation("ToNode")
@@ -2042,6 +2050,12 @@ model LabSimulation {
 
   gadgets LabSimulationGadget[]
   runs    LabSimulationRun[]
+  /// Set once a simulation RUN completes and its measured telemetry is
+  /// written back as an OBSERVATION memory — see
+  /// src/lib/lab/learning.ts#recordSimulationRunExperience. The node exists
+  /// so the model output is reachable from the rest of the graph; it is
+  /// always labelled as a model result, never as a physical measurement.
+  knowledgeNode KnowledgeNode?
 }
 
 model LabSimulationGadget {
@@ -2119,6 +2133,9 @@ model LabExperiment {
 
   results LabExperimentResult[]
   requirements LabRequirement[]
+  /// Set once a result is recorded against this experiment — see
+  /// src/lib/lab/learning.ts#recordExperimentResultExperience.
+  knowledgeNode KnowledgeNode?
 
   @@unique([userId, code])
 }

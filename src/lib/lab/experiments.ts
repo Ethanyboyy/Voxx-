@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
+import { recordExperimentResultExperience } from "@/lib/lab/learning";
 import type { LabConfidence, LabExperimentStatus } from "@/generated/prisma/enums";
 
 export interface CreateExperimentInput {
@@ -113,13 +114,32 @@ export async function addExperimentResult(userId: string, experimentId: string, 
   const experiment = await db.labExperiment.findFirst({ where: { id: experimentId, userId } });
   if (!experiment) return null;
 
+  const confidence = input.confidence ?? "ESTIMATED";
   const result = await db.labExperimentResult.create({
     data: {
       experimentId,
       outcome: input.outcome,
       learnings: input.learnings,
-      confidence: input.confidence ?? "ESTIMATED",
+      confidence,
     },
+  });
+
+  // Recording a result used to end here — the row existed and nothing else in
+  // VOX ever heard about it, not even the event log. The experiment's
+  // hypothesis, configuration, expected outcome and actual outcome are now
+  // written into memory and the graph, so what the Lab found is available to
+  // every later planning pass instead of only to whoever opens this page.
+  await recordExperimentResultExperience({
+    userId,
+    experimentId,
+    code: experiment.code,
+    title: experiment.title,
+    hypothesis: experiment.hypothesis,
+    variablesJson: experiment.variables,
+    expectedOutcome: experiment.expectedOutcome,
+    outcome: input.outcome,
+    learnings: input.learnings ?? null,
+    confidence,
   });
 
   return result;

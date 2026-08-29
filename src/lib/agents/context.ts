@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getSemanticMemories } from "@/lib/memory/service";
+import { getSemanticMemories, listMemoriesByProvenance } from "@/lib/memory/service";
+import { OBSERVATION_PROVENANCES, EXPERIENCE_PROVENANCE } from "@/lib/cognition/experience";
 
 /**
  * The evidence VOX has about an objective BEFORE it plans how to pursue it.
@@ -34,10 +35,30 @@ export interface PlanningContext {
     timeSpentMinutes: number | null;
     sameObjective: boolean;
   }[];
+  /** What VOX has actually looked up or measured — research findings and Lab
+   * results, read back by provenance rather than by embedding score so a
+   * planning pass reliably sees recent observations. Distinct from
+   * `priorOutcomes`: an outcome says whether an approach worked, an
+   * observation says what was found or measured. */
+  observations: {
+    content: string;
+    /** research:findings | lab:experiment-result | lab:simulation-run */
+    provenance: string;
+    confidence: string;
+    /** Human-readable source kind for the prompt, e.g. "research". */
+    kind: string;
+  }[];
 }
 
 const MAX_MEMORIES = 6;
 const MAX_OUTCOMES = 5;
+const MAX_OBSERVATIONS = 5;
+
+const OBSERVATION_KIND: Record<string, string> = {
+  [EXPERIENCE_PROVENANCE.RESEARCH_FINDINGS]: "research",
+  [EXPERIENCE_PROVENANCE.LAB_EXPERIMENT_RESULT]: "lab experiment",
+  [EXPERIENCE_PROVENANCE.LAB_SIMULATION_RUN]: "lab simulation",
+};
 
 /**
  * Gathers planning evidence for an objective. `objectiveId`, when known,
@@ -55,17 +76,48 @@ export async function buildPlanningContext(
   objectiveText: string,
   options: { objectiveId?: string } = {}
 ): Promise<PlanningContext> {
-  const [memories, priorOutcomes] = await Promise.all([
+  const [memories, priorOutcomes, observations] = await Promise.all([
     loadMemories(userId, objectiveText),
     loadPriorOutcomes(userId, options.objectiveId),
+    loadObservations(userId),
   ]);
-  return { memories, priorOutcomes };
+
+  // Semantic retrieval draws from the same memory store, so a research or Lab
+  // observation can legitimately surface in both lists. Showing it twice
+  // would make one finding look like two pieces of corroborating evidence,
+  // which is precisely the kind of quiet inflation the memory rules exist to
+  // prevent — the observations section wins, since it names the source kind.
+  const observationContents = new Set(observations.map((o) => o.content));
+  return {
+    memories: memories.filter((m) => !observationContents.has(m.content)),
+    priorOutcomes,
+    observations,
+  };
 }
 
 async function loadMemories(userId: string, objectiveText: string): Promise<PlanningContext["memories"]> {
   try {
     const ranked = await getSemanticMemories(userId, objectiveText, MAX_MEMORIES);
     return ranked.map((m) => ({ content: m.content, category: m.category, confidence: m.confidence }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Research findings and Lab results, newest first. Fault-tolerant for the
+ * same reason as everything else here: this runs on the hot path of every
+ * supervised run, and planning with partial context beats not planning.
+ */
+async function loadObservations(userId: string): Promise<PlanningContext["observations"]> {
+  try {
+    const rows = await listMemoriesByProvenance(userId, OBSERVATION_PROVENANCES, MAX_OBSERVATIONS);
+    return rows.map((row) => ({
+      content: row.content,
+      provenance: row.provenance ?? "",
+      confidence: row.confidence,
+      kind: OBSERVATION_KIND[row.provenance ?? ""] ?? "observation",
+    }));
   } catch {
     return [];
   }
@@ -124,6 +176,17 @@ export function renderPlanningContext(context: PlanningContext): string {
     const lines = context.memories.map((m) => `- [${m.category}, confidence ${m.confidence}] ${m.content}`);
     sections.push(
       `What VOX already knows that may be relevant (stored memories — treat lower-confidence entries as uncertain, not fact):\n${lines.join("\n")}`
+    );
+  }
+
+  if (context.observations.length > 0) {
+    const lines = context.observations.map((o) => `- [${o.kind}, confidence ${o.confidence}] ${o.content}`);
+    sections.push(
+      `What VOX has actually looked up or measured (real recorded research findings and Lab results):\n` +
+        `Read these for what they are. A research finding is a retrieved claim with a source attached, not a ` +
+        `verified fact. A lab simulation result is the output of VOX's own kinematic model — it says how the ` +
+        `model behaved under the listed inputs, and is not evidence that anything was physically built or tested.\n` +
+        `${lines.join("\n")}`
     );
   }
 

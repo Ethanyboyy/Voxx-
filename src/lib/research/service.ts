@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getResearchProvider } from "@/lib/research/index";
 import { enforceCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
+import { recordResearchExperience, recordResearchFailure } from "@/lib/research/learning";
 
 export const RESEARCH_CAPABILITY = "research.web";
 
@@ -18,7 +19,17 @@ export async function runResearch(userId: string, query: string, opportunityId?:
   }
 
   const provider = getResearchProvider();
-  const results = await provider.search(query);
+
+  let results;
+  try {
+    results = await provider.search(query);
+  } catch (error) {
+    // A failed lookup is a real thing that happened and is worth remembering —
+    // otherwise VOX re-attempts the same dead end with no record of the last
+    // one. Recorded first, then re-thrown so the caller still sees the error.
+    await recordResearchFailure(userId, query, provider.id, error);
+    throw error;
+  }
 
   const rows = await db.$transaction(
     results.map((result) =>
@@ -45,6 +56,19 @@ export async function runResearch(userId: string, query: string, opportunityId?:
     subjectType: scopedOpportunityId ? "Opportunity" : "ResearchQuery",
     subjectId: scopedOpportunityId,
     payload: { query, provider: provider.id, resultCount: rows.length, opportunityId: scopedOpportunityId },
+  });
+
+  // The ResearchItem rows are the record of what was retrieved; this makes
+  // what was retrieved part of what VOX knows — a durable memory carrying the
+  // sources, and graph nodes joining each source to it. Best-effort: research
+  // that succeeded must not be reported as failed because the derived
+  // knowledge layer had a problem.
+  await recordResearchExperience({
+    userId,
+    query,
+    providerId: provider.id,
+    items: rows,
+    opportunityId: scopedOpportunityId,
   });
 
   return rows;
