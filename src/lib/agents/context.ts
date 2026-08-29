@@ -24,6 +24,10 @@ export interface PlanningContext {
   priorOutcomes: {
     objectiveTitle: string;
     status: string;
+    /** Whether the OBJECTIVE was achieved, as opposed to whether execution
+     * ran. This is the field that actually tells a replan whether the last
+     * approach worked. */
+    verification: string;
     summary: string;
     lessons: string | null;
     costUsd: number | null;
@@ -86,6 +90,7 @@ async function loadPriorOutcomes(userId: string, objectiveId?: string): Promise<
     const mapped = rows.map((row) => ({
       objectiveTitle: row.supervisorRun.objective.title,
       status: row.status as string,
+      verification: row.verification as string,
       summary: row.summary,
       lessons: row.lessons,
       costUsd: row.costUsd,
@@ -124,7 +129,9 @@ export function renderPlanningContext(context: PlanningContext): string {
 
   if (context.priorOutcomes.length > 0) {
     const lines = context.priorOutcomes.map((o) => {
-      const parts = [`- ${o.sameObjective ? "THIS objective" : `"${o.objectiveTitle}"`} → ${o.status}: ${o.summary}`];
+      const parts = [
+        `- ${o.sameObjective ? "THIS objective" : `"${o.objectiveTitle}"`} → execution ${o.status}, objective ${o.verification}: ${o.summary}`,
+      ];
       if (o.lessons) parts.push(`  Lesson recorded: ${o.lessons}`);
       const cost: string[] = [];
       if (o.costUsd != null) cost.push(`$${o.costUsd.toFixed(2)}`);
@@ -133,7 +140,8 @@ export function renderPlanningContext(context: PlanningContext): string {
       return parts.join("\n");
     });
     sections.push(
-      `How previous attempts actually turned out (real recorded results — use these to avoid repeating what failed):\n${lines.join("\n")}`
+      `How previous attempts actually turned out (real recorded results — use these to avoid repeating what failed).\n` +
+        `Note the two are different: execution COMPLETED only means every tool ran, while the objective verdict says whether the goal was actually achieved. An attempt that completed but came back UNVERIFIED did not demonstrably work.\n${lines.join("\n")}`
     );
   }
 

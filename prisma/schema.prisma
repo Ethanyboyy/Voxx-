@@ -1013,6 +1013,13 @@ model Objective {
   strategy    String?
   /// JSON string[] of explicit assumptions the strategy depends on.
   assumptions String?
+  /// JSON string[] of what "success" concretely means for this objective —
+  /// e.g. ["An Etsy listing exists and is published", "It has at least 3
+  /// photos"]. Verification checks evidence against these, one at a time
+  /// (src/lib/objectives/verification.ts). Null/empty means success was
+  /// never defined, in which case verification honestly returns UNVERIFIED
+  /// rather than guessing at what the user meant.
+  successCriteria String?
   /// Optional numeric target, e.g. 25000. Null when the objective isn't a number to hit.
   targetValue Float?
   /// Unit for targetValue, e.g. "USD". Null unless targetValue is set.
@@ -1203,6 +1210,19 @@ enum OutcomeStatus {
   UNKNOWN
 }
 
+/// Whether the OBJECTIVE was actually achieved — deliberately separate from
+/// OutcomeStatus, which only describes whether the planned execution ran to
+/// completion. A run can be COMPLETED (every tool returned) while its
+/// objective is UNVERIFIED, and that distinction is the whole point:
+/// UNVERIFIED is the honest default whenever VOX cannot demonstrate success
+/// from real evidence. Never infer ACHIEVED from execution finishing.
+enum VerificationStatus {
+  ACHIEVED
+  PARTIALLY_ACHIEVED
+  FAILED
+  UNVERIFIED
+}
+
 /// A structured, honest record of what a SupervisorRun actually accomplished
 /// — distinct from AgentRun.status, which only reflects whether the
 /// *planned steps* finished executing. AgentRun COMPLETED means the work
@@ -1216,6 +1236,10 @@ model Outcome {
   supervisorRun   SupervisorRun @relation(fields: [supervisorRunId], references: [id], onDelete: Cascade)
   supervisorRunId String        @unique
   status          OutcomeStatus @default(UNKNOWN)
+  /// Whether the OBJECTIVE was achieved, as distinct from `status` (whether
+  /// execution completed). Defaults to UNVERIFIED and only moves off it when
+  /// real evidence supports the change.
+  verification    VerificationStatus @default(UNVERIFIED)
   summary         String
   expectedResult  String?
   observedResult  String?

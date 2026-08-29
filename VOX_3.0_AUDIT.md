@@ -105,7 +105,7 @@ of the failure mode §21 warns about. TODO/FIXME markers: effectively zero.
 | Propose / approve | ✅ | ✅ |
 | Execute | ✅ | ✅ |
 | Observe | ✅ | ✅ |
-| **Verify** | ❌ | ❌ still open |
+| **Verify** | ❌ | ✅ (Wave 2) |
 | **Update memory** | ⚠️ economic only | ✅ every run |
 | **Update knowledge graph** | ❌ | ✅ objective ↔ outcome |
 | **Learn (feed back into planning)** | ❌ | ✅ |
@@ -129,10 +129,16 @@ of the failure mode §21 warns about. TODO/FIXME markers: effectively zero.
 
 ## Known limitations (deliberate, not oversights)
 
-- **No verification stage.** A completed run means the tools returned, not
-  that the objective was achieved. The Outcome text says so explicitly, and
-  confidence stays LOW. Closing this honestly needs per-objective success
-  criteria, which do not exist in the schema yet.
+- **Verification depends on a real model provider.** The engine is wired and
+  conservative, but under the mock provider (and any parse/availability
+  failure) every judged objective resolves to UNVERIFIED. That is the honest
+  answer, not a stub — but it means ACHIEVED is only reachable with a real
+  reasoning model configured.
+- **Verification cannot observe the outside world.** It judges only evidence
+  the run itself recorded. A criterion like "the listing is publicly live"
+  can be checked against a tool result claiming so, but VOX cannot
+  independently confirm the external fact, and the prompt tells the judge
+  that a tool succeeding is not proof a real-world outcome occurred.
 - **Objective status is never advanced autonomously.** Deliberate:
   `Objective.currentValue` changes only via explicit `updateObjective()`
   input, per the standing rule against inferred progress. Completed work is
@@ -147,12 +153,28 @@ of the failure mode §21 warns about. TODO/FIXME markers: effectively zero.
 - **Chaining references `output` only,** not `summary` — `summary` is not
   persisted on `AgentStep` and would break on resume.
 
+## Wave 2 — the verification engine
+
+Closes the "did the objective actually succeed?" gap.
+
+- `Objective.successCriteria` (JSON string[]) defines what success means.
+- `VerificationStatus` (ACHIEVED / PARTIALLY_ACHIEVED / FAILED / UNVERIFIED)
+  on `Outcome`, deliberately separate from `OutcomeStatus`, which only ever
+  described whether execution ran.
+- `objectives/verification.ts` judges each criterion against evidence
+  collected from the run's real persisted steps. Aggregation is conservative:
+  one undeterminable criterion blocks ACHIEVED, and "nothing met but
+  something uncheckable" reports UNVERIFIED rather than FAILED.
+- A failed run is judged from the record directly, no model call needed.
+- The verdict flows into the Outcome (with per-criterion audit trail in
+  `variance` and evidence in `evidence`), the EXPERIENCE memory, the graph
+  edge (`verified:<status>`), and the next planning context — which now tells
+  the planner explicitly that "completed" does not mean "worked".
+
 ## Next highest-leverage work
 
 1. Extend the graph/memory write-back pattern from the supervisor to
    **research completion** and **Lab experiment completion** (§37's own
    worked examples).
-2. **Success criteria on Objectives**, enabling a real verification stage
-   instead of the current honest-but-unverified LOW-confidence outcome.
-3. **Event-type consolidation** — event strings are currently free-text at
+2. **Event-type consolidation** — event strings are currently free-text at
    call sites; a typed union would make the bus enforceable.

@@ -8,6 +8,7 @@ import { buildPlanningContext } from "@/lib/agents/context";
 import { getTool } from "@/lib/tools/registry";
 import { createMemory } from "@/lib/memory/service";
 import { ensureNodeForEntity, createConnection } from "@/lib/knowledge/service";
+import { verifyObjective, type VerificationResult } from "@/lib/objectives/verification";
 import type { AgentRun, AgentStep, SupervisorRun } from "@/generated/prisma/client";
 import type { AgentRunStatus, AutonomyMode, OutcomeStatus, SupervisorRunStatus } from "@/generated/prisma/enums";
 
@@ -108,18 +109,40 @@ async function recordOutcome(
      * failure message. Never a synthesized moral; null when the run gave us
      * nothing to learn (see Outcome.lessons in schema.prisma). */
     lessons?: string | null;
+    /** The run this outcome describes, when one exists. Supplied so the
+     * objective can be verified against its own success criteria from the
+     * run's real recorded evidence. */
+    agentRun?: (AgentRun & { steps: AgentStep[] }) | null;
   }
 ): Promise<void> {
   const costUsd = await realizedCostForObjective(supRun.objectiveId);
   const timeSpentMinutes = Math.max(0, Math.round((Date.now() - supRun.createdAt.getTime()) / 60_000));
+
+  // Whether the OBJECTIVE succeeded — a separate question from whether the
+  // planned execution ran. Defaults to UNVERIFIED and only moves off it on
+  // real evidence (src/lib/objectives/verification.ts).
+  const verification = await runVerification(userId, supRun.objectiveId, params.agentRun ?? null);
 
   await db.outcome.create({
     data: {
       userId,
       supervisorRunId: supRun.id,
       status,
+      verification: verification?.status ?? "UNVERIFIED",
       summary: params.summary,
       observedResult: params.observedResult,
+      // The criteria we judged against, and the per-criterion verdicts —
+      // stored so a later reader can audit the judgement rather than having
+      // to trust the single status enum.
+      expectedResult: verification?.assessments.length
+        ? verification.assessments.map((a) => a.criterion).join("; ")
+        : undefined,
+      variance: verification?.assessments.length
+        ? verification.assessments
+            .map((a) => `${a.criterion}: ${a.met === true ? "met" : a.met === false ? "not met" : "undetermined"} — ${a.reasoning}`)
+            .join("\n")
+        : undefined,
+      evidence: verification?.evidence.length ? JSON.stringify(verification.evidence) : undefined,
       lessons: params.lessons ?? undefined,
       costUsd: costUsd ?? undefined,
       timeSpentMinutes,
@@ -131,10 +154,50 @@ async function recordOutcome(
     type: "outcome.recorded",
     subjectType: "SupervisorRun",
     subjectId: supRun.id,
-    payload: { status, costUsd, timeSpentMinutes },
+    payload: { status, verification: verification?.status ?? "UNVERIFIED", costUsd, timeSpentMinutes },
   });
 
-  await recordOutcomeMemory(userId, supRun, status, costUsd, timeSpentMinutes);
+  if (verification) {
+    await recordEvent({
+      userId,
+      type: "objective.verified",
+      subjectType: "Objective",
+      subjectId: supRun.objectiveId,
+      payload: {
+        supervisorRunId: supRun.id,
+        verification: verification.status,
+        criteria: verification.assessments.length,
+        met: verification.assessments.filter((a) => a.met === true).length,
+      },
+      // A verdict on whether the user's objective was achieved is a
+      // consequential claim, not routine telemetry.
+      consequential: true,
+    });
+  }
+
+  await recordOutcomeMemory(userId, supRun, status, costUsd, timeSpentMinutes, verification);
+}
+
+/**
+ * Verifies the objective behind a run. Returns null only when there is no
+ * run to gather evidence from (a decline before anything executed), which
+ * the caller records as UNVERIFIED. Verification failures are swallowed for
+ * the same reason graph-linking is: the Outcome is the record of what
+ * happened and must still be written.
+ */
+async function runVerification(
+  userId: string,
+  objectiveId: string,
+  agentRun: (AgentRun & { steps: AgentStep[] }) | null
+): Promise<VerificationResult | null> {
+  if (!agentRun) return null;
+  try {
+    const objective = await db.objective.findFirst({ where: { id: objectiveId, userId } });
+    if (!objective) return null;
+    return await verifyObjective(objective, agentRun);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -157,7 +220,8 @@ async function recordOutcomeMemory(
   supRun: SupervisorRun,
   status: OutcomeStatus,
   costUsd: number | null,
-  timeSpentMinutes: number
+  timeSpentMinutes: number,
+  verification: VerificationResult | null
 ): Promise<void> {
   const objective = await db.objective.findUnique({
     where: { id: supRun.objectiveId },
@@ -176,17 +240,37 @@ async function recordOutcomeMemory(
     ? `Validation attempt for opportunity "${objective.sourceOpportunity.title}"`
     : `Work on objective "${objective.title}"`;
 
-  const content = `${subject} ended ${statusText} — ${costText}, ${timeText} elapsed.`;
+  // The verdict is the part worth remembering. "Execution completed" says
+  // almost nothing on its own; "execution completed but the objective could
+  // not be verified" is what a future planning pass actually needs to know.
+  const verdict = verification
+    ? ` Objective verification: ${verification.status.toLowerCase().replace(/_/g, " ")} — ${verification.summary}`
+    : "";
+
+  const content = `${subject} ended ${statusText} — ${costText}, ${timeText} elapsed.${verdict}`;
 
   const memory = await createMemory({
     userId,
     content,
     category: "EXPERIENCE",
-    confidence: costUsd != null ? "MEDIUM" : "LOW",
+    // A verified verdict is stronger evidence than raw cost figures alone,
+    // but still a judgement over evidence — never CONFIRMED.
+    confidence: verification && verification.status !== "UNVERIFIED" ? "MEDIUM" : costUsd != null ? "MEDIUM" : "LOW",
     provenance: objective.sourceOpportunity ? "supervisor:economic-outcome" : "supervisor:outcome",
   });
 
-  await linkOutcomeIntoGraph(userId, objective.id, objective.title, memory.id, content, statusText);
+  await linkOutcomeIntoGraph(
+    userId,
+    objective.id,
+    objective.title,
+    memory.id,
+    content,
+    // The edge records the objective-level VERDICT where one exists, so
+    // traversing from an objective shows whether past attempts actually
+    // worked — falling back to the execution status only when there was
+    // nothing to verify against.
+    verification ? `verified:${verification.status.toLowerCase()}` : `outcome:${statusText.replace(/\s+/g, "_")}`
+  );
 }
 
 /**
@@ -211,7 +295,7 @@ async function linkOutcomeIntoGraph(
   objectiveTitle: string,
   memoryId: string,
   memoryContent: string,
-  statusText: string
+  relation: string
 ): Promise<void> {
   try {
     const [objectiveNode, memoryNode] = await Promise.all([
@@ -224,7 +308,7 @@ async function linkOutcomeIntoGraph(
       toNodeId: memoryNode.id,
       // The edge label states what this edge actually is — a recorded result
       // of pursuing the objective — rather than a generic "related_to".
-      relation: `outcome:${statusText.replace(/\s+/g, "_")}`,
+      relation,
     });
   } catch {
     // Intentionally swallowed — see the doc comment above.
@@ -261,6 +345,7 @@ export async function applyAgentRunOutcome(
         "The planned work completed. This reflects execution completion, not an independently verified real-world result — no success criteria were confirmed automatically.",
       observedResult: agentRun.result,
       confidence: "LOW",
+      agentRun,
     });
     return loadSupervisorRun(userId, supervisorRunId) as Promise<SupervisorRunWithRelations>;
   }
@@ -289,7 +374,10 @@ export async function applyAgentRunOutcome(
       where: { id: supervisorRunId },
       data: { status: "CANCELLED", error: "The driving agent run was cancelled.", completedAt: new Date() },
     });
-    await recordOutcome(userId, cancelled, "ABANDONED", { summary: "The driving agent run was cancelled before completion." });
+    await recordOutcome(userId, cancelled, "ABANDONED", {
+      summary: "The driving agent run was cancelled before completion.",
+      agentRun,
+    });
     return loadSupervisorRun(userId, supervisorRunId) as Promise<SupervisorRunWithRelations>;
   }
 
@@ -351,6 +439,7 @@ export async function applyAgentRunOutcome(
     lessons: agentRun.error
       ? `Exhausted ${supRun.maxIterations} replanning attempt(s); the final failure was: ${agentRun.error}`
       : null,
+    agentRun,
   });
   return loadSupervisorRun(userId, supervisorRunId) as Promise<SupervisorRunWithRelations>;
 }

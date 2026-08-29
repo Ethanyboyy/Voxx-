@@ -40,10 +40,13 @@ describe("Knowledge Graph: supervised work links itself into the graph", () => {
     expect(graph.nodes.length).toBeGreaterThanOrEqual(2);
     expect(graph.connections.length).toBeGreaterThanOrEqual(1);
 
-    // The edge says what it actually is, not a generic "related_to".
+    // The edge says what it actually is, not a generic "related_to". Now that
+    // verification exists it carries the objective-level VERDICT rather than
+    // the execution status — strictly more informative, since "completed"
+    // never meant the objective succeeded.
     const edge = graph.connections.find((c) => c.fromNodeId === objectiveNode!.id);
     expect(edge).toBeDefined();
-    expect(edge!.relation).toMatch(/^outcome:/);
+    expect(edge!.relation).toMatch(/^(verified|outcome):/);
   });
 
   it("makes the recorded outcome reachable by traversing from the objective", async () => {
@@ -56,10 +59,11 @@ describe("Knowledge Graph: supervised work links itself into the graph", () => {
     const related = await findRelated(userId, objectiveNode!.id, 1);
     expect(related.length).toBeGreaterThan(0);
     // The neighbour is the EXPERIENCE memory holding the real result, reached
-    // across an edge that names it as an outcome.
+    // across an edge naming the verdict. An objective with no success criteria
+    // is honestly unverified rather than silently treated as achieved.
     const memoryNeighbour = related.find((r) => r.node.memoryId != null);
     expect(memoryNeighbour).toBeDefined();
-    expect(memoryNeighbour!.relation).toMatch(/^outcome:/);
+    expect(memoryNeighbour!.relation).toBe("verified:unverified");
     expect(memoryNeighbour!.direction).toBe("outgoing");
   });
 

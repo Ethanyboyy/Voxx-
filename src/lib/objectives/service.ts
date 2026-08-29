@@ -21,6 +21,9 @@ export interface ObjectiveDTO {
   description: string | null;
   strategy: string | null;
   assumptions: string[];
+  /** What "success" concretely means. Empty when never defined — in which
+   * case verification honestly reports UNVERIFIED rather than guessing. */
+  successCriteria: string[];
   targetValue: number | null;
   targetUnit: string | null;
   currentValue: number | null;
@@ -51,6 +54,7 @@ function toObjectiveDTO(row: Objective): ObjectiveDTO {
     description: row.description,
     strategy: row.strategy,
     assumptions: parseStringArray(row.assumptions),
+    successCriteria: parseStringArray(row.successCriteria),
     targetValue: row.targetValue,
     targetUnit: row.targetUnit,
     currentValue: row.currentValue,
@@ -68,6 +72,7 @@ export interface CreateObjectiveInput {
   description?: string;
   strategy?: string;
   assumptions?: string[];
+  successCriteria?: string[];
   targetValue?: number;
   targetUnit?: string;
   targetDate?: Date;
@@ -82,6 +87,7 @@ export async function createObjective(input: CreateObjectiveInput): Promise<Obje
       description: input.description,
       strategy: input.strategy,
       assumptions: input.assumptions ? JSON.stringify(input.assumptions) : undefined,
+      successCriteria: input.successCriteria ? JSON.stringify(input.successCriteria) : undefined,
       targetValue: input.targetValue,
       targetUnit: input.targetUnit,
       targetDate: input.targetDate,
@@ -129,6 +135,7 @@ export interface UpdateObjectiveInput {
   description?: string;
   strategy?: string;
   assumptions?: string[];
+  successCriteria?: string[];
   targetValue?: number | null;
   targetUnit?: string | null;
   /** Only ever set from explicit user input — VOX never auto-increments this. */
@@ -150,6 +157,7 @@ export async function updateObjective(
     data: {
       ...updates,
       assumptions: updates.assumptions === undefined ? undefined : JSON.stringify(updates.assumptions),
+      successCriteria: updates.successCriteria === undefined ? undefined : JSON.stringify(updates.successCriteria),
     },
   });
 
