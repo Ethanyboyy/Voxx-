@@ -2,6 +2,7 @@
 
 import { Suspense, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
 import { OrbitControls, Sparkles, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { SuitRig, type SuitRigProps } from "@/components/lab/three/SuitRig";
@@ -18,7 +19,7 @@ import { GltfSuitModel, GltfErrorBoundary } from "@/components/lab/three/GltfSui
  */
 function StudioEnvironment() {
   return (
-    <Environment resolution={256} background={false}>
+    <Environment resolution={512} background={false}>
       <Lightformer form="rect" intensity={2.4} color="#fdfbf7" position={[3, 3.5, 4]} scale={[3.5, 5, 1]} target={[0, 0, 0]} />
       <Lightformer form="rect" intensity={0.8} color="#eef1fb" position={[-4, 1, 2.5]} scale={[3, 4, 1]} target={[0, 0, 0]} />
       <Lightformer form="rect" intensity={1.5} color="#f5f0ff" position={[0, 2, -4]} scale={[4, 3, 1]} target={[0, 0, 0]} />
@@ -55,7 +56,22 @@ function ProjectionPlatform({ color }: { color: string }) {
   );
 }
 
+/**
+ * The real human body asset every suit is built on.
+ *
+ * This is a default, not a per-suit opt-in, and that is the whole fix: 59 of
+ * 60 suits had no modelUrl and fell through to the procedural rig, so the
+ * archive rendered as sixty blobby primitive mannequins while one suit used
+ * the real 49k-triangle asset. A suit is a garment on a body — the body
+ * should not vary per row.
+ *
+ * Three.js Xbot, MIT licensed. See public/models/body/README.md.
+ */
+export const DEFAULT_BODY_MODEL_URL = "/models/body/xbot.glb";
+
 export interface HolographicSuitCanvasProps extends SuitRigProps {
+  /** Identity inputs for the suit build (armour layout + surface set). */
+  archetype?: string;
   autoRotate?: boolean;
   /** Decorative holographic dressing — sparkles + projection platform rings.
    * Defaults on for the lab aesthetic, but the suit itself must read
@@ -79,8 +95,13 @@ export function HolographicSuitCanvas({
   showEffects = true,
   modelUrl,
   rawGeometry = false,
+  archetype = "Utility",
   ...rigProps
 }: HolographicSuitCanvasProps) {
+  // Every suit renders on the real body unless it ships its own asset. The
+  // procedural rig stays only as the error-boundary fallback below, which is
+  // the role it can actually fill honestly.
+  const bodyUrl = modelUrl ?? DEFAULT_BODY_MODEL_URL;
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
   // The procedural SuitRig is a small, chest-focused mannequin the camera
@@ -88,15 +109,18 @@ export function HolographicSuitCanvas({
   // T-pose bind pose — see GltfSuitModel.tsx) is a full CANONICAL_BODY_HEIGHT
   // figure with arms held out from its sides, needing a further-back, more
   // head-on framing to fit the whole figure instead of cropping into one limb.
-  const cameraPosition: [number, number, number] = modelUrl ? [0, -0.15, 4.4] : [1.5, -0.05, 2.7];
-  const orbitTarget: [number, number, number] = modelUrl ? [0, -0.45, 0] : [0, -0.2, 0];
+  const cameraPosition: [number, number, number] = [0, -0.12, 3.45];
+  const orbitTarget: [number, number, number] = [0, -0.45, 0];
 
   return (
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: cameraPosition, fov: 27 }}
-      gl={{ antialias: true, alpha: true }}
+      camera={{ position: cameraPosition, fov: 30 }}
+      // ACES keeps the key light's specular hits on armour and metal from
+      // clipping to flat white, which is what made every material read the
+      // same at the highlight regardless of its roughness.
+      gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping }}
     >
       <color attach="background" args={["#050212"]} />
       <fog attach="fog" args={["#050212", 5, 11]} />
@@ -105,16 +129,34 @@ export function HolographicSuitCanvas({
 
       {/* Neutral key / fill / rim — this trio carries the actual material
           read, independent of any accent color or glow effect. */}
-      <ambientLight intensity={0.18} color="#ffffff" />
+      {/* Ambient is deliberately low. Raising it to "see the suit better"
+          flattens exactly the shading that distinguishes a woven panel from
+          a hard plate — the plates have to earn their highlights from a real
+          key light, not from a uniform wash. */}
+      <ambientLight intensity={0.14} color="#e8ecff" />
+
+      {/* Key: high and to camera-right, shadow-casting. This is the light
+          that reads the armour — its shadow is what proves a chest plate
+          stands off the torso rather than being painted on it. */}
       <directionalLight
-        position={[3, 4, 3]}
-        intensity={1.7}
-        color="#fdfbf7"
+        position={[3.2, 4.2, 3]}
+        intensity={2.3}
+        color="#fff6ea"
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0008}
+        shadow-normalBias={0.02}
       />
-      <directionalLight position={[-3.5, 1.5, 1.5]} intensity={0.45} color="#eef1fb" />
-      <directionalLight position={[0, 2, -4]} intensity={0.75} color="#f5f0ff" />
+
+      {/* Fill: cool, opposite the key, low. Keeps the shadow side readable
+          without erasing the form the key just described. */}
+      <directionalLight position={[-3.6, 1.2, 2.2]} intensity={0.5} color="#cdd8ff" />
+
+      {/* Rim from behind: separates the silhouette from the background.
+          Strong enough to draw the shoulder and helmet edge, which is what
+          makes the figure sit IN the scene instead of on it. */}
+      <directionalLight position={[-1.2, 2.6, -4]} intensity={2.1} color="#e6e0ff" />
+      <directionalLight position={[2.2, 1.4, -3.4]} intensity={1.5} color="#bcd4ff" />
 
       {/* Accent rim — identity tint only, dimmed further (not removed) when
           effects are off so the studio lighting is doing the real work. */}
@@ -127,22 +169,23 @@ export function HolographicSuitCanvas({
       {showEffects ? <pointLight position={[0, -1.3, 0.3]} intensity={0.9} distance={3} decay={2} color={rigProps.colorPrimary} /> : null}
 
       <Suspense fallback={null}>
-        {modelUrl ? (
-          <GltfErrorBoundary fallback={<SuitRig {...rigProps} />}>
-            <GltfSuitModel
-              url={modelUrl}
-              colorPrimary={rigProps.colorPrimary}
-              colorSecondary={rigProps.colorSecondary}
-              materialLanguage={rigProps.materialLanguage}
-              patternStyle={rigProps.patternStyle}
-              xray={rigProps.xray}
-              showEffects={showEffects}
-              rawGeometry={rawGeometry}
-            />
-          </GltfErrorBoundary>
-        ) : (
-          <SuitRig {...rigProps} />
-        )}
+        <GltfErrorBoundary fallback={<SuitRig {...rigProps} />}>
+          <GltfSuitModel
+            url={bodyUrl}
+            colorPrimary={rigProps.colorPrimary}
+            colorSecondary={rigProps.colorSecondary}
+            materialLanguage={rigProps.materialLanguage}
+            patternStyle={rigProps.patternStyle}
+            xray={rigProps.xray}
+            showEffects={showEffects}
+            rawGeometry={rawGeometry}
+            archetype={archetype}
+            silhouette={rigProps.silhouette}
+            armorLevel={rigProps.armorLevel}
+            maskLensStyle={rigProps.maskLensStyle}
+            explodeAmount={rigProps.explodeAmount}
+          />
+        </GltfErrorBoundary>
         {showEffects ? <ProjectionPlatform color={rigProps.colorPrimary} /> : null}
         <ContactShadows position={[0, -1.33, 0]} opacity={0.5} scale={4.5} blur={2.4} far={2} color="#000000" />
         {showEffects ? (
@@ -155,8 +198,8 @@ export function HolographicSuitCanvas({
         makeDefault
         enablePan
         panSpeed={0.5}
-        minDistance={modelUrl ? 2.4 : 1.6}
-        maxDistance={modelUrl ? 9 : 6}
+        minDistance={2.4}
+        maxDistance={9}
         minPolarAngle={0.35}
         maxPolarAngle={Math.PI - 0.35}
         autoRotate={autoRotate}

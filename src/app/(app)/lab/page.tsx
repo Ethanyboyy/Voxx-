@@ -91,6 +91,7 @@ export default async function LabHomePage() {
                   armorLevel={featured.armorLevel as ArmorLevel}
                   maskLensStyle={featured.maskLensStyle as MaskLensStyle}
                   modelUrl={featured.modelUrl}
+                  archetype={featured.archetype}
                   size={280}
                   controls={false}
                 />

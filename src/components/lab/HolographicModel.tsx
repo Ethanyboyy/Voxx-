@@ -49,6 +49,9 @@ export interface HolographicModelProps {
    * are hidden (that metadata only applies to the procedural rig) and the
    * viewer is labeled as a real asset instead of a concept visualization. */
   modelUrl?: string | null;
+  /** Drives the suit's structural build — which armour it carries and which
+   *  surfaces it is made of. See suitConfig.ts. */
+  archetype?: string;
   /** Hide the rotate/zoom/x-ray/explode chrome for compact contexts (compare grid). */
   controls?: boolean;
 }
@@ -67,6 +70,7 @@ export function HolographicModel({
   armorLevel = "LIGHT",
   maskLensStyle = "ANGULAR",
   modelUrl,
+  archetype = "Utility",
   controls = true,
 }: HolographicModelProps) {
   const [xray, setXray] = useState(false);
@@ -103,6 +107,7 @@ export function HolographicModel({
           showEffects={showEffects && !rawGeometry}
           rawGeometry={rawGeometry}
           modelUrl={modelUrl}
+          archetype={archetype}
         />
         {controls ? (
           <span
@@ -111,7 +116,7 @@ export function HolographicModel({
               modelUrl ? "border-success/40 bg-success/10 text-success" : "border-border bg-surface-hover text-muted-foreground"
             )}
           >
-            {modelUrl ? "Real 3D asset" : "Concept visualization"}
+            {modelUrl ? "Bespoke 3D asset" : "Standard body · configured build"}
           </span>
         ) : null}
       </div>

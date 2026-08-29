@@ -160,6 +160,7 @@ export function SuitBayClient({
                       armorLevel={s.armorLevel as ArmorLevel}
                       maskLensStyle={s.maskLensStyle as MaskLensStyle}
                       modelUrl={s.modelUrl}
+                      archetype={s.archetype}
                       size={140}
                       controls={false}
                     />

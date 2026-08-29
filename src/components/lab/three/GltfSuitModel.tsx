@@ -4,20 +4,14 @@ import { Component, useMemo, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { createEmblemTexture, MATERIAL_SPECS, type MaterialLanguage, type PatternStyle } from "@/components/lab/three/suitDesign";
+import { createEmblemTexture, type ArmorLevel, type MaskLensStyle, type MaterialLanguage, type PatternStyle, type Silhouette } from "@/components/lab/three/suitDesign";
+import { resolveSuitBuild } from "@/components/lab/three/suitConfig";
+import { SuitArmor, buildSurfaceMaterials } from "@/components/lab/three/SuitArmor";
 
-/**
- * Every suit/body GLB in this app is normalized to stand this tall (in
- * scene units) — the ONE canonical body reference the camera, platform, and
- * every other GLB-driven suit are framed against, regardless of how the
- * source asset was authored/scaled. See CLAUDE.md's build discipline: no
- * per-suit invented proportions.
- */
-export const CANONICAL_BODY_HEIGHT = 1.75;
-/** Matches the existing ProjectionPlatform/ContactShadows y-position in
- * HolographicSuitCanvas.tsx — the floor every body/suit asset should stand
- * on, not just wherever its own authored origin happened to land. */
-export const CANONICAL_FEET_Y = -1.3;
+import { CANONICAL_BODY_HEIGHT, CANONICAL_FEET_Y } from "@/components/lab/three/canonicalBody";
+
+// Re-exported so existing importers of this module keep working.
+export { CANONICAL_BODY_HEIGHT, CANONICAL_FEET_Y };
 
 /** Rough, proportion-based estimate of chest height above the feet for a
  * body normalized to CANONICAL_BODY_HEIGHT (~74% of standing height, an
@@ -68,7 +62,11 @@ const CESIUM_MAN_CORRECTIVE_ROTATION = new THREE.Quaternion().setFromRotationMat
  * suit material to them without re-traversing or re-guessing which nodes
  * are real geometry vs. hidden/skinned originals.
  */
-function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3D; suitMeshes: THREE.Mesh[] } {
+function normalizeToCanonicalBody(scene: THREE.Object3D): {
+  scene: THREE.Object3D;
+  suitMeshes: THREE.Mesh[];
+  anchors: Map<string, THREE.Vector3>;
+} {
   let hasZUpRoot = false;
   scene.traverse((obj) => {
     if (obj.name === "Z_UP") hasZUpRoot = true;
@@ -109,6 +107,20 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3
     );
   }
 
+  // Real joint positions, read from the asset's own skeleton after
+  // normalization. Armour mounted to a MEASURED shoulder sits on the
+  // shoulder for any rigged body; armour mounted to a guessed coordinate
+  // floats next to it the moment the pose differs from the guess — which is
+  // exactly what happened when these were hardcoded against an imagined
+  // arms-down pose and the asset turned out to be in a T-pose.
+  const anchors = new Map<string, THREE.Vector3>();
+  scene.updateWorldMatrix(true, true);
+  scene.traverse((obj) => {
+    const match = /^mixamorig:?(.+)$/.exec(obj.name);
+    if (!match) return;
+    anchors.set(match[1], obj.getWorldPosition(new THREE.Vector3()));
+  });
+
   const suitMeshes: THREE.Mesh[] = [];
   scene.traverse((obj) => {
     if ((obj as THREE.Mesh).isMesh) {
@@ -137,7 +149,7 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): { scene: THREE.Object3
     }
   });
 
-  return { scene, suitMeshes };
+  return { scene, suitMeshes, anchors };
 }
 
 export interface GltfSuitModelProps {
@@ -164,6 +176,15 @@ export interface GltfSuitModelProps {
    * anatomy itself can be judged with every material and holographic layer
    * actually absent, not just visually deemphasized. */
   rawGeometry?: boolean;
+  /** Build inputs — what the suit is actually made of. Drive the real armour
+   *  geometry and the surface material set (see suitConfig.ts). */
+  archetype?: string;
+  silhouette?: Silhouette;
+  armorLevel?: ArmorLevel;
+  maskLensStyle?: MaskLensStyle;
+  /** Hides hard components so the body underneath can be inspected. */
+  hideArmor?: boolean;
+  explodeAmount?: number;
 }
 
 /**
@@ -186,7 +207,21 @@ export interface GltfSuitModelProps {
  * reads as an actual manufactured second-skin garment over real anatomy,
  * not a bare mannequin wearing its source asset's placeholder texture.
  */
-export function GltfSuitModel({ url, colorPrimary, colorSecondary, materialLanguage, xray = false, showEffects = true, rawGeometry = false }: GltfSuitModelProps) {
+export function GltfSuitModel({
+  url,
+  colorPrimary,
+  colorSecondary,
+  materialLanguage,
+  xray = false,
+  showEffects = true,
+  rawGeometry = false,
+  archetype = "Utility",
+  silhouette = "ATHLETIC",
+  armorLevel = "LIGHT",
+  maskLensStyle = "ANGULAR",
+  hideArmor = false,
+  explodeAmount = 0,
+}: GltfSuitModelProps) {
   const gltf = useGLTF(url);
   const emblemTexture = useMemo(() => createEmblemTexture(colorPrimary), [colorPrimary]);
 
@@ -214,22 +249,26 @@ export function GltfSuitModel({ url, colorPrimary, colorSecondary, materialLangu
   // interest instead. rawGeometry strips this to plain clay with no color
   // identity or emissive at all — the §21/§24 QA claim is that the
   // GEOMETRY, not this material work, has to read as a real human body.
-  const { scene, rimMeshes } = useMemo(() => {
+  // Pure and deterministic — the same suit record always yields the same
+  // build, so a design can be compared and reasoned about.
+  const build = useMemo(
+    () => resolveSuitBuild({ archetype, silhouette, materialLanguage, armorLevel }),
+    [archetype, silhouette, materialLanguage, armorLevel]
+  );
+
+  const { scene, rimMeshes, surfaces, anchors } = useMemo(() => {
     const result = normalizeToCanonicalBody(SkeletonUtils.clone(gltf.scene));
-    const material = rawGeometry
-      ? new THREE.MeshStandardMaterial({ color: "#8b8794", metalness: 0.05, roughness: 0.65 })
-      : (() => {
-          const spec = MATERIAL_SPECS[materialLanguage];
-          return new THREE.MeshStandardMaterial({
-            color: colorSecondary,
-            metalness: spec.metalness,
-            roughness: spec.roughness,
-            emissive: new THREE.Color(colorPrimary),
-            emissiveIntensity: spec.emissiveIntensity * 0.3 * (xray ? 2.2 : 1),
-            transparent: true,
-            opacity: xray ? 0.14 : 1,
-          });
-        })();
+    // The body wears the build's UNDERLAYER surface — the second skin the
+    // hard components are mounted onto. It is a genuinely different material
+    // from the plates (see SURFACE_SPECS): woven where the suit is woven,
+    // rubbery where it is elastomer, and never the same flat response the
+    // plates have, which is what made the old single-material suit read as
+    // one moulded object instead of a garment with construction.
+    const surfaces = buildSurfaceMaterials(build, colorPrimary, colorSecondary, {
+      xray,
+      neutral: rawGeometry,
+    });
+    const material = surfaces[build.underlayer] ?? surfaces.FABRIC;
     const rim = new THREE.MeshBasicMaterial({ color: colorPrimary, transparent: true, opacity: xray ? 0.16 : 0.07, side: THREE.BackSide, toneMapped: false, depthWrite: false });
     const rimClones: THREE.Mesh[] = [];
     for (const mesh of result.suitMeshes) {
@@ -238,12 +277,27 @@ export function GltfSuitModel({ url, colorPrimary, colorSecondary, materialLangu
       clone.material = rim;
       rimClones.push(clone);
     }
-    return { ...result, rimMeshes: rimClones };
-  }, [gltf.scene, materialLanguage, colorPrimary, colorSecondary, xray, rawGeometry]);
+    return { ...result, rimMeshes: rimClones, surfaces };
+  }, [gltf.scene, build, colorPrimary, colorSecondary, xray, rawGeometry]);
 
   return (
     <>
       <primitive object={scene} />
+
+      {/* The suit's hard components as real geometry. This is the difference
+          between a body wearing a suit and a body tinted the colour of one:
+          plates stand off the mesh, catch the key light on their own edges,
+          and cast shadows onto the surface below. rawGeometry keeps them —
+          they ARE geometry — but strips their colour identity to clay. */}
+      <SuitArmor
+        build={build}
+        materials={surfaces}
+        anchors={anchors}
+        maskLensStyle={maskLensStyle}
+        accent={rawGeometry ? "#8b8794" : colorPrimary}
+        hidden={hideArmor}
+        explodeAmount={explodeAmount}
+      />
       {/* Rim/energy glow — a scaled BackSide shell per real mesh, same
           proven technique BrainMesh.tsx uses for its holographic edge:
           additive-reading, unlit, and purely additive to the material
@@ -262,12 +316,12 @@ export function GltfSuitModel({ url, colorPrimary, colorSecondary, materialLangu
           decal, not the mesh. */}
       {!rawGeometry ? (
         <>
-          <mesh position={[0, ESTIMATED_CHEST_Y, ESTIMATED_HALF_DEPTH]}>
-            <planeGeometry args={[0.42, 0.42]} />
+          <mesh position={[0, ESTIMATED_CHEST_Y + 0.04, ESTIMATED_HALF_DEPTH + 0.055]}>
+            <planeGeometry args={[0.115, 0.115]} />
             <meshBasicMaterial map={emblemTexture} transparent opacity={xray ? 0.5 : 0.95} toneMapped={false} depthWrite={false} />
           </mesh>
           <mesh position={[0, ESTIMATED_CHEST_Y, -ESTIMATED_HALF_DEPTH]} rotation={[0, Math.PI, 0]}>
-            <planeGeometry args={[0.34, 0.34]} />
+            <planeGeometry args={[0.09, 0.09]} />
             <meshBasicMaterial map={emblemTexture} transparent opacity={xray ? 0.4 : 0.75} toneMapped={false} depthWrite={false} />
           </mesh>
         </>

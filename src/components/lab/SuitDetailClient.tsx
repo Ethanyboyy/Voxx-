@@ -391,6 +391,7 @@ function CinematicView({
               armorLevel={suit.armorLevel}
               maskLensStyle={suit.maskLensStyle}
               modelUrl={suit.modelUrl}
+              archetype={suit.archetype}
               visibleLayers={layers}
               size={420}
             />
