@@ -167,7 +167,9 @@ export function SupervisorPanel({
 
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="flex items-center justify-between">
+      {/* Stacked on phones — the label and the action button competing for
+          one 390px row left both cramped. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="vox-eyebrow">Autonomous work (Supervisor)</p>
         <Button size="sm" onClick={startSupervisor} disabled={starting}>
           {starting ? "Understanding objective…" : "Let VOX handle this"}

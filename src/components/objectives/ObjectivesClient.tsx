@@ -258,15 +258,18 @@ export function ObjectivesClient({
             return (
               <Card key={o.id} className="vox-lift">
                 <CardContent className="pt-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                  {/* Stacked on phones: the title is the thing being read, and
+                      sharing the row with two buttons crushed it to ~55% width
+                      and four wrapped lines. */}
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-semibold text-foreground">{o.title}</h3>
                         <Badge tone={STATUS_TONE[o.status] ?? "neutral"}>{o.status.toLowerCase()}</Badge>
                       </div>
                       {o.description ? <p className="mt-1 text-sm text-muted">{o.description}</p> : null}
                     </div>
-                    <div className="flex shrink-0 gap-1.5">
+                    <div className="flex shrink-0 justify-end gap-1.5">
                       <Button size="sm" variant="ghost" onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}>
                         {expandedId === o.id ? "Close" : "Open"}
                       </Button>

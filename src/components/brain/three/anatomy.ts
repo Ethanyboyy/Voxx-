@@ -75,6 +75,17 @@ export const SUBJECT_TYPE_TO_SYSTEM: Record<string, BrainSystem> = {
   Proposal: "COGNITION",
   Connection: "CONNECTIONS",
   EconomicAsset: "ECONOMICS",
+  // Research and Lab work emit consequential events too, and until these
+  // were mapped the Brain received them and pulsed nothing: a lookup or an
+  // experiment completing left the visualization inert, which quietly made
+  // the Brain a picture of only *some* of what VOX does. Lab work is an
+  // investigation into how something behaves, so it lands on the same
+  // incoming-information region as research rather than inventing a system.
+  ResearchQuery: "RESEARCH",
+  ResearchItem: "RESEARCH",
+  LabExperiment: "RESEARCH",
+  LabSimulation: "RESEARCH",
+  LabSimulationRun: "RESEARCH",
 };
 
 export type Vec3 = [number, number, number];

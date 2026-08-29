@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, ConfidenceBadge } from "@/components/ui/Badge";
 import { Seam } from "@/components/ui/Instrument";
 import { cn } from "@/lib/utils/cn";
@@ -57,24 +57,36 @@ export function EvidencePanel({ objectiveId }: { objectiveId: string }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setState("loading");
-    try {
-      const res = await fetch(`/api/objectives/${objectiveId}/evidence`);
-      if (!res.ok) throw new Error(String(res.status));
-      const json = (await res.json()) as { evidence: EvidencePayload };
-      setData(json.evidence);
-      setState("ready");
-    } catch {
-      // An unreachable dossier is reported as unknown, never as "no evidence" —
-      // those mean very different things to someone deciding what to do next.
-      setState("error");
-    }
-  }, [objectiveId]);
+  // Bumped to re-run the fetch on retry, so the effect stays the single
+  // place the request is made rather than having a second path that can
+  // drift from it.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    // The `ignore` flag is load-bearing, not ceremony: expanding one
+    // objective and then another fires two requests, and without it the
+    // slower first response can land last and show objective A's evidence
+    // under objective B — the exact cross-objective confusion this whole
+    // feature exists to prevent.
+    let ignore = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/objectives/${objectiveId}/evidence`);
+        if (!res.ok) throw new Error(String(res.status));
+        const json = (await res.json()) as { evidence: EvidencePayload };
+        if (ignore) return;
+        setData(json.evidence);
+        setState("ready");
+      } catch {
+        // An unreachable dossier is reported as unknown, never as "no evidence" —
+        // those mean very different things to someone deciding what to do next.
+        if (!ignore) setState("error");
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [objectiveId, reloadToken]);
 
   const sources = data?.sourceCounts;
   const totalSources = sources ? sources.research + sources.experiments + sources.simulations : 0;
@@ -84,7 +96,7 @@ export function EvidencePanel({ objectiveId }: { objectiveId: string }) {
 
   return (
     <section className="mt-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="vox-eyebrow">Evidence gathered for this objective</p>
         {state === "ready" && data ? (
           <span className="vox-readout text-[11px] text-muted-foreground">
@@ -106,7 +118,14 @@ export function EvidencePanel({ objectiveId }: { objectiveId: string }) {
       {state === "error" ? (
         <div className="mt-3 flex items-center gap-3">
           <p className="text-xs text-danger">Could not read this objective&apos;s evidence.</p>
-          <button type="button" onClick={() => void load()} className="vox-press vox-unit hover:text-foreground">
+          <button
+            type="button"
+            onClick={() => {
+              setState("loading");
+              setReloadToken((t) => t + 1);
+            }}
+            className="vox-press vox-unit hover:text-foreground"
+          >
             Retry
           </button>
         </div>
