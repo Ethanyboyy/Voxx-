@@ -1,6 +1,8 @@
 import {
   recordExperience,
+  objectiveEvidenceAnchor,
   EXPERIENCE_PROVENANCE,
+  EVIDENCE_RELATION,
   type ExperienceAnchor,
 } from "@/lib/cognition/experience";
 import type { Confidence } from "@/generated/prisma/enums";
@@ -107,6 +109,8 @@ export interface ResearchExperienceInput {
   items: ResearchItem[];
   /** Set when the research was scoped to an opportunity the user owns. */
   opportunityId?: string;
+  /** Set when the lookup was run in pursuit of an objective the user owns. */
+  objectiveId?: string;
 }
 
 /**
@@ -132,6 +136,17 @@ export async function recordResearchExperience(input: ResearchExperienceInput): 
       relation: "sourced",
     }));
 
+  // The objective edge is what makes this finding answerable as "evidence I
+  // have because I am pursuing this goal". The source edges above stay:
+  // objective -> finding -> source keeps the chain walkable back to the URL,
+  // so nothing here becomes a claim without a provenance trail.
+  const objectiveAnchor = await objectiveEvidenceAnchor(
+    input.userId,
+    input.objectiveId,
+    EVIDENCE_RELATION.RESEARCH
+  );
+  if (objectiveAnchor) anchors.push(objectiveAnchor);
+
   const result = await recordExperience({
     userId: input.userId,
     content,
@@ -151,6 +166,7 @@ export async function recordResearchExperience(input: ResearchExperienceInput): 
         provider: input.providerId,
         sourceCount: substantive.length,
         substantive: substantive.length > 0,
+        objectiveId: input.objectiveId,
       },
       // Research reaches outside VOX and costs something to run; it is a
       // RECOMMEND-level capability, so its completion belongs in the audit
@@ -204,9 +220,13 @@ export async function recordResearchFailure(
   userId: string,
   query: string,
   providerId: string,
-  error: unknown
+  error: unknown,
+  objectiveId?: string
 ): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
+  // A dead end reached in pursuit of an objective is evidence about that
+  // objective — it is what stops VOX re-running the same failing lookup.
+  const objectiveAnchor = await objectiveEvidenceAnchor(userId, objectiveId, EVIDENCE_RELATION.RESEARCH);
   await recordExperience({
     userId,
     content:
@@ -215,6 +235,7 @@ export async function recordResearchFailure(
     category: "OBSERVATION",
     confidence: "LOW",
     provenance: EXPERIENCE_PROVENANCE.RESEARCH_FINDINGS,
+    anchors: objectiveAnchor ? [objectiveAnchor] : undefined,
     event: {
       type: "research.failed",
       subjectType: "ResearchQuery",

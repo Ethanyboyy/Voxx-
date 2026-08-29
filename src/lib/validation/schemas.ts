@@ -205,6 +205,10 @@ export const updateHypothesisSchema = z.object({
 export const researchRequestSchema = z.object({
   query: z.string().min(1).max(500),
   opportunityId: z.string().optional(),
+  /** The objective this lookup is being run in pursuit of, so the finding is
+   *  retrievable later as that objective's own evidence. Ownership is
+   *  re-checked service-side; an id that isn't the caller's is dropped. */
+  objectiveId: z.string().optional(),
 });
 
 export const createKnowledgeNodeSchema = z.object({

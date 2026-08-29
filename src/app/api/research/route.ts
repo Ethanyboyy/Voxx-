@@ -18,7 +18,10 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
     const body = researchRequestSchema.parse(await request.json());
-    const items = await runResearch(user.id, body.query, body.opportunityId);
+    const items = await runResearch(user.id, body.query, {
+      opportunityId: body.opportunityId,
+      objectiveId: body.objectiveId,
+    });
     return jsonOk({ items }, 201);
   } catch (error) {
     return apiErrorResponse(error);

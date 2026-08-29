@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import { createMemory } from "@/lib/memory/service";
 import { ensureNodeForEntity, createConnection, type LinkableEntityType } from "@/lib/knowledge/service";
 import { recordEvent } from "@/lib/observability/events";
@@ -63,6 +64,33 @@ export const OBSERVATION_PROVENANCES: ExperienceProvenance[] = [
   EXPERIENCE_PROVENANCE.LAB_EXPERIMENT_RESULT,
   EXPERIENCE_PROVENANCE.LAB_SIMULATION_RUN,
 ];
+
+/**
+ * Edge labels for evidence produced BECAUSE an objective is being pursued.
+ *
+ * Namespaced `evidence:` so an objective's edges stay legible at a glance:
+ * `verified:*` edges say how an attempt at the objective turned out, while
+ * `evidence:*` edges say what was learned along the way. Traversing an
+ * objective node and filtering on this prefix is what lets VOX answer
+ * "what do I know specifically because I am pursuing this?" — as opposed to
+ * "what happens to be recent".
+ *
+ * The kind is part of the label, not flattened away, because a retrieved
+ * research claim, a recorded experiment and a simulated model output are
+ * different grades of evidence and must never be readable as one.
+ */
+export const EVIDENCE_RELATION = {
+  RESEARCH: "evidence:research",
+  EXPERIMENT: "evidence:experiment",
+  SIMULATION: "evidence:simulation",
+} as const;
+
+export type EvidenceRelation = (typeof EVIDENCE_RELATION)[keyof typeof EVIDENCE_RELATION];
+
+/** True for any edge drawn by the objective-evidence linkage. */
+export function isEvidenceRelation(relation: string): boolean {
+  return relation.startsWith("evidence:");
+}
 
 /**
  * A real record this experience is about. Each anchor gets (or reuses) a
@@ -198,6 +226,57 @@ async function linkIntoGraph(
   }
 
   return linked;
+}
+
+/**
+ * The anchor that ties a piece of evidence to the objective it was produced
+ * for, or null when the work was not done in pursuit of one.
+ *
+ * Ownership is re-checked here rather than trusted from the caller: an
+ * objectiveId that arrived over an API boundary must not be able to attach
+ * evidence to somebody else's objective, and an id pointing at a deleted
+ * objective must degrade to "unscoped evidence" rather than failing the
+ * caller's real work.
+ *
+ * Returns null on any doubt. Unlinked evidence is still recorded and still
+ * reachable by recency — the only thing lost is the objective association,
+ * which is exactly the right failure mode.
+ */
+export async function objectiveEvidenceAnchor(
+  userId: string,
+  objectiveId: string | null | undefined,
+  relation: EvidenceRelation
+): Promise<ExperienceAnchor | null> {
+  if (!objectiveId) return null;
+  try {
+    const objective = await db.objective.findFirst({
+      where: { id: objectiveId, userId },
+      select: { id: true, title: true },
+    });
+    if (!objective) return null;
+    return {
+      entityType: "OBJECTIVE",
+      entityId: objective.id,
+      label: objective.title.slice(0, 120),
+      relation,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Confirms an objectiveId belongs to this user, returning it or undefined.
+ * Used at write time by the pipelines that persist `objectiveId` on their
+ * own rows, so an unowned id is dropped rather than stored.
+ */
+export async function scopeObjectiveId(
+  userId: string,
+  objectiveId: string | null | undefined
+): Promise<string | undefined> {
+  if (!objectiveId) return undefined;
+  const objective = await db.objective.findFirst({ where: { id: objectiveId, userId }, select: { id: true } });
+  return objective ? objective.id : undefined;
 }
 
 /**

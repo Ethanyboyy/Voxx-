@@ -310,6 +310,10 @@ export const createSimulationSchema = z.object({
   userMassKg: z.number().min(1).optional(),
   reactionTimeMs: z.number().min(0).optional(),
   skillLevel: z.number().min(0).max(100).optional(),
+  /** The objective this work is being run in pursuit of, so the result is
+   *  retrievable later as that objective's own evidence. Ownership is
+   *  re-checked service-side; an id that isn't the caller's is dropped. */
+  objectiveId: z.string().optional(),
 });
 
 export const executeSimulationSchema = z.object({ seed: z.number().int().optional() });
@@ -327,6 +331,10 @@ export const createExperimentSchema = z.object({
   componentId: z.string().optional(),
   simulationRunId: z.string().optional(),
   confidence: labConfidenceSchema.optional(),
+  /** The objective this work is being run in pursuit of, so the result is
+   *  retrievable later as that objective's own evidence. Ownership is
+   *  re-checked service-side; an id that isn't the caller's is dropped. */
+  objectiveId: z.string().optional(),
 });
 
 export const updateExperimentSchema = z.object({

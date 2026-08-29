@@ -258,7 +258,11 @@ describe("One pathway, not three silos", () => {
     expect(kinds.has("lab simulation")).toBe(true);
 
     const rendered = renderPlanningContext(context);
-    expect(rendered).toContain("What VOX has actually looked up or measured");
+    // None of this work was run in pursuit of an objective, so it is offered
+    // as background rather than as any objective's own evidence — a stricter
+    // statement than the single undifferentiated heading this replaced.
+    expect(rendered).toContain("NOT gathered for this objective");
+    expect(context.observations.every((o) => o.objectiveLinked === false)).toBe(true);
     // The planner is told how to read each kind, so it cannot treat a model
     // output or a retrieved claim as established fact.
     expect(rendered).toContain("a retrieved claim with a source attached, not a verified fact");

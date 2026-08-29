@@ -575,6 +575,11 @@ model ResearchItem {
   /// (e.g. from the Brain workspace) — null for general/unscoped research.
   opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   opportunityId String?
+  /// Set when this lookup was run in pursuit of a specific Objective, so the
+  /// finding is retrievable as that objective's own evidence rather than as
+  /// merely-recent history. Null for unscoped research.
+  objective     Objective?   @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  objectiveId   String?
   retrievedAt DateTime   @default(now())
   createdAt   DateTime   @default(now())
 
@@ -1049,6 +1054,14 @@ model Objective {
   opportunities  Opportunity[]
   supervisorRuns SupervisorRun[]
   knowledgeNode  KnowledgeNode?
+  /// Evidence gathered specifically BECAUSE this objective is being pursued.
+  /// The durable answer to "what do I know because of this goal?" — the
+  /// knowledge graph carries the same relationships as `evidence:*` edges,
+  /// but graph writes are best-effort, so the origin is recorded here at the
+  /// source of truth and survives regardless.
+  researchItems  ResearchItem[]
+  labExperiments LabExperiment[]
+  labSimulations LabSimulation[]
 }
 
 /// IDEA/EVALUATING/ACTIVE/PAUSED/COMPLETED/REJECTED are the original
@@ -2042,6 +2055,11 @@ model LabSimulation {
   suitId                String?
   webProfile            LabWebProfile? @relation(fields: [webProfileId], references: [id], onDelete: SetNull)
   webProfileId          String?
+  /// Set when this simulation is being run in pursuit of a specific
+  /// Objective — see Objective.researchItems for the rationale. A simulated
+  /// result stays a model output no matter which objective it serves.
+  objective             Objective?   @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  objectiveId           String?
   userMassKg            Float        @default(75)
   reactionTimeMs         Float       @default(250)
   skillLevel             Int         @default(50) // 0-100
@@ -2127,6 +2145,12 @@ model LabExperiment {
   simulationRun    LabSimulationRun?    @relation(fields: [simulationRunId], references: [id], onDelete: SetNull)
   simulationRunId  String?
   confidence       LabConfidence        @default(HYPOTHETICAL)
+  /// Set when this experiment is being run in pursuit of a specific
+  /// Objective — see Objective.researchItems for the rationale. Named
+  /// `linkedObjective` because `objective` above is already this
+  /// experiment's own free-text aim, which is a different thing entirely.
+  linkedObjective  Objective?           @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  objectiveId      String?
   nextIteration    String?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt

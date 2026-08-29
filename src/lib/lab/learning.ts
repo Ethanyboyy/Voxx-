@@ -1,7 +1,9 @@
 import {
   recordExperience,
+  objectiveEvidenceAnchor,
   labConfidenceToMemoryConfidence,
   EXPERIENCE_PROVENANCE,
+  EVIDENCE_RELATION,
   type ExperienceAnchor,
 } from "@/lib/cognition/experience";
 import type { FailureAnalysisEntry } from "@/lib/lab/physics";
@@ -39,6 +41,8 @@ export interface ExperimentResultExperienceInput {
   outcome: string;
   learnings: string | null;
   confidence: LabConfidence;
+  /** The Objective this experiment was run in pursuit of, if any. */
+  objectiveId?: string | null;
 }
 
 /**
@@ -81,6 +85,16 @@ export async function recordExperimentResultExperience(
     },
   ];
 
+  // objective -> result -> experiment: the objective edge makes this
+  // retrievable as that goal's evidence, and the experiment edge above keeps
+  // the chain walkable back to the hypothesis and configuration it came from.
+  const objectiveAnchor = await objectiveEvidenceAnchor(
+    input.userId,
+    input.objectiveId,
+    EVIDENCE_RELATION.EXPERIMENT
+  );
+  if (objectiveAnchor) anchors.push(objectiveAnchor);
+
   const result = await recordExperience({
     userId: input.userId,
     content: parts.join("\n"),
@@ -94,7 +108,7 @@ export async function recordExperimentResultExperience(
       type: "lab.experiment.result_recorded",
       subjectType: "LabExperiment",
       subjectId: input.experimentId,
-      payload: { code: input.code, confidence: input.confidence },
+      payload: { code: input.code, confidence: input.confidence, objectiveId: input.objectiveId ?? undefined },
       consequential: true,
     },
   });
@@ -134,6 +148,8 @@ export interface SimulationRunExperienceInput {
   warnings: string[];
   failures: FailureAnalysisEntry[];
   suitName: string | null;
+  /** The Objective this simulation was run in pursuit of, if any. */
+  objectiveId?: string | null;
 }
 
 /**
@@ -198,6 +214,17 @@ export async function recordSimulationRunExperience(input: SimulationRunExperien
     },
   ];
 
+  // Linking a model output to an objective does NOT upgrade it. The edge is
+  // labelled `evidence:simulation` and the memory still opens by declaring
+  // itself a simulation, so objective-linked evidence and physically
+  // verified evidence stay distinguishable at every point they are read.
+  const objectiveAnchor = await objectiveEvidenceAnchor(
+    input.userId,
+    input.objectiveId,
+    EVIDENCE_RELATION.SIMULATION
+  );
+  if (objectiveAnchor) anchors.push(objectiveAnchor);
+
   const result = await recordExperience({
     userId: input.userId,
     content: parts.join("\n"),
@@ -216,6 +243,7 @@ export async function recordSimulationRunExperience(input: SimulationRunExperien
         simulationId: input.simulationId,
         seed: input.seed,
         failureCategories: input.failures.map((f) => f.category),
+        objectiveId: input.objectiveId ?? undefined,
       },
       consequential: true,
     },

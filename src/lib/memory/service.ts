@@ -163,6 +163,25 @@ export async function listMemoriesByProvenance(
 }
 
 /**
+ * Active memories by id, newest first.
+ *
+ * The read side of knowledge-graph traversal: the graph yields memory ids,
+ * and this turns them back into content without a second notion of what a
+ * memory is. Scoped by userId as well as id — a graph node reached by
+ * traversal is not on its own proof of ownership, and a superseded memory
+ * stays excluded here exactly as it is everywhere else.
+ */
+export async function listMemoriesByIds(userId: string, ids: string[]): Promise<MemoryDTO[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.memory.findMany({
+    where: { userId, id: { in: ids }, supersededAt: null },
+    include: { source: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toDTO);
+}
+
+/**
  * Ranks active memories by semantic similarity to queryText (see
  * src/lib/embeddings/ and src/lib/memory/embeddings.ts). This is what chat
  * context assembly uses instead of recency-only ordering.

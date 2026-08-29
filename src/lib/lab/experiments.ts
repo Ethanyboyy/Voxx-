@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
 import { recordExperimentResultExperience } from "@/lib/lab/learning";
+import { scopeObjectiveId } from "@/lib/cognition/experience";
 import type { LabConfidence, LabExperimentStatus } from "@/generated/prisma/enums";
 
 export interface CreateExperimentInput {
@@ -20,6 +21,9 @@ export interface CreateExperimentInput {
   componentId?: string;
   simulationRunId?: string;
   confidence?: LabConfidence;
+  /** The Objective this experiment is being run in pursuit of. Distinct from
+   *  `objective` above, which is this experiment's own free-text aim. */
+  objectiveId?: string;
 }
 
 export async function createExperiment(input: CreateExperimentInput) {
@@ -39,13 +43,16 @@ export async function createExperiment(input: CreateExperimentInput) {
       componentId: input.componentId,
       simulationRunId: input.simulationRunId,
       confidence: input.confidence ?? "HYPOTHETICAL",
+      // Recorded on the experiment itself, so the objective association
+      // survives even if the derived graph write later fails.
+      objectiveId: await scopeObjectiveId(input.userId, input.objectiveId),
     },
   });
 
   await recordEvent({
     userId: input.userId,
     type: "lab.experiment.created",
-    payload: { code: experiment.code, title: experiment.title },
+    payload: { code: experiment.code, title: experiment.title, objectiveId: experiment.objectiveId },
     subjectType: "LabExperiment",
     subjectId: experiment.id,
   });
@@ -140,6 +147,10 @@ export async function addExperimentResult(userId: string, experimentId: string, 
     outcome: input.outcome,
     learnings: input.learnings ?? null,
     confidence,
+    // Read from the experiment rather than taken from the caller: the
+    // objective was decided when the experiment was created, and a result
+    // must not be able to re-point itself at a different goal.
+    objectiveId: experiment.objectiveId,
   });
 
   return result;

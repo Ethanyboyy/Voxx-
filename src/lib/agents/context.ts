@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import { getSemanticMemories, listMemoriesByProvenance } from "@/lib/memory/service";
-import { OBSERVATION_PROVENANCES, EXPERIENCE_PROVENANCE } from "@/lib/cognition/experience";
+import { getSemanticMemories, listMemoriesByProvenance, listMemoriesByIds } from "@/lib/memory/service";
+import { findRelated, getNodeForEntity } from "@/lib/knowledge/service";
+import { OBSERVATION_PROVENANCES, EXPERIENCE_PROVENANCE, isEvidenceRelation } from "@/lib/cognition/experience";
 
 /**
  * The evidence VOX has about an objective BEFORE it plans how to pursue it.
@@ -47,12 +48,25 @@ export interface PlanningContext {
     confidence: string;
     /** Human-readable source kind for the prompt, e.g. "research". */
     kind: string;
+    /** True when this evidence was produced BECAUSE this objective is being
+     * pursued — established by an `evidence:*` edge from the objective's own
+     * graph node, not by recency or by topic resemblance. This is the
+     * difference between "what do I know because of this goal" and "what
+     * happens to be recent". */
+    objectiveLinked: boolean;
   }[];
 }
 
 const MAX_MEMORIES = 6;
 const MAX_OUTCOMES = 5;
 const MAX_OBSERVATIONS = 5;
+/** Objective-linked evidence is the most relevant thing VOX can offer a
+ *  planning pass, so it gets its own budget on top of the recency window. */
+const MAX_OBJECTIVE_EVIDENCE = 6;
+/** Depth 1 only: the objective's own evidence edges. Going deeper would drag
+ *  in whatever those memories happen to touch, which is exactly the
+ *  loosely-related material this feature exists to stop surfacing. */
+const EVIDENCE_TRAVERSAL_DEPTH = 1;
 
 const OBSERVATION_KIND: Record<string, string> = {
   [EXPERIENCE_PROVENANCE.RESEARCH_FINDINGS]: "research",
@@ -76,11 +90,21 @@ export async function buildPlanningContext(
   objectiveText: string,
   options: { objectiveId?: string } = {}
 ): Promise<PlanningContext> {
-  const [memories, priorOutcomes, observations] = await Promise.all([
+  const [memories, priorOutcomes, recentObservations, objectiveEvidence] = await Promise.all([
     loadMemories(userId, objectiveText),
     loadPriorOutcomes(userId, options.objectiveId),
     loadObservations(userId),
+    loadObjectiveEvidence(userId, options.objectiveId),
   ]);
+
+  // This objective's own evidence leads, and recent-but-unrelated
+  // observations fill in behind it. A finding reachable both ways is listed
+  // once, as objective-linked — the stronger and more specific claim.
+  const evidenceIds = new Set(objectiveEvidence.map((o) => o.id));
+  const observations = [
+    ...objectiveEvidence,
+    ...recentObservations.filter((o) => !evidenceIds.has(o.id)),
+  ].map((o) => stripId(o));
 
   // Semantic retrieval draws from the same memory store, so a research or Lab
   // observation can legitimately surface in both lists. Showing it twice
@@ -109,15 +133,77 @@ async function loadMemories(userId: string, objectiveText: string): Promise<Plan
  * same reason as everything else here: this runs on the hot path of every
  * supervised run, and planning with partial context beats not planning.
  */
-async function loadObservations(userId: string): Promise<PlanningContext["observations"]> {
+async function loadObservations(userId: string): Promise<LoadedObservation[]> {
   try {
     const rows = await listMemoriesByProvenance(userId, OBSERVATION_PROVENANCES, MAX_OBSERVATIONS);
-    return rows.map((row) => ({
-      content: row.content,
-      provenance: row.provenance ?? "",
-      confidence: row.confidence,
-      kind: OBSERVATION_KIND[row.provenance ?? ""] ?? "observation",
-    }));
+    return rows.map((row) => toObservation(row, false));
+  } catch {
+    return [];
+  }
+}
+
+/** Carries the memory id so the two evidence lists can be de-duplicated by
+ *  identity rather than by comparing rendered text. The id is stripped before
+ *  the context is returned — the planner is given facts, not row keys. */
+type LoadedObservation = PlanningContext["observations"][number] & { id: string };
+
+/** Drops the internal row key once de-duplication is done. */
+function stripId(observation: LoadedObservation): PlanningContext["observations"][number] {
+  return {
+    content: observation.content,
+    provenance: observation.provenance,
+    confidence: observation.confidence,
+    kind: observation.kind,
+    objectiveLinked: observation.objectiveLinked,
+  };
+}
+
+function toObservation(
+  row: { id: string; content: string; provenance: string | null; confidence: string },
+  objectiveLinked: boolean
+): LoadedObservation {
+  return {
+    id: row.id,
+    content: row.content,
+    provenance: row.provenance ?? "",
+    confidence: row.confidence,
+    kind: OBSERVATION_KIND[row.provenance ?? ""] ?? "observation",
+    objectiveLinked,
+  };
+}
+
+/**
+ * The evidence VOX holds specifically because it is pursuing THIS objective.
+ *
+ * Answered by traversing the objective's own graph node across the
+ * `evidence:*` edges that research, experiments and simulations draw at write
+ * time — not by recency, and not by topic resemblance. A finding gathered for
+ * a different objective is not this objective's evidence however recent or
+ * similar it is, which is the entire point: without this, a planning pass
+ * could present another goal's research as though it had been gathered for
+ * this one.
+ *
+ * Confidence, provenance and framing come from the stored memory unchanged.
+ * Being linked to an objective says where evidence came from; it says nothing
+ * about how good the evidence is, and must never be read as corroboration.
+ */
+async function loadObjectiveEvidence(userId: string, objectiveId?: string): Promise<LoadedObservation[]> {
+  if (!objectiveId) return [];
+  try {
+    const objectiveNode = await getNodeForEntity(userId, "OBJECTIVE", objectiveId);
+    if (!objectiveNode) return [];
+
+    const related = await findRelated(userId, objectiveNode.id, EVIDENCE_TRAVERSAL_DEPTH);
+    const memoryIds = related
+      .filter((r) => isEvidenceRelation(r.relation) && r.node.memoryId != null)
+      .map((r) => r.node.memoryId as string);
+    if (memoryIds.length === 0) return [];
+
+    const rows = await listMemoriesByIds(userId, memoryIds);
+    // Newest first, matching how the recency list reads, then capped.
+    return rows
+      .slice(0, MAX_OBJECTIVE_EVIDENCE)
+      .map((row) => toObservation(row, true));
   } catch {
     return [];
   }
@@ -169,6 +255,20 @@ async function loadPriorOutcomes(userId: string, objectiveId?: string): Promise<
  * what happened rather than as instructions, so a low-confidence inference
  * isn't silently promoted into a planning constraint.
  */
+/**
+ * How to read each grade of evidence. Stated in the prompt rather than left
+ * implicit, because the planner cannot otherwise tell a retrieved web claim
+ * from a measured experiment from a model output — and being linked to an
+ * objective changes none of that.
+ */
+const EVIDENCE_GRADE_NOTE =
+  `  Grades differ and do not merge: a "research" entry is a retrieved claim with a source attached, not a ` +
+  `verified fact. A "lab experiment" entry is a real recorded observation carrying the experimenter's own ` +
+  `confidence, which VOX has not independently confirmed. A "lab simulation" entry is the output of VOX's own ` +
+  `kinematic model under the listed inputs — it is not evidence that anything was physically built or tested. ` +
+  `Only memories the user stated directly are established facts. Evidence being linked to this objective says ` +
+  `where it came from; it never raises its grade and is never corroboration.`;
+
 export function renderPlanningContext(context: PlanningContext): string {
   const sections: string[] = [];
 
@@ -179,14 +279,29 @@ export function renderPlanningContext(context: PlanningContext): string {
     );
   }
 
-  if (context.observations.length > 0) {
-    const lines = context.observations.map((o) => `- [${o.kind}, confidence ${o.confidence}] ${o.content}`);
+  const linked = context.observations.filter((o) => o.objectiveLinked);
+  const general = context.observations.filter((o) => !o.objectiveLinked);
+
+  // The two lists are rendered separately because they answer different
+  // questions. "Evidence gathered for this objective" is a claim about
+  // provenance; "other recent observations" is a claim about timing only.
+  // Collapsing them would let unrelated recent material read as though it had
+  // been gathered for this goal.
+  if (linked.length > 0) {
+    const lines = linked.map((o) => `- [${o.kind}, confidence ${o.confidence}] ${o.content}`);
     sections.push(
-      `What VOX has actually looked up or measured (real recorded research findings and Lab results):\n` +
-        `Read these for what they are. A research finding is a retrieved claim with a source attached, not a ` +
-        `verified fact. A lab simulation result is the output of VOX's own kinematic model — it says how the ` +
-        `model behaved under the listed inputs, and is not evidence that anything was physically built or tested.\n` +
-        `${lines.join("\n")}`
+      `Evidence gathered specifically in pursuit of THIS objective (each of these was produced by work run ` +
+        `for this objective, not merely recorded around the same time):\n${EVIDENCE_GRADE_NOTE}\n${lines.join("\n")}`
+    );
+  }
+
+  if (general.length > 0) {
+    const lines = general.map((o) => `- [${o.kind}, confidence ${o.confidence}] ${o.content}`);
+    sections.push(
+      `Other recent observations, NOT gathered for this objective (they may or may not be relevant — treat them ` +
+        `as background, not as evidence about this objective):\n${
+          linked.length > 0 ? "" : `${EVIDENCE_GRADE_NOTE}\n`
+        }${lines.join("\n")}`
     );
   }
 

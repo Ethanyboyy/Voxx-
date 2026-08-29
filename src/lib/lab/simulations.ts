@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { difficultyFactor, runSimulation } from "@/lib/lab/physics";
 import { recordEvent } from "@/lib/observability/events";
 import { recordSimulationRunExperience } from "@/lib/lab/learning";
+import { scopeObjectiveId } from "@/lib/cognition/experience";
 
 export interface CreateSimulationInput {
   userId: string;
@@ -14,6 +15,9 @@ export interface CreateSimulationInput {
   userMassKg?: number;
   reactionTimeMs?: number;
   skillLevel?: number;
+  /** The Objective this simulation is being run in pursuit of. A simulated
+   *  result stays a model output whichever objective it serves. */
+  objectiveId?: string;
 }
 
 export async function createSimulation(input: CreateSimulationInput) {
@@ -28,6 +32,9 @@ export async function createSimulation(input: CreateSimulationInput) {
       userMassKg: input.userMassKg ?? 75,
       reactionTimeMs: input.reactionTimeMs ?? 250,
       skillLevel: input.skillLevel ?? 50,
+      // Stored on the simulation itself so the objective association is
+      // durable, independent of the best-effort graph write.
+      objectiveId: await scopeObjectiveId(input.userId, input.objectiveId),
       gadgets: input.gadgetIds
         ? { create: input.gadgetIds.map((gadgetId) => ({ gadgetId })) }
         : undefined,
@@ -166,6 +173,8 @@ export async function executeSimulation(userId: string, simulationId: string, se
     },
     warnings: result.warnings,
     failures: result.failures,
+    // Taken from the simulation record, not from the caller of this run.
+    objectiveId: simulation.objectiveId,
     suitName: simulation.suit ? `${simulation.suit.codename} ${simulation.suit.designation}` : null,
   });
 
