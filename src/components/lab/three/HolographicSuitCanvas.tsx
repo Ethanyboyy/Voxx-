@@ -109,7 +109,17 @@ export function HolographicSuitCanvas({
   // T-pose bind pose — see GltfSuitModel.tsx) is a full CANONICAL_BODY_HEIGHT
   // figure with arms held out from its sides, needing a further-back, more
   // head-on framing to fit the whole figure instead of cropping into one limb.
-  const cameraPosition: [number, number, number] = [0, -0.12, 3.45];
+  // Framed for a posed figure, not a T-pose. A T-pose is nearly as wide as it
+  // is tall, so it needed the camera pulled well back; arms-down is roughly a
+  // third of that width and the same framing left the suit small in a mostly
+  // empty frame. Closer, and off-axis rather than dead-on — a dead-on
+  // elevation reads as a spec drawing, a slight three-quarter reads as an
+  // object in a room.
+  // Distance is set by the figure's HEIGHT once the arms are down: at fov 30 a
+  // 1.75-unit body needs ~3.3 to fit, and 2.6 cropped the head and the feet.
+  // The lateral offset stays small — enough to read as a three-quarter view
+  // rather than a spec elevation, not enough to hide the far arm.
+  const cameraPosition: [number, number, number] = [0.42, -0.05, 3.4];
   const orbitTarget: [number, number, number] = [0, -0.45, 0];
 
   return (

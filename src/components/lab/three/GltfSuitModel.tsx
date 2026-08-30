@@ -9,6 +9,7 @@ import { resolveSuitBuild } from "@/components/lab/three/suitConfig";
 import { SuitArmor, buildSurfaceMaterials } from "@/components/lab/three/SuitArmor";
 
 import { CANONICAL_BODY_HEIGHT, CANONICAL_FEET_Y } from "@/components/lab/three/canonicalBody";
+import { bakePosedGeometry } from "@/components/lab/three/poseBaking";
 
 // Re-exported so existing importers of this module keep working.
 export { CANONICAL_BODY_HEIGHT, CANONICAL_FEET_Y };
@@ -71,6 +72,54 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): {
   scene.traverse((obj) => {
     if (obj.name === "Z_UP") hasZUpRoot = true;
   });
+
+  // Pose BEFORE measuring. Every downstream number in this function — the
+  // height, the centre, the arm span the armour mounts key off — is read from
+  // one Box3 of the scene, and a T-posed body and a posed one have very
+  // different boxes. Baking afterwards would leave the whole rig aligned to a
+  // silhouette that no longer exists.
+  const skinned: THREE.SkinnedMesh[] = [];
+  scene.traverse((obj) => {
+    if ((obj as THREE.SkinnedMesh).isSkinnedMesh) skinned.push(obj as THREE.SkinnedMesh);
+  });
+  // Joints from the posed skeleton, in mesh-local space, plus the mesh they
+  // belong to — mapped to world further down, once the scene has been scaled
+  // and seated. This replaces the bounding-box guesswork the rig used to run
+  // on; a box can only describe a T-pose.
+  let posedJoints: Map<string, THREE.Vector3> | null = null;
+  let jointHost: THREE.Object3D | null = null;
+
+  for (const mesh of skinned) {
+    const posed = bakePosedGeometry(mesh);
+    if (!posed) continue;
+    // Replace the SkinnedMesh outright rather than re-pointing its geometry.
+    // A SkinnedMesh computes its bounding box THROUGH the skeleton
+    // (Box3.setFromObject → SkinnedMesh.computeBoundingBox →
+    // applyBoneTransform), so leaving one in the graph holding baked geometry
+    // whose skin attributes have been stripped makes the very next
+    // measurement throw. Swapping to a plain Mesh removes the skinned path
+    // entirely, which is what the rest of this pipeline already assumes.
+    //
+    // The old geometry is deliberately NOT disposed: SkeletonUtils clones
+    // share it with useGLTF's cache, and freeing it here breaks every
+    // subsequent render of the same asset.
+    const plain = new THREE.Mesh(posed.geometry, mesh.material);
+    plain.name = mesh.name;
+    plain.frustumCulled = false;
+    plain.applyMatrix4(mesh.matrix);
+    mesh.parent?.add(plain);
+    mesh.removeFromParent();
+
+    // Keep the joints from the body mesh — the one with the most vertices, on
+    // the assumption that a multi-mesh character's body carries the full
+    // skeleton while accessories are bound to a subset of it.
+    const count = posed.geometry.getAttribute("position")?.count ?? 0;
+    const bestCount = jointHost ? ((jointHost as THREE.Mesh).geometry.getAttribute("position")?.count ?? 0) : -1;
+    if (count > bestCount) {
+      posedJoints = posed.joints;
+      jointHost = plain;
+    }
+  }
 
   // Measure ONCE, at identity, before any rotation/scale/skinning mutation —
   // see CESIUM_MAN_CORRECTIVE_ROTATION's doc comment for why re-measuring
@@ -176,6 +225,9 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): {
       // its own investigation into why skinning fails here, not a silent
       // opt-out of this swap.
       if ((mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+        // The swap stands, but it no longer means a T-pose: geometry was
+        // already replaced with the CPU-baked posed version in the pre-pass
+        // above, so this plain Mesh carries the posed shape.
         const plain = new THREE.Mesh(mesh.geometry, mesh.material);
         plain.frustumCulled = false;
         mesh.parent?.add(plain);
@@ -186,6 +238,16 @@ function normalizeToCanonicalBody(scene: THREE.Object3D): {
       }
     }
   });
+
+  // Real joints win over the box-derived estimates wherever the asset has
+  // them. The estimates stay as the fallback for an unrigged body, which is
+  // the only case they were ever correct for.
+  if (posedJoints && jointHost) {
+    scene.updateMatrixWorld(true);
+    for (const [name, local] of posedJoints) {
+      anchors.set(name, local.clone().applyMatrix4(jointHost.matrixWorld));
+    }
+  }
 
   return { scene, suitMeshes, anchors };
 }
