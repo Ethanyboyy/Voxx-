@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { SURFACE_SPECS, type ArmorSlot, type SuitBuild } from "@/components/lab/three/suitConfig";
 import { CANONICAL_BODY_HEIGHT } from "@/components/lab/three/canonicalBody";
 import { createChamferedSlab, createLensGeometry, createShellPanel } from "@/components/lab/three/panelGeometry";
+import { canBuildFabric, getFabricMaps } from "@/components/lab/three/fabricTexture";
 import type { MaskLensStyle } from "@/components/lab/three/suitDesign";
 
 /**
@@ -467,6 +468,17 @@ export function buildSurfaceMaterials(
       ? paletteColor(colorSecondary, p.underlayerL, p.underlayerS)
       : paletteColor(colorSecondary, p.plateL, p.plateS, p.plateHueShift);
 
+    // The UNDERLAYER is the suit itself, and it is what the whole design reads
+    // as. Give it a real woven surface: the body asset carries UVs, so a
+    // tiled weave normal + roughness pair makes it respond like textile
+    // instead of returning the single clean highlight that made it read as
+    // bare skin. Plates deliberately do NOT get this — a hard shell with a
+    // weave on it reads as painted cloth.
+    const wovenMaps =
+      isUnderlayer && !options.xray && canBuildFabric()
+        ? getFabricMaps(cls === "ELASTOMER" ? "RIBBED_ELASTOMER" : "TECHNICAL_WEAVE", cls === "ELASTOMER" ? 12 : 18)
+        : null;
+
     out[cls] = new THREE.MeshPhysicalMaterial({
       color: base,
       metalness: spec.metalness,
@@ -474,6 +486,16 @@ export function buildSurfaceMaterials(
       clearcoat: spec.clearcoat,
       clearcoatRoughness: spec.clearcoatRoughness,
       sheen: spec.sheen,
+      ...(wovenMaps
+        ? {
+            normalMap: wovenMaps.normalMap,
+            // Kept low. A weave is a fine surface, and a normal scale that
+            // reads correctly in a close-up turns the whole figure crepey at
+            // full-body framing, which is the shot that actually matters here.
+            normalScale: new THREE.Vector2(1.35, 1.35),
+            roughnessMap: wovenMaps.roughnessMap,
+          }
+        : {}),
       // Neutral, NOT the accent. Sheen is how woven material catches light
       // at a grazing angle; tinting it with the suit's accent turned it into
       // a hue injection that washed the entire body purple and defeated the
