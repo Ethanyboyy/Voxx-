@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent tooling installed into the repo (Claude Code skills and their
+    // bundled scripts). Gitignored, not application source, and written to
+    // its own conventions — linting it reports errors nobody here can act on.
+    ".claude/**",
+    ".agents/**",
   ]),
 ]);
 
