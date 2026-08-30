@@ -147,25 +147,35 @@ export interface SuitBuild {
  * level reads as adding equipment rather than swapping to a different suit.
  */
 const SLOTS_BY_LEVEL: Record<ArmorLevel, ArmorSlot[]> = {
-  NONE: ["collar", "belt", "gloveL", "gloveR", "bootL", "bootR"],
-  LIGHT: ["collar", "belt", "chest", "forearmL", "forearmR", "shinL", "shinR", "gloveL", "gloveR", "bootL", "bootR"],
+  // TEXTILE-FIRST. The suit is a technical garment; hard components are a
+  // subsystem it carries, not what it is. Previous loadouts put a plate on
+  // nearly every body region at every level, and the result read as armour
+  // over a body rather than a suit — the thing this system is explicitly not
+  // meant to be.
+  //
+  // So each level now earns its pieces. What survives at low levels is what a
+  // real garment genuinely needs hard structure for: a boot sole, a wrist
+  // platform for the web system, a knee that takes ground impact. Torso and
+  // thigh plating is reserved for the levels whose whole purpose is impact
+  // protection.
+  NONE: ["gloveL", "gloveR", "bootL", "bootR"],
+  LIGHT: ["gloveL", "gloveR", "bootL", "bootR", "forearmL", "forearmR"],
   MODERATE: [
-    "collar", "belt", "chest", "forearmL", "forearmR", "shinL", "shinR",
-    "shoulderL", "shoulderR", "thighL", "thighR", "backpack",
-    "gloveL", "gloveR", "bootL", "bootR", "kneeL", "kneeR",
+    "gloveL", "gloveR", "bootL", "bootR", "forearmL", "forearmR",
+    "kneeL", "kneeR", "belt", "chest",
   ],
   EXPERIMENTAL: [
-    "collar", "belt", "chest", "forearmL", "forearmR", "shinL", "shinR",
-    "shoulderL", "shoulderR", "thighL", "thighR", "backpack",
-    "gloveL", "gloveR", "bootL", "bootR", "kneeL", "kneeR",
+    "gloveL", "gloveR", "bootL", "bootR", "forearmL", "forearmR",
+    "kneeL", "kneeR", "belt", "chest", "backpack",
+    "shoulderL", "shoulderR", "shinL", "shinR",
   ],
 };
 
 const BULK_BY_LEVEL: Record<ArmorLevel, number> = {
-  NONE: 0.7,
-  LIGHT: 0.85,
-  MODERATE: 1.15,
-  EXPERIMENTAL: 1.4,
+  NONE: 0.6,
+  LIGHT: 0.7,
+  MODERATE: 0.85,
+  EXPERIMENTAL: 1.0,
 };
 
 /** Silhouette adjusts how wide the build sits across the shoulders. */

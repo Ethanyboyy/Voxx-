@@ -161,6 +161,15 @@ export interface SuitArmorProps {
   anchors: Map<string, THREE.Vector3>;
   /** Lens shape for the helmet visor. */
   maskLensStyle?: MaskLensStyle;
+  /**
+   * Selection wiring. Ids are the SAME ids the Laboratory's component bridge
+   * uses (see lib/lab/slotBridge.ts), so a clicked mesh resolves to a real
+   * LabComponent rather than to a generic "the suit was clicked" event.
+   */
+  selectedId?: string | null;
+  hoveredId?: string | null;
+  onSelect?: (id: string | null) => void;
+  onHover?: (id: string | null) => void;
 }
 
 /**
@@ -182,7 +191,7 @@ function limbBasis(from: THREE.Vector3, to: THREE.Vector3): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, dir));
 }
 
-export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "ANGULAR", hidden = false, explodeAmount = 0 }: SuitArmorProps) {
+export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "ANGULAR", hidden = false, explodeAmount = 0, selectedId = null, hoveredId = null, onSelect, onHover }: SuitArmorProps)  {
   // One emissive material for every telemetry element on the suit. Built
   // here rather than per-piece so 12 components don't allocate 12 identical
   // materials — and disposed with the memo when the build changes.
@@ -199,6 +208,32 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
         toneMapped: false,
       }),
     [accent, build.emissiveStrength]
+  );
+
+  const selectionMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: accent,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        side: THREE.BackSide,
+        toneMapped: false,
+      }),
+    [accent]
+  );
+
+  const hoverMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#cfd4e4",
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        side: THREE.BackSide,
+        toneMapped: false,
+      }),
+    []
   );
 
   const lensMaterial = useMemo(
@@ -272,10 +307,26 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
   useEffect(() => () => lensGeometry.dispose(), [lensGeometry]);
   useEffect(() => () => coreMaterial.dispose(), [coreMaterial]);
   useEffect(() => () => lensMaterial.dispose(), [lensMaterial]);
+  useEffect(() => () => selectionMaterial.dispose(), [selectionMaterial]);
+  useEffect(() => () => hoverMaterial.dispose(), [hoverMaterial]);
 
   if (hidden) return null;
 
   const head = anchors.get("Head");
+
+  /**
+   * Highlight for a selected or hovered part.
+   *
+   * Drawn as an overlay on the SAME geometry rather than by swapping the
+   * piece's material: swapping loses the material identity that tells the user
+   * what the part is made of, which is most of the point of selecting it.
+   * depthWrite stays off so the overlay never occludes the part it marks.
+   */
+  const highlightFor = (id: string) => {
+    if (selectedId === id) return selectionMaterial;
+    if (hoveredId === id) return hoverMaterial;
+    return null;
+  };
   const lens = LENS_SPEC[maskLensStyle];
 
   return (
@@ -323,7 +374,34 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
 
         return (
           <group key={piece.slot} position={base.toArray()} quaternion={quaternion}>
-            <mesh geometry={geometry} material={material} rotation={cap?.rotation ?? [0, 0, 0]} castShadow receiveShadow />
+            <mesh
+              geometry={geometry}
+              material={material}
+              rotation={cap?.rotation ?? [0, 0, 0]}
+              castShadow
+              receiveShadow
+              onPointerDown={(e) => {
+                // stopPropagation matters: without it a click passes through to
+                // every piece behind the one actually under the cursor, and the
+                // last one wins — selecting the far side of the body.
+                e.stopPropagation();
+                onSelect?.(piece.slot);
+              }}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                onHover?.(piece.slot);
+              }}
+              onPointerOut={() => onHover?.(null)}
+            />
+            {highlightFor(piece.slot) ? (
+              <mesh
+                geometry={geometry}
+                material={highlightFor(piece.slot)!}
+                rotation={cap?.rotation ?? [0, 0, 0]}
+                scale={1.035}
+                raycast={() => null}
+              />
+            ) : null}
 
             {/* A thin lit strip on the leading edge of the torso plates. The
                 suit's instrumentation is a small physical element that is
@@ -351,7 +429,14 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
       {head ? (
         <group position={head.clone().add(new THREE.Vector3(0, 0.016 * H, 0.002 * H)).toArray()}>
           {/* Cranium — ovoid, wider than tall, sitting over the skull. */}
-          <mesh material={materials[build.plate] ?? materials.ARMOR} castShadow scale={[1.0, 1.1, 1.06]}>
+          <mesh
+            material={materials[build.plate] ?? materials.ARMOR}
+            castShadow
+            scale={[1.0, 1.1, 1.06]}
+            onPointerDown={(e) => { e.stopPropagation(); onSelect?.("mask"); }}
+            onPointerOver={(e) => { e.stopPropagation(); onHover?.("mask"); }}
+            onPointerOut={() => onHover?.(null)}
+          >
             <sphereGeometry args={[0.054 * H, 32, 24]} />
           </mesh>
 
@@ -381,6 +466,9 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
               position={[side * lens.spread * H, lens.rise * H, 0.046 * H]}
               rotation={[0.12, side * 0.3, side * -lens.tilt]}
               scale={[side, 1, 1]}
+              onPointerDown={(e) => { e.stopPropagation(); onSelect?.(side === 1 ? "lensL" : "lensR"); }}
+              onPointerOver={(e) => { e.stopPropagation(); onHover?.(side === 1 ? "lensL" : "lensR"); }}
+              onPointerOut={() => onHover?.(null)}
             />
           ))}
         </group>

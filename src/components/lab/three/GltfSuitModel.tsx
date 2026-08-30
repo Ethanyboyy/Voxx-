@@ -284,6 +284,12 @@ export interface GltfSuitModelProps {
   maskLensStyle?: MaskLensStyle;
   /** Hides hard components so the body underneath can be inspected. */
   hideArmor?: boolean;
+  /** Component selection, forwarded to SuitArmor. Ids match the Laboratory's
+   *  slot/component bridge so a click resolves to a real LabComponent. */
+  selectedId?: string | null;
+  hoveredId?: string | null;
+  onSelect?: (id: string | null) => void;
+  onHover?: (id: string | null) => void;
   explodeAmount?: number;
 }
 
@@ -320,6 +326,10 @@ export function GltfSuitModel({
   armorLevel = "LIGHT",
   maskLensStyle = "ANGULAR",
   hideArmor = false,
+  selectedId = null,
+  hoveredId = null,
+  onSelect,
+  onHover,
   explodeAmount = 0,
 }: GltfSuitModelProps) {
   const gltf = useGLTF(url);
@@ -401,6 +411,10 @@ export function GltfSuitModel({
         maskLensStyle={maskLensStyle}
         accent={rawGeometry ? "#8b8794" : colorPrimary}
         hidden={hideArmor}
+        selectedId={selectedId}
+        hoveredId={hoveredId}
+        onSelect={onSelect}
+        onHover={onHover}
         explodeAmount={explodeAmount}
       />
       {/* Rim/energy glow — a scaled BackSide shell per real mesh, same
