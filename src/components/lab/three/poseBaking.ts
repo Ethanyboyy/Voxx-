@@ -62,7 +62,58 @@ export const PRESENTATION_POSE: BoneAim[] = [
   { bone: "RightUpLeg", toBone: "RightLeg", aim: [-0.15, -0.989, 0] },
   { bone: "LeftLeg", toBone: "LeftFoot", aim: [0.06, -0.998, 0] },
   { bone: "RightLeg", toBone: "RightFoot", aim: [-0.05, -0.999, 0] },
+  ...fingerCurl(),
 ];
+
+/**
+ * Curls the fingers.
+ *
+ * The hands read as claws, and the cause was not the geometry: this rig
+ * carries full finger chains (four segments per digit, 42 hand nodes), and
+ * none of them were being posed. Left at the T-pose bind the fingers stay
+ * dead straight and slightly splayed, which on a hand hanging at the side is
+ * exactly the talon silhouette. A relaxed hand curls.
+ *
+ * Curl is progressive down each chain — the proximal phalanx barely bends and
+ * the distal one bends most — because a uniform bend per joint gives the
+ * rigid, evenly-arced fingers of a mannequin rather than a relaxed hand.
+ */
+function fingerCurl(): BoneAim[] {
+  const digits = ["Index", "Middle", "Ring", "Pinky"];
+  const out: BoneAim[] = [];
+
+  for (const side of ["Left", "Right"] as const) {
+    // Character-left is +X on this asset (see the sign note above), so the
+    // fingers of each hand curl toward that hand's own palm.
+    const s = side === "Left" ? 1 : -1;
+
+    digits.forEach((digit, i) => {
+      // Slight per-digit spread: a hand whose fingers are perfectly parallel
+      // reads as moulded plastic.
+      const spread = (i - 1.5) * 0.035;
+      const curls: [number, number, number][] = [
+        [s * (0.3 + spread), -0.9, 0.2],
+        [s * (0.34 + spread), -0.42, 0.84],
+        [s * (0.3 + spread), 0.42, 0.85],
+      ];
+      for (let seg = 1; seg <= 3; seg += 1) {
+        out.push({
+          bone: `${side}Hand${digit}${seg}`,
+          toBone: `${side}Hand${digit}${seg + 1}`,
+          aim: curls[seg - 1],
+        });
+      }
+    });
+
+    // The thumb opposes the fingers rather than following them — it wraps
+    // across the palm, so it curls on a different axis entirely.
+    out.push({ bone: `${side}HandThumb1`, toBone: `${side}HandThumb2`, aim: [s * 0.5, -0.72, 0.48] });
+    out.push({ bone: `${side}HandThumb2`, toBone: `${side}HandThumb3`, aim: [s * 0.42, -0.72, 0.55] });
+    out.push({ bone: `${side}HandThumb3`, toBone: `${side}HandThumb4`, aim: [s * 0.34, -0.76, 0.55] });
+  }
+
+  return out;
+}
 
 /**
  * GLTFLoader sanitises node names, turning "mixamorig:Head" into

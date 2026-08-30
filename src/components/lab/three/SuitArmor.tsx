@@ -82,16 +82,16 @@ const SHELLS: Partial<Record<ArmorSlot, ShellMount>> = {
   // render of this rebuild put open pipes on every limb for exactly that
   // reason. Plates stay under ~135°, and only the belt and collar, which
   // genuinely encircle the body, go beyond it.
-  forearmL: { bone: "LeftForeArm", toBone: "LeftHand", along: 0.5, radius: 0.026, thickness: 0.007, arc: 2.2, length: 0.062, taper: 0.9 },
-  forearmR: { bone: "RightForeArm", toBone: "RightHand", along: 0.5, radius: 0.026, thickness: 0.007, arc: 2.2, length: 0.062, taper: 0.9 },
-  thighL: { bone: "LeftUpLeg", toBone: "LeftLeg", along: 0.48, radius: 0.048, thickness: 0.009, arc: 2.0, length: 0.105, taper: 0.82 },
-  thighR: { bone: "RightUpLeg", toBone: "RightLeg", along: 0.48, radius: 0.048, thickness: 0.009, arc: 2.0, length: 0.105, taper: 0.82 },
-  shinL: { bone: "LeftLeg", toBone: "LeftFoot", along: 0.45, radius: 0.032, thickness: 0.0085, arc: 2.2, length: 0.105, taper: 0.78 },
-  shinR: { bone: "RightLeg", toBone: "RightFoot", along: 0.45, radius: 0.032, thickness: 0.0085, arc: 2.2, length: 0.105, taper: 0.78 },
-  gloveL: { bone: "LeftHand", toBone: "LeftHandMiddle1", along: 0.5, radius: 0.022, thickness: 0.006, arc: 2.6, length: 0.032, taper: 0.92 },
-  gloveR: { bone: "RightHand", toBone: "RightHandMiddle1", along: 0.5, radius: 0.022, thickness: 0.006, arc: 2.6, length: 0.032, taper: 0.92 },
-  bootL: { bone: "LeftFoot", toBone: "LeftToeBase", along: 0.4, radius: 0.03, thickness: 0.008, arc: 2.8, length: 0.045, taper: 0.96 },
-  bootR: { bone: "RightFoot", toBone: "RightToeBase", along: 0.4, radius: 0.03, thickness: 0.008, arc: 2.8, length: 0.045, taper: 0.96 },
+  forearmL: { bone: "LeftForeArm", toBone: "LeftHand", along: 0.5, radius: 0.0235, thickness: 0.005, arc: 2.2, length: 0.062, taper: 0.9 },
+  forearmR: { bone: "RightForeArm", toBone: "RightHand", along: 0.5, radius: 0.0235, thickness: 0.005, arc: 2.2, length: 0.062, taper: 0.9 },
+  thighL: { bone: "LeftUpLeg", toBone: "LeftLeg", along: 0.48, radius: 0.044, thickness: 0.0062, arc: 2.0, length: 0.105, taper: 0.82 },
+  thighR: { bone: "RightUpLeg", toBone: "RightLeg", along: 0.48, radius: 0.044, thickness: 0.0062, arc: 2.0, length: 0.105, taper: 0.82 },
+  shinL: { bone: "LeftLeg", toBone: "LeftFoot", along: 0.45, radius: 0.029, thickness: 0.0045, arc: 2.2, length: 0.105, taper: 0.78 },
+  shinR: { bone: "RightLeg", toBone: "RightFoot", along: 0.45, radius: 0.029, thickness: 0.0045, arc: 2.2, length: 0.105, taper: 0.78 },
+  gloveL: { bone: "LeftHand", toBone: "LeftHandMiddle1", along: 0.5, radius: 0.022, thickness: 0.0045, arc: 2.6, length: 0.032, taper: 0.92 },
+  gloveR: { bone: "RightHand", toBone: "RightHandMiddle1", along: 0.5, radius: 0.022, thickness: 0.0045, arc: 2.6, length: 0.032, taper: 0.92 },
+  bootL: { bone: "LeftFoot", toBone: "LeftToeBase", along: 0.4, radius: 0.03, thickness: 0.0055, arc: 2.8, length: 0.045, taper: 0.96 },
+  bootR: { bone: "RightFoot", toBone: "RightToeBase", along: 0.4, radius: 0.03, thickness: 0.0055, arc: 2.8, length: 0.045, taper: 0.96 },
   // Torso shells wrap the chest/back rather than sitting proud of it as a
   // slab, so the figure stops reading as a bare mannequin with a badge on it.
   // The radius is the distance from the SPINE to the chest surface, not half
@@ -104,10 +104,10 @@ const SHELLS: Partial<Record<ArmorSlot, ShellMount>> = {
   // the ribs, with the top rim tucked under the collar where it is not seen.
   // Axis runs shoulder to shoulder: `length` is therefore the plate's WIDTH
   // across the chest, and `arc` is how far it curves from waist up to collar.
-  chest: { bone: "Spine1", toBone: "Neck", along: 0.45, radius: 0.062, thickness: 0.01, arc: 1.5, length: 0.15, axisFrom: "LeftArm", axisTo: "RightArm" },
-  backpack: { bone: "Spine1", toBone: "Neck", along: 0.42, radius: 0.062, thickness: 0.01, arc: 1.2, length: 0.135, facing: Math.PI, axisFrom: "LeftArm", axisTo: "RightArm" },
-  belt: { bone: "Hips", toBone: "Spine", along: 0.28, radius: 0.052, thickness: 0.009, arc: 5.2, length: 0.018, taper: 1 },
-  collar: { bone: "Neck", toBone: "Head", along: 0.08, radius: 0.036, thickness: 0.006, arc: 3.4, length: 0.02, taper: 1.04 },
+  chest: { bone: "Spine1", toBone: "Neck", along: 0.45, radius: 0.052, thickness: 0.0068, arc: 1.5, length: 0.15, axisFrom: "LeftArm", axisTo: "RightArm" },
+  backpack: { bone: "Spine1", toBone: "Neck", along: 0.42, radius: 0.052, thickness: 0.0068, arc: 1.2, length: 0.135, facing: Math.PI, axisFrom: "LeftArm", axisTo: "RightArm" },
+  belt: { bone: "Hips", toBone: "Spine", along: 0.28, radius: 0.052, thickness: 0.0062, arc: 5.2, length: 0.018, taper: 1 },
+  collar: { bone: "Neck", toBone: "Head", along: 0.08, radius: 0.036, thickness: 0.0045, arc: 3.4, length: 0.02, taper: 1.04 },
 };
 
 /** Caps: pieces that sit ON a surface rather than wrapping it. */

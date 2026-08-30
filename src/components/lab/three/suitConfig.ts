@@ -151,7 +151,7 @@ const SLOTS_BY_LEVEL: Record<ArmorLevel, ArmorSlot[]> = {
   LIGHT: ["collar", "belt", "chest", "forearmL", "forearmR", "shinL", "shinR", "gloveL", "gloveR", "bootL", "bootR"],
   MODERATE: [
     "collar", "belt", "chest", "forearmL", "forearmR", "shinL", "shinR",
-    "shoulderL", "shoulderR", "thighL", "thighR",
+    "shoulderL", "shoulderR", "thighL", "thighR", "backpack",
     "gloveL", "gloveR", "bootL", "bootR", "kneeL", "kneeR",
   ],
   EXPERIMENTAL: [
@@ -201,7 +201,7 @@ interface ArchetypeProfile {
 
 const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
   Stealth: {
-    palette: { underlayerL: 0.055, underlayerS: 0.35, plateL: 0.15, plateS: 0.1, plateHueShift: -0.02, trimL: 0.3, trimS: 0.12, trimHueShift: 0.0 },
+    palette: { underlayerL: 0.055, underlayerS: 0.35, plateL: 0.105, plateS: 0.1, plateHueShift: -0.02, trimL: 0.136, trimS: 0.12, trimHueShift: 0.0 },
     concept: "Low-signature build. Matte technical surfaces, minimal hard edges, instrumentation dimmed to near-dark.",
     bulk: 0.8,
     emissive: 0.35,
@@ -210,7 +210,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     plate: "ELASTOMER",
   },
   Combat: {
-    palette: { underlayerL: 0.1, underlayerS: 0.3, plateL: 0.42, plateS: 0.1, plateHueShift: 0.03, trimL: 0.2, trimS: 0.5, trimHueShift: -0.06 },
+    palette: { underlayerL: 0.1, underlayerS: 0.3, plateL: 0.24, plateS: 0.1, plateHueShift: 0.03, trimL: 0.102, trimS: 0.5, trimHueShift: -0.06 },
     concept: "Impact-rated build. Full plate coverage across the torso and limbs, reinforced shoulders, hard shell throughout.",
     bulk: 1.35,
     emissive: 0.7,
@@ -219,7 +219,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     plate: "ARMOR",
   },
   Tactical: {
-    palette: { underlayerL: 0.09, underlayerS: 0.28, plateL: 0.34, plateS: 0.14, plateHueShift: 0.06, trimL: 0.5, trimS: 0.18, trimHueShift: 0.02 },
+    palette: { underlayerL: 0.09, underlayerS: 0.28, plateL: 0.21, plateS: 0.14, plateHueShift: 0.06, trimL: 0.204, trimS: 0.18, trimHueShift: 0.02 },
     concept: "Load-bearing build. Modular plates over a technical underlayer, belt-mounted systems, balanced coverage.",
     bulk: 1.1,
     emissive: 0.6,
@@ -227,7 +227,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     add: ["thighL", "thighR"],
   },
   Recon: {
-    palette: { underlayerL: 0.11, underlayerS: 0.22, plateL: 0.5, plateS: 0.07, plateHueShift: 0.02, trimL: 0.42, trimS: 0.45, trimHueShift: 0.1 },
+    palette: { underlayerL: 0.11, underlayerS: 0.22, plateL: 0.27, plateS: 0.07, plateHueShift: 0.02, trimL: 0.177, trimS: 0.45, trimHueShift: 0.1 },
     concept: "Sensor-forward build. Light plating, collar-mounted optics, instrumentation prioritised over protection.",
     bulk: 0.85,
     emissive: 0.95,
@@ -235,7 +235,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     drop: ["thighL", "thighR"],
   },
   Aerial: {
-    palette: { underlayerL: 0.13, underlayerS: 0.3, plateL: 0.56, plateS: 0.06, plateHueShift: -0.03, trimL: 0.34, trimS: 0.4, trimHueShift: 0.05 },
+    palette: { underlayerL: 0.13, underlayerS: 0.3, plateL: 0.30, plateS: 0.06, plateHueShift: -0.03, trimL: 0.15, trimS: 0.4, trimHueShift: 0.05 },
     concept: "Mass-critical build. Minimal plating, streamlined shoulders, everything not load-bearing removed.",
     bulk: 0.7,
     emissive: 0.75,
@@ -243,7 +243,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     drop: ["thighL", "thighR", "backpack"],
   },
   Urban: {
-    palette: { underlayerL: 0.1, underlayerS: 0.24, plateL: 0.27, plateS: 0.12, plateHueShift: 0.08, trimL: 0.46, trimS: 0.2, trimHueShift: -0.04 },
+    palette: { underlayerL: 0.1, underlayerS: 0.24, plateL: 0.175, plateS: 0.12, plateHueShift: 0.08, trimL: 0.19, trimS: 0.2, trimHueShift: -0.04 },
     concept: "Sustained-wear build. Abrasion plating at contact points, otherwise woven, built for continuous movement.",
     bulk: 0.95,
     emissive: 0.5,
@@ -251,7 +251,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     drop: ["backpack"],
   },
   Utility: {
-    palette: { underlayerL: 0.1, underlayerS: 0.26, plateL: 0.36, plateS: 0.16, plateHueShift: 0.05, trimL: 0.55, trimS: 0.3, trimHueShift: 0.09 },
+    palette: { underlayerL: 0.1, underlayerS: 0.26, plateL: 0.22, plateS: 0.16, plateHueShift: 0.05, trimL: 0.218, trimS: 0.3, trimHueShift: 0.09 },
     concept: "Equipment-carrying build. Belt and back systems, forearm tooling, plating where equipment mounts.",
     bulk: 1.0,
     emissive: 0.55,
@@ -259,7 +259,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
     add: ["backpack"],
   },
   Experimental: {
-    palette: { underlayerL: 0.08, underlayerS: 0.4, plateL: 0.62, plateS: 0.05, plateHueShift: 0.0, trimL: 0.38, trimS: 0.6, trimHueShift: 0.12 },
+    palette: { underlayerL: 0.08, underlayerS: 0.4, plateL: 0.34, plateS: 0.05, plateHueShift: 0.0, trimL: 0.163, trimS: 0.6, trimHueShift: 0.12 },
     concept: "Prototype build. Unproven material set, powered chest system, full instrumentation — not rated for field use.",
     bulk: 1.2,
     emissive: 1.0,
@@ -270,7 +270,7 @@ const ARCHETYPE_PROFILE: Record<string, ArchetypeProfile> = {
 };
 
 const DEFAULT_PROFILE: ArchetypeProfile = {
-  palette: { underlayerL: 0.1, underlayerS: 0.28, plateL: 0.34, plateS: 0.12, plateHueShift: 0.04, trimL: 0.42, trimS: 0.25, trimHueShift: 0.03 },
+  palette: { underlayerL: 0.1, underlayerS: 0.28, plateL: 0.21, plateS: 0.12, plateHueShift: 0.04, trimL: 0.177, trimS: 0.25, trimHueShift: 0.03 },
   concept: "General-purpose build.",
   bulk: 1.0,
   emissive: 0.6,
