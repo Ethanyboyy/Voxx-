@@ -119,21 +119,29 @@ export function HolographicSuitCanvas({
   // 1.75-unit body needs ~3.3 to fit, and 2.6 cropped the head and the feet.
   // The lateral offset stays small — enough to read as a three-quarter view
   // rather than a spec elevation, not enough to hide the far arm.
-  const cameraPosition: [number, number, number] = [0.42, -0.05, 3.4];
-  const orbitTarget: [number, number, number] = [0, -0.45, 0];
+  // Tightened toward the product-render reference — a slightly longer lens
+  // (28 vs 30) and less empty margin, so the figure carries more of the frame.
+  //
+  // It was tighter still, cropping at the calf the way a hero product shot
+  // crops. Rendering that showed why the asset cannot cash that cheque yet:
+  // at hero scale the pelvis, hands and chest plate all fail, and a crop that
+  // close reads as an accident rather than a decision. The composition stays
+  // where the geometry can support it, and moves in when the geometry earns it.
+  const cameraPosition: [number, number, number] = [0.46, -0.04, 3.45];
+  const orbitTarget: [number, number, number] = [0, -0.42, 0];
 
   return (
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: cameraPosition, fov: 30 }}
+      camera={{ position: cameraPosition, fov: 28 }}
       // ACES keeps the key light's specular hits on armour and metal from
       // clipping to flat white, which is what made every material read the
       // same at the highlight regardless of its roughness.
       gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping }}
     >
       <color attach="background" args={["#07070a"]} />
-      <fog attach="fog" args={["#07070a", 5.5, 12]} />
+      <fog attach="fog" args={["#07070a", 4.2, 9]} />
 
       <StudioEnvironment />
 
@@ -143,7 +151,7 @@ export function HolographicSuitCanvas({
           flattens exactly the shading that distinguishes a woven panel from
           a hard plate — the plates have to earn their highlights from a real
           key light, not from a uniform wash. */}
-      <ambientLight intensity={0.09} color="#f2f2f4" />
+      <ambientLight intensity={0.055} color="#f2f2f4" />
 
       {/* Key: high and to camera-right, shadow-casting. This is the light
           that reads the armour — its shadow is what proves a chest plate

@@ -564,7 +564,7 @@ export function buildSurfaceMaterials(
     // weave on it reads as painted cloth.
     const wovenMaps =
       isUnderlayer && !options.xray && canBuildFabric()
-        ? getFabricMaps(cls === "ELASTOMER" ? "RIBBED_ELASTOMER" : "TECHNICAL_WEAVE", cls === "ELASTOMER" ? 12 : 18)
+        ? getFabricMaps(cls === "ELASTOMER" ? "RIBBED_ELASTOMER" : "TECHNICAL_WEAVE", cls === "ELASTOMER" ? 16 : 24)
         : null;
 
     out[cls] = new THREE.MeshPhysicalMaterial({
@@ -580,7 +580,7 @@ export function buildSurfaceMaterials(
             // Kept low. A weave is a fine surface, and a normal scale that
             // reads correctly in a close-up turns the whole figure crepey at
             // full-body framing, which is the shot that actually matters here.
-            normalScale: new THREE.Vector2(1.35, 1.35),
+            normalScale: new THREE.Vector2(1.2, 1.2),
             roughnessMap: wovenMaps.roughnessMap,
           }
         : {}),
