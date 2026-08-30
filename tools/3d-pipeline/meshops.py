@@ -157,6 +157,37 @@ def shade_smooth(ob, angle_degrees=48.0):
     return ob
 
 
+def refine_region(ob, predicate, *, cuts=1, context="refine"):
+    """Subdivides only the faces a predicate selects.
+
+    The face carries far more shape information per square centimetre than any
+    other part of the body, so it needs resolution the limbs do not. Raising the
+    global subdivision level to reach it would multiply the whole mesh by four
+    per level and blow the delivery budget to buy detail on a forearm that has
+    nothing to describe.
+    """
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    targets = [f for f in bm.faces if predicate(f.calc_center_median())]
+    if not targets:
+        bm.free()
+        raise MeshOperationError(f"{context}: predicate selected no faces")
+
+    edges = {e for f in targets for e in f.edges}
+    before = len(bm.faces)
+    bmesh.ops.subdivide_edges(bm, edges=list(edges), cuts=cuts, use_grid_fill=True)
+    bm.to_mesh(ob.data)
+    after = len(bm.faces)
+    bm.free()
+    ob.data.update()
+
+    if after <= before:
+        raise MeshOperationError(f"{context}: subdivision added no faces ({before} → {after})")
+    return {"faces_before": before, "faces_after": after, "selected": len(targets)}
+
+
 def unwrap(ob, *, angle_limit=66.0, island_margin=0.008, context="uv"):
     """Smart UV Project, so the exported GLB carries a real TEXCOORD_0.
 

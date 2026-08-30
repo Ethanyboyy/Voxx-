@@ -39,21 +39,33 @@ samples / 420 px took about 10 seconds wall clock.
 ## The workflow
 
 ```
-GENERATE  build_suit.py assembles the shell from anthropometric sections
-INSPECT   measure_scene() reads real triangle/bounds/skin statistics
-MODIFY    edit the section tables — they are the model's parameters
-RENDER    ten Cycles QA views, including back, low and high angles
-CRITIQUE  open the renders and look; this is not optional
-VALIDATE  validateAssetBundle() in src/lib/generation/assetContract.ts
-EXPORT    GLB + manifest.json + metadata.json + source/
+GENERATE  anatomy.py + body.py   skeleton graph → SKIN → subdivision
+SCULPT    sculpt.py              muscle + facial displacement fields
+GARMENT   garment.py             seams, mask, lenses
+DEVICE    webshooter.py          five addressable mechanical parts
+UNWRAP    meshops.unwrap         Smart UV Project on every mesh
+TEXTURE   texturing.py           per-texel bake: zones, web, weave → PBR maps
+RENDER    rendering.py           diagnostic rig, then cinematic
+INSPECT   inspect_glb.py         what the EXPORTER actually produced
+VALIDATE  src/lib/generation/assetContract.ts
 ```
 
-**CRITIQUE is a real step.** Typecheck, lint and 412 tests all passed while
-this pipeline was emitting a figure with no torso. Three defects in the current
-build were found only by opening a render: overexposed lighting that flattened
-every material to grey, limbs sitting beside the body as separate tubes, and a
-boolean union that silently deleted the torso and head. None was visible to any
-automated check.
+**CRITIQUE is a real step.** Typecheck, lint and 418 tests all passed while this
+pipeline emitted a figure with no torso, and later while every baked texture was
+pure black. Neither was visible to any automated check.
+
+### The texture stage
+
+`texturing.py` rasterises the UV layout to recover a per-texel world position,
+then evaluates the garment design analytically at texture resolution. This is
+what fixed the boundary quantisation that made the previous asset
+non-production: a panel edge is now a smoothstep over millimetres of real
+surface, not a polygon edge.
+
+It is written in Python rather than as shader nodes for one hard reason:
+**Blender's procedural texture nodes do not survive glTF export.** A suit that
+looks right in Cycles and arrives in the browser as flat colour is not a
+delivered asset.
 
 ## Gotchas paid for already
 
@@ -66,6 +78,18 @@ automated check.
 - **Union at base resolution, subdivide afterwards.** Subsurf then rounds the
   junction into a real shoulder/hip blend instead of leaving a hard crease.
 - **`Object.shade_smooth()` does not exist on bpy 5.x** — use the operator.
+- **Setting `image.colorspace_settings.name` ZEROES the pixel buffer.** Set the
+  colorspace BEFORE writing pixels. Assigning it afterwards silently discarded
+  every baked map for three consecutive builds while readbacks looked correct.
+- **`float_buffer=False` images never reach the render/save buffer.**
+  `pixels.foreach_set` reads back correctly via `foreach_get` and still saves an
+  empty image. Always create bake targets with `float_buffer=True`.
+- **Voronoi thresholds are in normalised cell units.** Real width is
+  `threshold / scale` metres, so raising cell density silently shrinks the
+  strand. Specify feature sizes in metres and convert.
+- **Feature size is bounded from both ends by texel density and camera
+  distance.** Too large reads as crazed glaze up close; too small goes
+  sub-pixel and vanishes at hero framing.
 - Blender is Z-up and exports Z-up → Y-up, mapping Blender `-Y` to glTF `+Z`.
   The figure is therefore built facing `-Y` so it faces `+Z` in the export,
   which is what the runtime armour rig assumes when it derives

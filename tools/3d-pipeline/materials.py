@@ -131,16 +131,19 @@ def build_materials(primary=(0.021, 0.024, 0.041), panel=(0.128, 0.014, 0.026), 
     # 7: machined metal — the mechanism and nozzle.
     metal = _new("vox_metal")
     bsdf = _principled(metal)
-    bsdf.inputs["Base Color"].default_value = (0.62, 0.64, 0.68, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.26
+    # Gunmetal, not chrome. At 0.62/0.26 the mechanism read as bright polished
+    # steel and pulled the eye away from the suit — hardware on a wearable is
+    # anodised or bead-blasted, never mirror-finished.
+    bsdf.inputs["Base Color"].default_value = (0.185, 0.195, 0.215, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.42
     bsdf.inputs["Metallic"].default_value = 1.0
     mats["METAL"] = metal
 
     # The cartridge reads as a consumable: a warmer, anodised aluminium.
     cart = _new("vox_cartridge")
     bsdf = _principled(cart)
-    bsdf.inputs["Base Color"].default_value = (0.52, 0.30, 0.11, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.30
+    bsdf.inputs["Base Color"].default_value = (0.42, 0.24, 0.085, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.36
     bsdf.inputs["Metallic"].default_value = 0.90
     mats["CARTRIDGE"] = cart
 

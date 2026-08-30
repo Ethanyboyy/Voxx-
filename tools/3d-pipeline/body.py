@@ -98,6 +98,13 @@ def build_body(subdivisions=2):
 
     meshops.cleanup(ob)
     meshops.subdivide(ob, levels=subdivisions, context="body subsurf")
+
+    # The face carries more shape per square centimetre than anywhere else, and
+    # the mask sits only 8 mm off it, so every facial landmark telegraphs
+    # through. Refine the head locally rather than raising the global level —
+    # that would multiply the whole mesh by four to buy detail on a forearm
+    # with nothing to describe.
+    meshops.refine_region(ob, lambda c: c.z > 1.50, cuts=1, context="head refine")
     meshops.shade_smooth(ob, angle_degrees=60.0)
 
     # Height is the one measurement that has caught a corrupted build before:

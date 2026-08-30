@@ -67,6 +67,13 @@ export const meshStatsSchema = z.object({
   skinAttributesComplete: z.boolean(),
   /** Bone names, after the normalisation the runtime loader applies. */
   boneNames: z.array(z.string()).optional(),
+  /** Meshes carrying a UV layer. Must equal `meshes` — a mesh without UVs
+   *  cannot sample any baked map and renders untextured. */
+  uvMeshes: z.number().int().nonnegative().optional(),
+  /** Baked texture images embedded in the asset, by name and pixel size. */
+  textures: z
+    .array(z.object({ name: z.string().min(1), size: z.number().int().positive() }))
+    .optional(),
 });
 
 export const suitAssetMetadataSchema = z.object({
@@ -274,6 +281,36 @@ export function validateAssetBundle(
     );
   } else {
     add("static-mesh", true, "not skinned — mounted as static geometry");
+  }
+
+  // --- Texturing ------------------------------------------------------------
+  // These exist because the pipeline produced, on three consecutive builds, an
+  // asset that passed every other check while every baked map was pure black:
+  // the maps were generated correctly and then silently zeroed. A contract that
+  // cannot tell a textured asset from an untextured one is not doing its job.
+  if (s.uvMeshes !== undefined) {
+    add(
+      "uv-on-every-mesh",
+      s.uvMeshes === s.meshes,
+      `${s.uvMeshes}/${s.meshes} meshes carry a UV layer`,
+    );
+  }
+
+  if (s.textures !== undefined) {
+    const required = ["basecolor", "roughness", "normal"];
+    const present = required.filter((kind) => s.textures!.some((t) => t.name.toLowerCase().includes(kind)));
+    add(
+      "baked-maps-present",
+      present.length === required.length,
+      present.length === required.length
+        ? `${s.textures.length} maps: ${s.textures.map((t) => `${t.name}@${t.size}`).join(", ")}`
+        : `missing: ${required.filter((k) => !present.includes(k)).join(", ")}`,
+    );
+    add(
+      "texture-resolution",
+      s.textures.every((t) => t.size >= 512 && t.size <= 4096 && (t.size & (t.size - 1)) === 0),
+      s.textures.map((t) => `${t.size}`).join(", ") + " (power of two, 512-4096)",
+    );
   }
 
   // --- Delivery budget ------------------------------------------------------

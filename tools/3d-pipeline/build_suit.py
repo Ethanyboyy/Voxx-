@@ -37,6 +37,7 @@ import materials       # noqa: E402
 import meshops         # noqa: E402
 import rendering       # noqa: E402
 import sculpt          # noqa: E402
+import texturing       # noqa: E402
 import webshooter      # noqa: E402
 from contract import measure_scene, write_bundle  # noqa: E402
 
@@ -66,11 +67,13 @@ def build(args):
     # --- 9: seams ------------------------------------------------------------
     log["seams"] = garment.carve_seams(suit)
 
-    # --- 14: material zoning -------------------------------------------------
+    # --- 14: materials -------------------------------------------------------
+    # The body's per-face zone slots are gone: apply_baked_material replaces
+    # them with one textured material whose panels are drawn per TEXEL.
+    # garment.assign_zones() is no longer called from this recipe — it cannot
+    # produce a boundary finer than a polygon — but it is kept as the reference
+    # implementation of the zone curves that texturing.zone_weights() evaluates.
     mats = materials.build_materials()
-    for role in garment.ZONE_SLOTS:
-        suit.data.materials.append(mats[role])
-    log["zones"] = garment.assign_zones(suit)
     meshops.shade_smooth(suit, 60)
 
     # --- 6-8: head, mask, lenses --------------------------------------------
@@ -93,11 +96,37 @@ def build(args):
 
     objects = [suit, mask] + lenses + mechanical
 
-    # UVs on every shipped mesh — see meshops.unwrap for why this matters even
-    # though no material samples them yet.
     for ob in objects:
         meshops.unwrap(ob, context=f"uv {ob.name}")
     log["uv"] = f"{sum(1 for o in objects if o.data.uv_layers)}/{len(objects)} meshes unwrapped"
+
+    # --- 5, 6, 7, 11: baked garment textures --------------------------------
+    # The body gets the hero resolution because it is what the camera spends
+    # its time on; the mask is smaller in screen area and half the size holds
+    # up. Blanket 4K everywhere would triple runtime cost to sharpen a boot.
+    images = []
+    body_maps = texturing.build_texture_set(
+        suit, args.texture_size,
+        primary=(0.052, 0.058, 0.088),
+        panel_colour=(0.215, 0.026, 0.042),
+        accent_colour=(0.022, 0.024, 0.032),
+    )
+    _mat, imgs = texturing.apply_baked_material(suit, body_maps, "vox_garment")
+    images += imgs
+    log["body_texture"] = f"{args.texture_size}px, {body_maps['coverage'] * 100:.1f}% UV coverage"
+
+    mask_maps = texturing.build_texture_set(
+        mask, max(args.texture_size // 2, 512),
+        primary=(0.205, 0.025, 0.040),
+        panel_colour=(0.205, 0.025, 0.040),
+        accent_colour=(0.205, 0.025, 0.040),
+        web_scale=130.0,
+        weave_scale=2600.0,
+    )
+    _mmat, mimgs = texturing.apply_baked_material(mask, mask_maps, "vox_mask")
+    images += mimgs
+    log["mask_texture"] = f"{max(args.texture_size // 2, 512)}px, {mask_maps['coverage'] * 100:.1f}% UV coverage"
+    log["images"] = [i.name for i in images]
 
     return suit, objects, log
 
@@ -108,6 +137,7 @@ def main():
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--subdivisions", type=int, default=3)
     ap.add_argument("--sculpt", type=float, default=2.1)
+    ap.add_argument("--texture-size", type=int, default=4096)
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--resolution", type=int, default=720)
     ap.add_argument("--views", default="")
@@ -152,7 +182,8 @@ def main():
 
     here = os.path.dirname(os.path.abspath(__file__))
     for name in ("build_suit.py", "anatomy.py", "body.py", "sculpt.py", "garment.py",
-                 "webshooter.py", "materials.py", "meshops.py", "rendering.py", "contract.py"):
+                 "webshooter.py", "materials.py", "meshops.py", "rendering.py", "contract.py",
+                 "texturing.py"):
         with open(os.path.join(here, name)) as fh:
             content = fh.read()
         with open(os.path.join(out_dir, "source", name), "w") as fh:
@@ -167,6 +198,7 @@ def main():
         provider="blender-local",
         recipe="suit",
         parameters={
+            "textureSize": args.texture_size,
             "subdivisions": args.subdivisions,
             "sculpt": args.sculpt,
             "samples": args.samples,

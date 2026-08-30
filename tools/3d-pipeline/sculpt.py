@@ -85,14 +85,41 @@ MUSCLES = [
     Muscle("gastroc",       (0.104,  0.052, 0.392), (0.050, 0.042, 0.085), 0.013),
     Muscle("tibia_ridge",   (0.098, -0.040, 0.300), (0.022, 0.030, 0.110), 0.005),
 
+    # --- shoulder girdle landmarks ------------------------------------------
+    Muscle("clavicle",      (0.070, -0.062, 1.392), (0.070, 0.030, 0.018), 0.009),
+    Muscle("clavicle_hollow", (0.048, -0.058, 1.418), (0.040, 0.028, 0.020), -0.008),
+    Muscle("serratus",      (0.096, -0.030, 1.170), (0.030, 0.050, 0.055), 0.007),
+    Muscle("lat_insertion", (0.106,  0.010, 1.268), (0.036, 0.055, 0.055), 0.008),
+
     # --- head / neck --------------------------------------------------------
     Muscle("sterno",        (0.030, -0.036, 1.492), (0.026, 0.030, 0.048), 0.006),
-    Muscle("occiput",       (0.000,  0.046, 1.648), (0.055, 0.040, 0.055), 0.008, mirror=False),
-    Muscle("brow",          (0.000, -0.070, 1.632), (0.070, 0.030, 0.022), 0.007, mirror=False),
-    Muscle("cheek",         (0.046, -0.056, 1.590), (0.036, 0.040, 0.040), 0.008),
-    Muscle("temple",        (0.070,  0.000, 1.626), (0.030, 0.045, 0.045), -0.006),
-    Muscle("chin",          (0.000, -0.060, 1.556), (0.032, 0.030, 0.030), 0.007, mirror=False),
-    Muscle("jaw_line",      (0.052, -0.024, 1.560), (0.030, 0.045, 0.026), 0.006),
+    Muscle("trap_neck",     (0.036,  0.028, 1.462), (0.045, 0.038, 0.050), 0.008),
+
+    # --- face ----------------------------------------------------------------
+    # A MASKED head, not a sculpted face.
+    #
+    # The first attempt at this used tight fields at 0.010-0.014 — which the
+    # global sculpt scale multiplies to 20-30 mm — and rendered a grotesque:
+    # brow ridges like shelves, a lumpy chin, bulging cheeks. Two lessons are
+    # baked into the values below. Adjacent tight fields SUM where they overlap,
+    # so their peaks compound into ridges; and displacement along the normal of
+    # an already-curved surface amplifies rather than blends.
+    #
+    # So: fewer fields, roughly twice the radius, and a third of the strength.
+    # After the 2.1 scale these land at 5-9 mm, which is the real relief a
+    # fitted fabric mask shows. Anything the mask would smooth over — lips,
+    # nostrils, eyelids — is deliberately absent; modelling it only fights the
+    # garment sitting on top.
+    Muscle("occiput",       (0.000,  0.048, 1.648), (0.070, 0.050, 0.070), 0.0040, mirror=False),
+    Muscle("forehead",      (0.000, -0.066, 1.664), (0.072, 0.044, 0.048), 0.0030, mirror=False),
+    Muscle("brow_ridge",    (0.030, -0.072, 1.640), (0.052, 0.038, 0.024), 0.0038),
+    Muscle("eye_socket",    (0.034, -0.066, 1.618), (0.038, 0.034, 0.026), -0.0034),
+    Muscle("nose",          (0.000, -0.082, 1.610), (0.024, 0.034, 0.046), 0.0042, mirror=False),
+    Muscle("cheekbone",     (0.050, -0.056, 1.608), (0.042, 0.046, 0.036), 0.0036),
+    Muscle("cheek_hollow",  (0.046, -0.058, 1.572), (0.038, 0.042, 0.034), -0.0026),
+    Muscle("chin",          (0.000, -0.074, 1.543), (0.034, 0.036, 0.030), 0.0034, mirror=False),
+    Muscle("jaw_angle",     (0.056, -0.016, 1.556), (0.034, 0.050, 0.036), 0.0030),
+    Muscle("temple",        (0.064, -0.024, 1.644), (0.034, 0.050, 0.046), -0.0028),
 ]
 
 

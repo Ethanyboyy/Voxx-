@@ -97,6 +97,20 @@ def _curved_shell(bm, *, radius, thickness, arc, length, taper=1.0):
     return bm
 
 
+def _merge(target, source):
+    """Appends `source` geometry into `target` and frees it."""
+    verts = [target.verts.new(v.co) for v in source.verts]
+    target.verts.index_update()
+    for face in source.faces:
+        try:
+            target.faces.new([verts[v.index] for v in face.verts])
+        except ValueError:
+            pass
+    source.free()
+    target.normal_update()
+    return target
+
+
 def _mesh_from(bm, name):
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
@@ -125,14 +139,56 @@ def _box(bm, sx, sy, sz, bevel=0.0012):
     return bm
 
 
+def _bolt(bm, radius=0.0016, depth=0.0022, segments=10):
+    """A small pan-head fastener. Detail at this scale is what separates a
+    modelled mechanism from a primitive: the eye reads fasteners as evidence
+    that something was assembled rather than extruded."""
+    bmesh.ops.create_cone(
+        bm, cap_ends=True, cap_tris=False, segments=segments,
+        radius1=radius, radius2=radius * 0.82, depth=depth,
+    )
+    return bm
+
+
 def build_web_shooter(side):
-    """Returns the five parts, in mount order."""
+    """Returns the five parts, in mount order.
+
+    Each part is a separate object because the drill-down bottoms out here, but
+    the DETAIL parts (strap, bolts, aperture ring) are merged into whichever
+    addressable part they belong to — a fastener is not something the user
+    should be able to select and price.
+    """
     origin, basis = _arm_frame(side)
     parts = []
 
     # --- housing: curved to the forearm, straddling the ulnar face -----------
+    # Built as a stack: the main shell, a narrower retention strap wrapping
+    # further round the arm, and four fasteners at the shell corners. A single
+    # smooth slab reads as a prop; the strap explains HOW it stays on, which is
+    # the question a viewer asks about a wearable device.
     bm = bmesh.new()
     _curved_shell(bm, radius=ARM_RADIUS - 0.002, thickness=0.0058, arc=math.radians(142), length=0.048)
+
+    strap = bmesh.new()
+    _curved_shell(strap, radius=ARM_RADIUS - 0.004, thickness=0.0030, arc=math.radians(292), length=0.0115)
+    for v in strap.verts:
+        v.co.z -= 0.0175
+    _merge(bm, strap)
+
+    strap2 = bmesh.new()
+    _curved_shell(strap2, radius=ARM_RADIUS - 0.004, thickness=0.0030, arc=math.radians(292), length=0.0115)
+    for v in strap2.verts:
+        v.co.z += 0.0175
+    _merge(bm, strap2)
+
+    for sx, sz in ((-0.0125, -0.0155), (0.0125, -0.0155), (-0.0125, 0.0155), (0.0125, 0.0155)):
+        head = bmesh.new()
+        _bolt(head)
+        for v in head.verts:
+            # Lay the bolt along +Y (outboard) and seat it on the shell face.
+            v.co = Vector((v.co.x + sx, v.co.z + ARM_RADIUS + 0.0048, v.co.y + sz))
+        _merge(bm, head)
+
     housing = _mesh_from(bm, f"wristHousing{side}")
     _place(housing, origin, basis, (0.0, 0.0, 0.034))
     meshops.cleanup(housing)
@@ -171,6 +227,14 @@ def build_web_shooter(side):
     )
     for v in bm.verts:  # aim along -Z, toward the hand
         v.co = Vector((v.co.x, v.co.y, -v.co.z))
+    ring = bmesh.new()
+    bmesh.ops.create_cone(
+        ring, cap_ends=False, cap_tris=False, segments=20,
+        radius1=0.0075, radius2=0.0075, depth=0.0026,
+    )
+    for v in ring.verts:
+        v.co = Vector((v.co.x, v.co.y, -v.co.z * 1.0 - 0.0062))
+    _merge(bm, ring)
     nozzle = _mesh_from(bm, f"wristNozzle{side}")
     _place(nozzle, origin, basis, (0.0, ARM_RADIUS + 0.0035, 0.0010))
     meshops.shade_smooth(nozzle, 34)

@@ -26,6 +26,32 @@ def _sha256(path):
     return h.hexdigest()
 
 
+def measure_texture_stats(bpy, objects):
+    """UV coverage and the baked images actually reachable from the materials.
+
+    Walked from the MATERIALS rather than from bpy.data.images, so an image that
+    exists but is not wired into anything cannot be reported as shipped.
+    """
+    uv_meshes = 0
+    textures = {}
+    for ob in objects:
+        if ob.type != "MESH":
+            continue
+        if ob.data.uv_layers:
+            uv_meshes += 1
+        for slot in ob.material_slots:
+            mat = slot.material
+            if not mat or not mat.node_tree:
+                continue
+            for node in mat.node_tree.nodes:
+                if node.type == "TEX_IMAGE" and node.image is not None:
+                    textures[node.image.name] = int(node.image.size[0])
+    return {
+        "uvMeshes": uv_meshes,
+        "textures": [{"name": n, "size": s} for n, s in sorted(textures.items())],
+    }
+
+
 def measure_scene(bpy, objects):
     """Real triangle/vertex/bounds/skin statistics for the given mesh objects.
 
@@ -96,6 +122,7 @@ def measure_scene(bpy, objects):
     }
     if bone_names:
         stats["boneNames"] = bone_names
+    stats.update(measure_texture_stats(bpy, objects))
     return stats
 
 
