@@ -73,13 +73,21 @@ automated check.
 
 ## Current state of the asset
 
-The pipeline is complete and verified end to end. The mesh it produces is a
-**continuous garment shell on correct anthropometry — a base, not a finished
-flagship suit.** Known gaps, from looking at the renders: no hands or feet
-definition, an undetailed head with no mask or lenses, no material zoning (all
-three materials are authored but every face is on slot 0), and soft, heavy
-proportions through the hips.
+See `docs/3d-pipeline/MASTER_SUIT_STATUS.md` for the full gate assessment.
 
-No suit's `LabSuit.modelUrl` points at this asset. It stays unwired until the
-mesh is good enough to present as a real object, because a mediocre asset shown
-as a real one is worse than the honest procedural render that is there today.
+Short version: the suit is a continuous garment on real anthropometry with
+defined hands, feet, a fitted mask, recessed lenses, a mounted five-part
+web-shooter, eight assigned materials and carved seams. It passes every gate
+category except **Garment**, which fails because the web pattern is not
+implemented.
+
+That failure and the remaining softness both trace to one absent stage: baked
+texture maps. Material zones are assigned per FACE, so panel boundaries quantise
+to ~1 cm polygons and cannot read as cut edges; and Blender's procedural weave
+nodes do not survive glTF export at all. UV unwrap is done (all 14 meshes carry
+TEXCOORD_0), so the next pass is generating image maps in UV space and assigning
+them — no new dependency, no change to any geometry module.
+
+`LabSuit.modelUrl` is deliberately NOT pointed at this asset. The gate is
+all-or-nothing by its own terms, and shipping a near-miss as production would be
+exactly the fabrication the asset contract exists to prevent.

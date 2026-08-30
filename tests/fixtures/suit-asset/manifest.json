@@ -1,22 +1,32 @@
 {
   "contractVersion": 1,
-  "suitId": "probe",
-  "generatedAt": "2026-08-30T16:18:39Z",
+  "suitId": "vox-master",
+  "generatedAt": "2026-08-30T17:23:05Z",
   "files": [
     {
       "path": "metadata.json",
-      "bytes": 775,
-      "sha256": "23ef6ed921b45f1765df61dccd6981e79b924f925e940d20e8cee0a2f97b07bf"
+      "bytes": 981,
+      "sha256": "81e8ee3294077d45967c4cfcca40627adfc0ac71ae6ce402e74c866fd4728e88"
     },
     {
       "path": "suit.glb",
-      "bytes": 1182464,
-      "sha256": "07cf1c735658c8e083244b1a345c0f428b7291f83a59cb166d5715c09574153b"
+      "bytes": 1515364,
+      "sha256": "e67aeb6185f9ba1eb38630f2893fed644289a5d1b0c201931b33e058b278141e"
+    },
+    {
+      "path": "source/anatomy.py",
+      "bytes": 6417,
+      "sha256": "6d6e85390d7fb9470de9b4192d96fcb854da16e3f7fc856bd1eb2a6b64d7ffb2"
+    },
+    {
+      "path": "source/body.py",
+      "bytes": 4031,
+      "sha256": "9552cae28daee19312d02912a0b515f93f3ccf810291bd85fb0977d2ece3cb50"
     },
     {
       "path": "source/build_suit.py",
-      "bytes": 18604,
-      "sha256": "c60acae14270c04bb262a1a48473d3304e8c302af14aeceb14e06b962a2908e0"
+      "bytes": 7474,
+      "sha256": "45d9201bd6a3b3d584d547c270cb57ba46265fe4d667d8320b93268b1347f997"
     },
     {
       "path": "source/contract.py",
@@ -24,14 +34,89 @@
       "sha256": "87a892c5c719486d206a01ce0363baf7875b29f818ba6836f82818622011736a"
     },
     {
+      "path": "source/garment.py",
+      "bytes": 15017,
+      "sha256": "74b6d18e7df3fc9b93ab3ce01443a7ee8937eb3da4c67f3f0dca9a20a861ff21"
+    },
+    {
+      "path": "source/materials.py",
+      "bytes": 6270,
+      "sha256": "ac3ca24e3afdd6e6d19049c515d571610106491e80f758d7fcfc7ed624bea8fb"
+    },
+    {
+      "path": "source/meshops.py",
+      "bytes": 7441,
+      "sha256": "88ad448058e956b575d1a021d3cc39f15217c8cd0ff8c9c41155199ffd152ff5"
+    },
+    {
+      "path": "source/rendering.py",
+      "bytes": 5410,
+      "sha256": "b0a9df99e5461ca19e28be7540159ddf249ec4c8334763955c3e0fe54711b08b"
+    },
+    {
+      "path": "source/sculpt.py",
+      "bytes": 7686,
+      "sha256": "8e0e0e60cb4ac5445bc2f343fed1543295f854dd6b9156e3ac70da4d46de1e45"
+    },
+    {
+      "path": "source/webshooter.py",
+      "bytes": 7395,
+      "sha256": "fecfc365b3a82f6157f5480451a506250ad76d6c7c112b4930917ee65955196f"
+    },
+    {
+      "path": "renders/cinematic.png",
+      "bytes": 565891,
+      "sha256": "39ef832477f18e7a92c49e021b475eeeff4642ffac8c3a4569bc286924d340b6"
+    },
+    {
+      "path": "renders/foot.png",
+      "bytes": 662120,
+      "sha256": "a0409beaa555891f5fb329edfdabc126ef62fe7eba8b4bd4cdea11923e7a1456"
+    },
+    {
       "path": "renders/front.png",
-      "bytes": 254470,
-      "sha256": "936a7ff44034dc07f66d7cef273d9343a7996b7dd19b46fb7ffb75b857578e0a"
+      "bytes": 580624,
+      "sha256": "07059e880719c70ba20698bb2c10f3a0d670b0ae247309e31f8a4d66ada17091"
+    },
+    {
+      "path": "renders/hand.png",
+      "bytes": 687789,
+      "sha256": "1aa62c0b11eeb2c79f467a9b752ad2f477406dd4817d7e50a77b53ebad977bb5"
+    },
+    {
+      "path": "renders/head.png",
+      "bytes": 699583,
+      "sha256": "3fa127b356548eca1a560501a16ba3f29ebee7225b2504c82f7ea786ec60eee9"
+    },
+    {
+      "path": "renders/mask_lens.png",
+      "bytes": 748253,
+      "sha256": "07fbabf62a4228e4e3219411cf80857ac2ab92a1e538de1b4bad23918fad87fd"
+    },
+    {
+      "path": "renders/rear.png",
+      "bytes": 582155,
+      "sha256": "ce856d1b115ef634ea03ffa309b50cb0dfdf1bb11d58a5cce2b354bfd7746b49"
+    },
+    {
+      "path": "renders/side.png",
+      "bytes": 567123,
+      "sha256": "2e3722bab35b1a877a628ac44d61a59f26fac185c8d1cd869f5bbe9667348529"
     },
     {
       "path": "renders/three_quarter.png",
-      "bytes": 252792,
-      "sha256": "8f62a6022ec749970abf3a409947d307383a4ba770e33537317f4a0f60f912bf"
+      "bytes": 584118,
+      "sha256": "db72fd5c96eebf5b8d8e94e2fdf668ef695dd52b6ff9faaae579652f94925bfa"
+    },
+    {
+      "path": "renders/torso.png",
+      "bytes": 730825,
+      "sha256": "348b25119d260d1786900b6df08832c4c68054ae782560c6a0b436aac447c2a2"
+    },
+    {
+      "path": "renders/web_shooter.png",
+      "bytes": 714942,
+      "sha256": "33bcbdff85357fa561494223b0422dc8d82117cca1e9f5ae89fc9d1e8511ae2d"
     }
   ]
 }

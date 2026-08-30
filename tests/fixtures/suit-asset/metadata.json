@@ -1,31 +1,33 @@
 {
   "contractVersion": 1,
-  "suitId": "probe",
+  "suitId": "vox-master",
   "provider": "blender-local",
   "recipe": "suit",
   "parameters": {
-    "samples": 32,
-    "resolution": 420
+    "subdivisions": 3,
+    "sculpt": 2.1,
+    "samples": 56,
+    "resolution": 640
   },
   "provenance": {
     "origin": "AUTHORED",
-    "description": "Procedurally authored in Blender (bpy) from published anthropometric ratios for a 1.75 m figure. No third-party mesh, scan, or generated asset is incorporated.",
+    "description": "Authored in Blender (bpy) from a published-anthropometry skeleton for a 1.75 m figure, surfaced with the Skin modifier, subdivided, and sculpted with parametric muscle displacement fields. Mask, lenses and web-shooter modelled as separate solids. No third-party mesh, scan, or generated asset is incorporated.",
     "license": "Owned by this project."
   },
   "upAxis": "Y",
   "facingAxis": "+Z",
   "stats": {
-    "triangles": 66096,
-    "vertices": 32692,
-    "meshes": 1,
-    "materials": 3,
-    "heightM": 1.729,
-    "widthM": 0.794188,
-    "depthM": 0.287,
+    "triangles": 55640,
+    "vertices": 27756,
+    "meshes": 14,
+    "materials": 8,
+    "heightM": 1.721528,
+    "widthM": 0.604574,
+    "depthM": 0.257441,
     "skinned": false,
     "joints": 0,
     "skinAttributesComplete": true
   },
-  "generatedAt": "2026-08-30T16:18:39Z",
-  "buildMs": 9635
+  "generatedAt": "2026-08-30T17:23:05Z",
+  "buildMs": 156332
 }
