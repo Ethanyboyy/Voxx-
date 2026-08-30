@@ -2,6 +2,8 @@
 
 import { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import { QUALITY_BUDGETS, canvasDpr, scaleCount } from "@/lib/3d/quality";
+import { useQualityTier } from "@/lib/3d/useQualityTier";
 import * as THREE from "three";
 import { OrbitControls, Sparkles, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -105,6 +107,10 @@ export function HolographicSuitCanvas({
   // the role it can actually fill honestly.
   const bodyUrl = modelUrl ?? DEFAULT_BODY_MODEL_URL;
   const controlsRef = useRef<OrbitControlsImpl>(null);
+
+  // Same device budget the Brain uses. A phone that renders one surface well
+  // and the other badly is judged on the worse of the two.
+  const tier = useQualityTier();
 
   // Selectable scene objects, keyed by the same ids the Laboratory's component
   // bridge uses. Populated by the meshes themselves as they mount.
@@ -210,8 +216,8 @@ export function HolographicSuitCanvas({
       ) : null}
 
     <Canvas
-      shadows
-      dpr={[1, 2]}
+      shadows={QUALITY_BUDGETS[tier].shadows}
+      dpr={canvasDpr(tier)}
       camera={{ position: cameraPosition, fov: 28 }}
       // ACES keeps the key light's specular hits on armour and metal from
       // clipping to flat white, which is what made every material read the
@@ -298,7 +304,7 @@ export function HolographicSuitCanvas({
         {showEffects ? <ProjectionPlatform color={rigProps.colorPrimary} /> : null}
         <ContactShadows position={[0, -1.33, 0]} opacity={0.5} scale={4.5} blur={2.4} far={2} color="#000000" />
         {showEffects ? (
-          <Sparkles count={60} scale={[3, 3.5, 3]} size={2} speed={0.25} color="#c4b5fd" opacity={0.5} />
+          <Sparkles count={scaleCount(60, tier)} scale={[3, 3.5, 3]} size={2} speed={0.25} color="#c4b5fd" opacity={0.5} />
         ) : null}
       </Suspense>
 

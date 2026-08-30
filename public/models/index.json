@@ -1,0 +1,4 @@
+{
+  "$comment": "Asset manifest index. Each entry is a path to an asset.json validated by src/lib/3d/assetRegistry.ts. Empty is the honest state: no external hero asset has been imported yet. See public/models/README.md for how to add one.",
+  "assets": []
+}

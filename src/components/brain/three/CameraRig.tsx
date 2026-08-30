@@ -6,6 +6,7 @@ import { OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
 import type { Vec3 } from "@/components/brain/three/anatomy";
+import { portraitPullback, verticalBiasOffset } from "@/lib/3d/framing";
 
 const DAMP = 0.09;
 const IDLE_RESUME_MS = 3500;
@@ -39,16 +40,38 @@ export function CameraRig({
   forceRotate?: boolean;
 }) {
   const { camera } = useThree();
+  const size = useThree((s) => s.size);
+  // A camera's fov is VERTICAL, so a portrait canvas sees a much narrower
+  // horizontal field — at 390x724 roughly half a desktop's. Every focus
+  // distance below is authored against a landscape canvas, so on a phone the
+  // brain was framed correctly top-to-bottom and cropped off both edges.
+  // Pulling back by 1/aspect on portrait viewports is what makes the same
+  // distances mean the same framing on any screen shape.
+  const aspect = size.height > 0 ? size.width / size.height : 1;
+  const pullback = portraitPullback(aspect);
+
+  // On a phone the bottom of the canvas is not empty: the activity feed and
+  // inspector cards sit over roughly its lower half. Centring the brain in the
+  // CANVAS therefore centres it behind the UI. Biasing the orbit target down in
+  // world space lifts the subject into the part of the frame the user can
+  // actually see. Zero on landscape, where nothing covers the middle.
+  const biasFraction = aspect < 1 ? 0.16 : 0;
+
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const targetVec = useRef(new THREE.Vector3(...focusPosition));
-  const desiredDistance = useRef(focusDistance);
+  const desiredDistance = useRef(focusDistance * pullback);
   const [autoRotate, setAutoRotate] = useState(true);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const distance = focusDistance * pullback;
+    const fov = (camera as THREE.PerspectiveCamera).fov ?? 42;
     targetVec.current.set(...focusPosition);
-    desiredDistance.current = focusDistance;
-  }, [focusPosition, focusDistance]);
+    // The bias is a fraction of the visible world height at this distance, so
+    // the subject lands at the same place in frame whatever the zoom level.
+    targetVec.current.y -= verticalBiasOffset(distance, fov, biasFraction);
+    desiredDistance.current = distance;
+  }, [focusPosition, focusDistance, pullback, biasFraction, camera]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -96,7 +119,7 @@ export function CameraRig({
       enableDamping
       dampingFactor={0.08}
       minDistance={0.5}
-      maxDistance={9}
+      maxDistance={9 * pullback}
       rotateSpeed={0.6}
       zoomSpeed={0.8}
       autoRotate={(autoRotate || Boolean(forceRotate)) && !reducedMotion}

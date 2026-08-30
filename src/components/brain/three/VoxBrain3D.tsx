@@ -15,6 +15,10 @@ import { BrainInspectorCard } from "@/components/brain/BrainInspectorCard";
 import { BrainScene } from "@/components/brain/three/BrainScene";
 import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
 import { NeuralWeb } from "@/components/brain/three/NeuralWeb";
+import { ActivityPulse } from "@/components/brain/three/ActivityPulse";
+import { activeSignalKinds, signalWeights, SIGNAL_HEX, SIGNAL_LABEL, type SignalKind } from "@/lib/3d/signals";
+import { buildNeuralWeb } from "@/components/brain/three/brainGeometry";
+import { useQualityTier } from "@/lib/3d/useQualityTier";
 import { RegionMarker } from "@/components/brain/three/RegionMarker";
 import { EntitySatellite } from "@/components/brain/three/EntitySatellite";
 import { computeSatelliteOffsets, SATELLITE_REVEAL_CAP } from "@/components/brain/three/regionLayout";
@@ -72,13 +76,11 @@ function subscribeNarrowViewport(callback: () => void) {
 }
 
 /**
- * A narrow (phone-width) viewport shows a much narrower horizontal FOV at
- * the same camera distance than a wide desktop viewport does, for the same
- * fixed vertical fov — so the same "hero" distance that looks right on
- * desktop crops the brain edge-to-edge with no breathing room on a phone.
- * Confirmed empirically via screenshot, not just computed: the desktop
- * hero-framing fix (focusDistance 3.6 -> 2.55) made mobile framing worse,
- * not better, because both viewports were sharing one distance.
+ * Phone-width viewport, for LAYOUT decisions only — which HUD controls collapse
+ * behind a toggle. Camera framing used to key off this too; it no longer does
+ * (see the framing note below), because a media query answers "is this a phone"
+ * and framing needs "what shape is the canvas" — related, but not the same
+ * question, and the canvas is not the window.
  */
 function useIsNarrowViewport(): boolean {
   return useSyncExternalStore(
@@ -87,6 +89,21 @@ function useIsNarrowViewport(): boolean {
     () => false
   );
 }
+
+/**
+ * Framing note (previously a per-call-site `isNarrowViewport ? x : y` pair on
+ * every distance below).
+ *
+ * A narrow viewport shows a much narrower horizontal field at the same camera
+ * distance, because `fov` is vertical — so a distance tuned on desktop crops
+ * the brain edge-to-edge on a phone. That was originally patched by hand-tuning
+ * a second constant for each focus mode, which meant four pairs of magic
+ * numbers, each correct only at the one viewport it was eyeballed against.
+ *
+ * The correction is now a single aspect-aware rule in CameraRig, applied to
+ * whatever distance this function returns. Every number below is therefore one
+ * value with one meaning: how close to get, in world units, at a square frame.
+ */
 
 function add(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -119,6 +136,29 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   // from the user's own scroll/pinch zoom), "Reset" clears it entirely.
   const [manualZoom, setManualZoom] = useState(1);
   const [forceRotate, setForceRotate] = useState(false);
+
+  // Device budget. Re-measured on resize/orientation change, so rotating a
+  // phone or moving the window to another display re-picks the tier instead
+  // of holding whatever the session started at.
+  const tier = useQualityTier();
+
+  // The neural web's real vertex/edge buffers, so activity travels along the
+  // structure the user can actually see rather than over the top of it.
+  const web = useMemo(() => buildNeuralWeb(2), []);
+
+  // What the Brain is DOING maps to which signals travel, and the mapping is
+  // driven by the REAL event stream — a run of memory.created events makes the
+  // brain visibly memory-heavy. `brain.state` is only the fallback for a system
+  // that has genuinely done nothing yet: a state label is a summary, an event
+  // is evidence, and evidence wins.
+  const signalKinds = useMemo<SignalKind[]>(
+    () => activeSignalKinds(events, brain.state),
+    [events, brain.state],
+  );
+
+  // The same classification, as counts, for the legend. Empty means idle —
+  // and an idle brain is allowed to look idle.
+  const signalMix = useMemo(() => signalWeights(events), [events]);
 
   const reducedMotion = usePrefersReducedMotion();
   const isNarrowViewport = useIsNarrowViewport();
@@ -269,17 +309,14 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     }
     if (selectedNode) {
       const pos = entityPositions.get(selectedNode.id) ?? SYSTEM_ANCHOR[SYSTEM_OF[selectedNode.type]];
-      return withZoom(pos, isNarrowViewport ? 1.55 : 1.15);
+      return withZoom(pos, 1.15);
     }
-    if (focusedSystem) return withZoom(SYSTEM_ANCHOR[focusedSystem], isNarrowViewport ? 1.75 : 1.3);
-    if (explodeAmount > 0.4) return withZoom([0, 0, 0], isNarrowViewport ? 5.2 : 4);
-    // The brain is the hero on both — but a narrow (phone-width) viewport
-    // shows a much narrower horizontal slice at any given distance than a
-    // wide desktop one does for the same vertical fov, so the desktop
-    // hero-framing distance crops the brain edge-to-edge with zero breathing
-    // room on a phone. Give mobile real margin instead of maximum fill.
-    return withZoom([0, 0.05, 0], isNarrowViewport ? 3.5 : 2.55);
-  }, [selectedNode, focusedSystem, explodeAmount, entityPositions, isNarrowViewport, manualZoom]);
+    if (focusedSystem) return withZoom(SYSTEM_ANCHOR[focusedSystem], 1.3);
+    if (explodeAmount > 0.4) return withZoom([0, 0, 0], 4);
+    // The brain is the hero. Portrait framing is handled once, in CameraRig —
+    // see the framing note above.
+    return withZoom([0, 0.05, 0], 2.55);
+  }, [selectedNode, focusedSystem, explodeAmount, entityPositions, manualZoom]);
 
   function resetToWholeBrain() {
     setSelectedNodeId(null);
@@ -333,7 +370,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
-      <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} forceRotate={forceRotate} onPointerMissed={() => setSelectedNodeId(null)}>
+      <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} forceRotate={forceRotate} tier={tier} onPointerMissed={() => setSelectedNodeId(null)}>
         <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
         {/* The reference's own Idle-state screenshot shows the connectome at
             full brightness — the network IS the brain's primary material,
@@ -342,6 +379,19 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             just from a baseline that already matches what "Idle" actually
             looks like in the reference, not a faded-out default. */}
         <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} />
+
+        {/* Signals travelling the real pathways. This is what makes the Brain
+            read as thinking rather than as a rotating object: emission is
+            driven by the live event count, so an idle system shows an idle
+            brain and a burst of work is visibly a burst of work. */}
+        <ActivityPulse
+          positions={web.positions}
+          edges={web.edges}
+          activity={events.length}
+          kinds={signalKinds}
+          tier={tier}
+          reducedMotion={reducedMotion}
+        />
 
         {SYSTEM_ORDER.map((system) => (
           <RegionMarker
@@ -579,6 +629,23 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
           overlays as the default way to see what's selected and what's
           happening. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:gap-2.5 sm:p-4">
+        {/* Signal legend. Only rendered when real events have actually
+            classified — an idle system shows no legend rather than a key to
+            colours that aren't on screen. Counts are the real event tallies,
+            so this doubles as a readout of what VOX has been doing. */}
+        {signalMix.length > 0 ? (
+          <div className="pointer-events-none instrument-float flex max-w-full items-center gap-2.5 overflow-x-auto scrollbar-none rounded-full px-3 py-1">
+            {signalMix.map(({ kind, count }) => (
+              <span key={kind} className="flex shrink-0 items-center gap-1.5">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: SIGNAL_HEX[kind], boxShadow: `0 0 6px ${SIGNAL_HEX[kind]}` }} />
+                <span className="lab-mono whitespace-nowrap text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {SIGNAL_LABEL[kind]} <span className="text-foreground">{count}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <div className="pointer-events-auto instrument-float flex max-w-full items-center gap-1 overflow-x-auto scrollbar-none rounded-full px-3 py-1.5">
           {breadcrumbSegments.map((seg, i) => (
             <span key={i} className="flex shrink-0 items-center gap-1">
