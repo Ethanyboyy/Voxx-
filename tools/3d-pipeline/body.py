@@ -109,6 +109,16 @@ def build_body(subdivisions=2):
 
     # Height is the one measurement that has caught a corrupted build before:
     # a figure of arms and legs with no torso still has plausible vertex counts.
+    # A hole in the surface is invisible to every numeric check but obvious in
+    # a render — the thumb branching tangent to the palm's edge opened one at
+    # the wrist. Chain ENDS are legitimately open in a skin cage, so this only
+    # fails on a count far above what the fingertips and toes account for.
+    open_verts = meshops.count_non_manifold(ob)
+    if open_verts > 400:
+        raise meshops.MeshOperationError(
+            f"{open_verts} non-manifold vertices — the skin surface has torn"
+        )
+
     height = ob.dimensions.z
     if not (1.6 < height < 1.85):
         raise meshops.MeshOperationError(

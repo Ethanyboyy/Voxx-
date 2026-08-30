@@ -68,17 +68,47 @@ SIDE_JOINTS = {
     "wrist":       (0.256,  0.016, 0.876, 0.027, 0.022),
 
     # --- hand ---------------------------------------------------------------
-    "palm":        (0.259,  0.014, 0.822, 0.040, 0.020),
-    "knuckle_i":   (0.261, -0.020, 0.782, 0.019, 0.016),
-    "knuckle_m":   (0.263, -0.004, 0.778, 0.019, 0.016),
-    "knuckle_r":   (0.263,  0.012, 0.782, 0.018, 0.015),
-    "knuckle_p":   (0.261,  0.027, 0.792, 0.016, 0.014),
-    "tip_i":       (0.261, -0.031, 0.714, 0.013, 0.011),
-    "tip_m":       (0.263, -0.011, 0.706, 0.013, 0.011),
-    "tip_r":       (0.263,  0.013, 0.714, 0.012, 0.011),
-    "tip_p":       (0.261,  0.032, 0.734, 0.011, 0.010),
-    "thumb_base":  (0.250, -0.026, 0.812, 0.019, 0.017),
-    "thumb_tip":   (0.238, -0.054, 0.772, 0.013, 0.012),
+    # Rebuilt from measured proportions after the clay render showed four fused
+    # sausages and a thumb larger than the palm. Two structural errors, both
+    # fixed here:
+    #
+    # 1. The palm's radii were (0.040, 0.020) — WIDE in X. With the arm hanging
+    #    and the palm facing the thigh, hand BREADTH runs front-to-back (Y) and
+    #    thickness runs across (X). The pair was simply transposed, which is why
+    #    the hand read as a flat paddle turned the wrong way.
+    # 2. Each finger was ONE segment, knuckle to tip, so it could only ever be a
+    #    tube. A finger needs three phalanges with falling radii to read as a
+    #    finger at all.
+    #
+    # Radii were also roughly double life size: a proximal phalanx is ~19 mm
+    # across, so the radius is ~9.5 mm, not the 19 mm that was there.
+    "palm":        (0.261,  0.010, 0.834, 0.018, 0.040),
+    "palm_low":    (0.262,  0.006, 0.804, 0.0165, 0.041),
+
+    # Knuckle row, spread across the hand's breadth (Y). Index forward.
+    "knuckle_i":   (0.262, -0.031, 0.782, 0.0092, 0.0092),
+    "knuckle_m":   (0.263, -0.010, 0.779, 0.0096, 0.0096),
+    "knuckle_r":   (0.263,  0.011, 0.782, 0.0090, 0.0090),
+    "knuckle_p":   (0.262,  0.030, 0.789, 0.0078, 0.0078),
+
+    # Middle phalanges — the joint that makes a finger read as jointed.
+    "mid_i":       (0.263, -0.033, 0.746, 0.0082, 0.0082),
+    "mid_m":       (0.264, -0.011, 0.740, 0.0086, 0.0086),
+    "mid_r":       (0.264,  0.012, 0.745, 0.0080, 0.0080),
+    "mid_p":       (0.263,  0.032, 0.757, 0.0069, 0.0069),
+
+    # Distal phalanges. Middle finger longest, pinky shortest — equal-length
+    # fingers are one of the loudest tells of an unmodelled hand.
+    "tip_i":       (0.263, -0.034, 0.716, 0.0062, 0.0060),
+    "tip_m":       (0.264, -0.012, 0.708, 0.0065, 0.0063),
+    "tip_r":       (0.264,  0.013, 0.716, 0.0060, 0.0058),
+    "tip_p":       (0.263,  0.033, 0.733, 0.0052, 0.0051),
+
+    # Thumb: opposed, off the radial side of the palm, and much smaller than it
+    # was. Two segments plus a metacarpal root.
+    "thumb_root":  (0.257, -0.016, 0.826, 0.0135, 0.0135),
+    "thumb_base":  (0.250, -0.044, 0.802, 0.0102, 0.0102),
+    "thumb_tip":   (0.244, -0.060, 0.777, 0.0072, 0.0070),
 
     # --- leg: hip → thigh → knee → calf → ankle ------------------------------
     "hip":         (0.090,  0.008, 0.882, 0.094, 0.100),
@@ -90,10 +120,15 @@ SIDE_JOINTS = {
     "ankle":       (0.106,  0.016, 0.098, 0.032, 0.036),
 
     # --- foot ---------------------------------------------------------------
-    "heel":        (0.106,  0.062, 0.042, 0.034, 0.040),
-    "arch":        (0.106, -0.020, 0.038, 0.038, 0.048),
-    "forefoot":    (0.106, -0.088, 0.036, 0.040, 0.046),
-    "toe":         (0.106, -0.128, 0.028, 0.034, 0.030),
+    # Rebuilt after the clay render showed a rounded club: no heel, no instep,
+    # no toe box. A foot is WIDER than it is tall and its widest point is the
+    # ball, not the ankle — the previous radii were nearly circular the whole
+    # way, which is what produced the tube-bent-forward silhouette.
+    "heel":        (0.104,  0.070, 0.032, 0.029, 0.032),
+    "instep":      (0.105,  0.016, 0.048, 0.030, 0.034),
+    "arch":        (0.106, -0.018, 0.028, 0.033, 0.038),
+    "ball":        (0.107, -0.072, 0.024, 0.043, 0.034),
+    "toe":         (0.107, -0.116, 0.019, 0.038, 0.021),
 }
 
 SIDE_BONES = [
@@ -103,18 +138,22 @@ SIDE_BONES = [
     ("elbow", "forearm"),
     ("forearm", "wrist"),
     ("wrist", "palm"),
-    # Fingers branch off separate knuckles rather than all from one vertex:
-    # a five-way branch at a single point produces tangled skin geometry, and
-    # separate knuckles are what actually reads as a hand.
-    ("palm", "knuckle_i"),
-    ("palm", "knuckle_m"),
-    ("palm", "knuckle_r"),
-    ("palm", "knuckle_p"),
-    ("knuckle_i", "tip_i"),
-    ("knuckle_m", "tip_m"),
-    ("knuckle_r", "tip_r"),
-    ("knuckle_p", "tip_p"),
-    ("palm", "thumb_base"),
+    # The palm is a two-vertex slab, not a point. Branching four fingers off a
+    # single vertex crowds the skin solver and fuses them; spreading the branch
+    # across a short palm segment gives each knuckle its own room.
+    ("palm", "palm_low"),
+    ("palm_low", "knuckle_i"),
+    ("palm_low", "knuckle_m"),
+    ("palm_low", "knuckle_r"),
+    ("palm_low", "knuckle_p"),
+    # Three phalanges each — proximal, middle, distal.
+    ("knuckle_i", "mid_i"), ("mid_i", "tip_i"),
+    ("knuckle_m", "mid_m"), ("mid_m", "tip_m"),
+    ("knuckle_r", "mid_r"), ("mid_r", "tip_r"),
+    ("knuckle_p", "mid_p"), ("mid_p", "tip_p"),
+    # Thumb branches off the palm's radial side, not off the knuckle row.
+    ("palm", "thumb_root"),
+    ("thumb_root", "thumb_base"),
     ("thumb_base", "thumb_tip"),
 
     ("hip", "thigh"),
@@ -123,10 +162,14 @@ SIDE_BONES = [
     ("knee", "calf"),
     ("calf", "shin"),
     ("shin", "ankle"),
+    # The instep sits between ankle and arch so the top of the foot has a real
+    # rise; heel branches back from the ankle, giving a proper heel-to-ground
+    # contact instead of a rounded stump.
     ("ankle", "heel"),
-    ("ankle", "arch"),
-    ("arch", "forefoot"),
-    ("forefoot", "toe"),
+    ("ankle", "instep"),
+    ("instep", "arch"),
+    ("arch", "ball"),
+    ("ball", "toe"),
 ]
 
 # Bones joining a mirrored limb to the spine.
