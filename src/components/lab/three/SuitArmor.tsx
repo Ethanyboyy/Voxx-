@@ -6,6 +6,7 @@ import { SURFACE_SPECS, type ArmorSlot, type SuitBuild } from "@/components/lab/
 import { CANONICAL_BODY_HEIGHT } from "@/components/lab/three/canonicalBody";
 import { createChamferedSlab, createLensGeometry, createShellPanel } from "@/components/lab/three/panelGeometry";
 import { canBuildFabric, getFabricMaps } from "@/components/lab/three/fabricTexture";
+import { WristSystem } from "@/components/lab/three/WristSystem";
 import type { MaskLensStyle } from "@/components/lab/three/suitDesign";
 
 /**
@@ -170,6 +171,15 @@ export interface SuitArmorProps {
   hoveredId?: string | null;
   onSelect?: (id: string | null) => void;
   onHover?: (id: string | null) => void;
+  /**
+   * Live map of selectable id → scene object.
+   *
+   * The focus camera frames a part by measuring its ACTUAL world bounds, and
+   * the suit is posed at runtime with every piece mounted to a skeleton joint
+   * — so there is no static table of positions that could stand in for this.
+   * Registering the objects is what lets the camera stay correct across poses.
+   */
+  registry?: React.MutableRefObject<Map<string, THREE.Object3D>>;
 }
 
 /**
@@ -191,7 +201,7 @@ function limbBasis(from: THREE.Vector3, to: THREE.Vector3): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, dir));
 }
 
-export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "ANGULAR", hidden = false, explodeAmount = 0, selectedId = null, hoveredId = null, onSelect, onHover }: SuitArmorProps)  {
+export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "ANGULAR", hidden = false, explodeAmount = 0, selectedId = null, hoveredId = null, onSelect, onHover, registry }: SuitArmorProps)  {
   // One emissive material for every telemetry element on the suit. Built
   // here rather than per-piece so 12 components don't allocate 12 identical
   // materials — and disposed with the memo when the build changes.
@@ -322,6 +332,13 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
    * what the part is made of, which is most of the point of selecting it.
    * depthWrite stays off so the overlay never occludes the part it marks.
    */
+  /** Registers (and de-registers) a mesh under its selectable id. */
+  const register = (id: string) => (o: THREE.Object3D | null) => {
+    if (!registry) return;
+    if (o) registry.current.set(id, o);
+    else registry.current.delete(id);
+  };
+
   const highlightFor = (id: string) => {
     if (selectedId === id) return selectionMaterial;
     if (hoveredId === id) return hoverMaterial;
@@ -375,6 +392,7 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
         return (
           <group key={piece.slot} position={base.toArray()} quaternion={quaternion}>
             <mesh
+              ref={register(piece.slot)}
               geometry={geometry}
               material={material}
               rotation={cap?.rotation ?? [0, 0, 0]}
@@ -419,6 +437,43 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
         );
       })}
 
+      {/* Wrist web systems, one per arm, mounted between the wrist and hand
+          joints so they follow the pose like everything else. These are the
+          leaves of the drill-down: suit → arm → web-shooter → cartridge. */}
+      {(["L", "R"] as const).map((side) => {
+        const wrist = anchors.get(side === "L" ? "LeftHand" : "RightHand");
+        const hand = anchors.get(side === "L" ? "LeftHandMiddle1" : "RightHandMiddle1");
+        if (!wrist || !hand) return null;
+        return (
+          <group
+            key={`wrist-${side}`}
+            ref={(o) => {
+              // The whole assembly registers too, so focusing the web-shooter
+              // as a unit frames every part of it rather than one sub-piece.
+              if (!registry) return;
+              const id = `wristSystem${side}`;
+              if (o) registry.current.set(id, o);
+              else registry.current.delete(id);
+            }}
+          >
+            <WristSystem
+              side={side}
+              wrist={wrist}
+              hand={hand}
+              materials={materials}
+              accent={accent}
+              selectedId={selectedId}
+              hoveredId={hoveredId}
+              onSelect={onSelect}
+              onHover={onHover}
+              selectionMaterial={selectionMaterial}
+              hoverMaterial={hoverMaterial}
+              registry={registry}
+            />
+          </group>
+        );
+      })}
+
       {/* Helmet.
           Built as a mask, not a head. The previous version put one sphere
           over the whole face and the render read as a bare alien skull with
@@ -430,6 +485,7 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
         <group position={head.clone().add(new THREE.Vector3(0, 0.016 * H, 0.002 * H)).toArray()}>
           {/* Cranium — ovoid, wider than tall, sitting over the skull. */}
           <mesh
+            ref={register("mask")}
             material={materials[build.plate] ?? materials.ARMOR}
             castShadow
             scale={[1.0, 1.1, 1.06]}
@@ -461,6 +517,7 @@ export function SuitArmor({ build, materials, accent, anchors, maskLensStyle = "
           {([-1, 1] as const).map((side) => (
             <mesh
               key={side}
+              ref={register(side === 1 ? "lensL" : "lensR")}
               geometry={lensGeometry}
               material={lensMaterial}
               position={[side * lens.spread * H, lens.rise * H, 0.046 * H]}

@@ -290,6 +290,8 @@ export interface GltfSuitModelProps {
   hoveredId?: string | null;
   onSelect?: (id: string | null) => void;
   onHover?: (id: string | null) => void;
+  /** Selectable scene objects by id — see SuitArmorProps.registry. */
+  registry?: React.MutableRefObject<Map<string, THREE.Object3D>>;
   explodeAmount?: number;
 }
 
@@ -330,6 +332,7 @@ export function GltfSuitModel({
   hoveredId = null,
   onSelect,
   onHover,
+  registry,
   explodeAmount = 0,
 }: GltfSuitModelProps) {
   const gltf = useGLTF(url);
@@ -415,6 +418,7 @@ export function GltfSuitModel({
         hoveredId={hoveredId}
         onSelect={onSelect}
         onHover={onHover}
+        registry={registry}
         explodeAmount={explodeAmount}
       />
       {/* Rim/energy glow — a scaled BackSide shell per real mesh, same

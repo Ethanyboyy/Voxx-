@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls, Sparkles, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { SuitRig, type SuitRigProps } from "@/components/lab/three/SuitRig";
 import { GltfSuitModel, GltfErrorBoundary } from "@/components/lab/three/GltfSuitModel";
+import { FocusRig, boundsOf, type FocusTarget } from "@/components/lab/three/FocusRig";
+import { ROOT_FOCUS, breadcrumb, focusOnClick, focusUp, idsToFrame, type FocusState } from "@/lib/lab/drilldown";
 
 /**
  * Procedural three-point studio softbox — every "light" here is a plain
@@ -104,6 +106,54 @@ export function HolographicSuitCanvas({
   const bodyUrl = modelUrl ?? DEFAULT_BODY_MODEL_URL;
   const controlsRef = useRef<OrbitControlsImpl>(null);
 
+  // Selectable scene objects, keyed by the same ids the Laboratory's component
+  // bridge uses. Populated by the meshes themselves as they mount.
+  const registry = useRef<Map<string, THREE.Object3D>>(new Map());
+  const [focus, setFocus] = useState<FocusState>(ROOT_FOCUS);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
+
+  /**
+   * A click means "go one level deeper toward this", not "select this".
+   * See lib/lab/drilldown.ts for why one level per click.
+   */
+  const handleSelect = useCallback((id: string | null) => {
+    if (!id) {
+      setFocus(ROOT_FOCUS);
+      setSelectedId(null);
+      setFocusTarget(null);
+      return;
+    }
+    setSelectedId(id);
+    setFocus((current) => {
+      const next = focusOnClick(current, id);
+      const objects = idsToFrame(next)
+        .map((k) => registry.current.get(k))
+        .filter((o): o is THREE.Object3D => Boolean(o));
+      setFocusTarget(boundsOf(objects));
+      return next;
+    });
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setFocus((current) => {
+      const next = focusUp(current);
+      const objects = idsToFrame(next)
+        .map((k) => registry.current.get(k))
+        .filter((o): o is THREE.Object3D => Boolean(o));
+      setFocusTarget(boundsOf(objects));
+      if (next === ROOT_FOCUS) setSelectedId(null);
+      return next;
+    });
+  }, []);
+
+  // Honour the OS-level preference rather than animating regardless.
+  const reducedMotion = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+    []
+  );
+
   // The procedural SuitRig is a small, chest-focused mannequin the camera
   // above was tuned for. A real GLB body (e.g. CesiumMan, loaded at its own
   // T-pose bind pose — see GltfSuitModel.tsx) is a full CANONICAL_BODY_HEIGHT
@@ -130,7 +180,35 @@ export function HolographicSuitCanvas({
   const cameraPosition: [number, number, number] = [0.46, -0.04, 3.45];
   const orbitTarget: [number, number, number] = [0, -0.42, 0];
 
+  const crumbs = breadcrumb(focus);
+  const canGoBack = focus.level !== "SUIT";
+
   return (
+    <div className="relative h-full w-full">
+      {/* Drill-down navigation. Without this the camera can fly in and never
+          come back out, which turns a feature into a trap. Kept deliberately
+          small and to one edge — the object is the subject, not the chrome. */}
+      {canGoBack ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="pointer-events-auto vox-press rounded-md border border-white/15 bg-black/55 px-2.5 py-1 text-[11px] uppercase tracking-wider text-white/80 backdrop-blur-sm hover:text-white"
+            aria-label="Back to the enclosing assembly"
+          >
+            ← Back
+          </button>
+          <nav aria-label="Inspection depth" className="flex items-center gap-1 text-[11px] text-white/55">
+            {crumbs.map((c, i) => (
+              <span key={`${c.level}-${c.label}`} className="flex items-center gap-1">
+                {i > 0 ? <span aria-hidden className="text-white/25">/</span> : null}
+                <span className={i === crumbs.length - 1 ? "text-white/90" : ""}>{c.label}</span>
+              </span>
+            ))}
+          </nav>
+        </div>
+      ) : null}
+
     <Canvas
       shadows
       dpr={[1, 2]}
@@ -186,6 +264,14 @@ export function HolographicSuitCanvas({
           it's drawn as, uplighting the suit's underside. */}
       {showEffects ? <pointLight position={[0, -1.3, 0.3]} intensity={0.9} distance={3} decay={2} color={rigProps.colorPrimary} /> : null}
 
+      <FocusRig
+        controls={controlsRef}
+        target={focusTarget}
+        homePosition={cameraPosition}
+        homeTarget={orbitTarget}
+        reducedMotion={reducedMotion}
+      />
+
       <Suspense fallback={null}>
         <GltfErrorBoundary fallback={<SuitRig {...rigProps} />}>
           <GltfSuitModel
@@ -202,6 +288,11 @@ export function HolographicSuitCanvas({
             armorLevel={rigProps.armorLevel}
             maskLensStyle={rigProps.maskLensStyle}
             explodeAmount={rigProps.explodeAmount}
+            selectedId={selectedId}
+            hoveredId={hoveredId}
+            onSelect={handleSelect}
+            onHover={setHoveredId}
+            registry={registry}
           />
         </GltfErrorBoundary>
         {showEffects ? <ProjectionPlatform color={rigProps.colorPrimary} /> : null}
@@ -225,5 +316,6 @@ export function HolographicSuitCanvas({
         target={orbitTarget}
       />
     </Canvas>
+    </div>
   );
 }
