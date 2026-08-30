@@ -1,0 +1,31 @@
+{
+  "contractVersion": 1,
+  "suitId": "probe",
+  "provider": "blender-local",
+  "recipe": "suit",
+  "parameters": {
+    "samples": 32,
+    "resolution": 420
+  },
+  "provenance": {
+    "origin": "AUTHORED",
+    "description": "Procedurally authored in Blender (bpy) from published anthropometric ratios for a 1.75 m figure. No third-party mesh, scan, or generated asset is incorporated.",
+    "license": "Owned by this project."
+  },
+  "upAxis": "Y",
+  "facingAxis": "+Z",
+  "stats": {
+    "triangles": 66096,
+    "vertices": 32692,
+    "meshes": 1,
+    "materials": 3,
+    "heightM": 1.729,
+    "widthM": 0.794188,
+    "depthM": 0.287,
+    "skinned": false,
+    "joints": 0,
+    "skinAttributesComplete": true
+  },
+  "generatedAt": "2026-08-30T16:18:39Z",
+  "buildMs": 9635
+}

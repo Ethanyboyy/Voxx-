@@ -59,3 +59,7 @@ next-env.d.ts
 .agents/
 .claude/
 skills-lock.json
+
+# Python bytecode from the 3D authoring pipeline
+__pycache__/
+*.pyc

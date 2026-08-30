@@ -1,0 +1,37 @@
+{
+  "contractVersion": 1,
+  "suitId": "probe",
+  "generatedAt": "2026-08-30T16:18:39Z",
+  "files": [
+    {
+      "path": "metadata.json",
+      "bytes": 775,
+      "sha256": "23ef6ed921b45f1765df61dccd6981e79b924f925e940d20e8cee0a2f97b07bf"
+    },
+    {
+      "path": "suit.glb",
+      "bytes": 1182464,
+      "sha256": "07cf1c735658c8e083244b1a345c0f428b7291f83a59cb166d5715c09574153b"
+    },
+    {
+      "path": "source/build_suit.py",
+      "bytes": 18604,
+      "sha256": "c60acae14270c04bb262a1a48473d3304e8c302af14aeceb14e06b962a2908e0"
+    },
+    {
+      "path": "source/contract.py",
+      "bytes": 4912,
+      "sha256": "87a892c5c719486d206a01ce0363baf7875b29f818ba6836f82818622011736a"
+    },
+    {
+      "path": "renders/front.png",
+      "bytes": 254470,
+      "sha256": "936a7ff44034dc07f66d7cef273d9343a7996b7dd19b46fb7ffb75b857578e0a"
+    },
+    {
+      "path": "renders/three_quarter.png",
+      "bytes": 252792,
+      "sha256": "8f62a6022ec749970abf3a409947d307383a4ba770e33537317f4a0f60f912bf"
+    }
+  ]
+}
