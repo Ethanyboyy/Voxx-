@@ -32,9 +32,9 @@ CENTRE_JOINTS = {
     # off the pelvis lets SKIN close that junction properly.
     "pelvis":      (0.000,  0.014, 0.918, 0.114, 0.120),
     "waist":       (0.000, -0.006, 1.055, 0.094, 0.098),
-    "ribs":        (0.000, -0.010, 1.155, 0.116, 0.118),
-    "chest":       (0.000, -0.014, 1.255, 0.142, 0.126),
-    "clavicle":    (0.000, -0.008, 1.395, 0.152, 0.112),
+    "ribs":        (0.000, -0.010, 1.155, 0.126, 0.128),
+    "chest":       (0.000, -0.014, 1.258, 0.156, 0.136),
+    "clavicle":    (0.000, -0.008, 1.398, 0.166, 0.122),
     "neck_base":   (0.000, -0.004, 1.470, 0.054, 0.056),
     "neck_top":    (0.000, -0.008, 1.528, 0.049, 0.052),
     "jaw":         (0.000, -0.020, 1.576, 0.068, 0.082),
@@ -60,12 +60,12 @@ SIDE_JOINTS = {
     # Biacromial breadth ~0.23 H puts the deltoid's outer edge near x = 0.20.
     # The first pass sat at 0.176 and read narrow-shouldered against a wide
     # pelvis — the single most damaging proportion error in a hero silhouette.
-    "shoulder":    (0.150, -0.006, 1.412, 0.074, 0.072),
-    "deltoid":     (0.196, -0.002, 1.368, 0.068, 0.066),
-    "biceps":      (0.214,  0.004, 1.245, 0.052, 0.050),
-    "elbow":       (0.228,  0.008, 1.108, 0.042, 0.043),
-    "forearm":     (0.242,  0.012, 1.010, 0.047, 0.045),
-    "wrist":       (0.256,  0.016, 0.876, 0.027, 0.022),
+    "shoulder":    (0.158, -0.006, 1.412, 0.082, 0.080),
+    "deltoid":     (0.207, -0.002, 1.366, 0.078, 0.076),
+    "biceps":      (0.222,  0.004, 1.245, 0.061, 0.059),
+    "elbow":       (0.234,  0.008, 1.108, 0.047, 0.048),
+    "forearm":     (0.246,  0.012, 1.006, 0.055, 0.052),
+    "wrist":       (0.256,  0.016, 0.876, 0.029, 0.024),
 
     # --- hand ---------------------------------------------------------------
     # Rebuilt from measured proportions after the clay render showed four fused
@@ -112,23 +112,27 @@ SIDE_JOINTS = {
 
     # --- leg: hip → thigh → knee → calf → ankle ------------------------------
     "hip":         (0.090,  0.008, 0.882, 0.094, 0.100),
-    "thigh":       (0.100,  0.004, 0.700, 0.082, 0.088),
-    "above_knee":  (0.104,  0.008, 0.560, 0.063, 0.068),
-    "knee":        (0.106,  0.010, 0.492, 0.057, 0.061),
-    "calf":        (0.106,  0.014, 0.390, 0.060, 0.064),
-    "shin":        (0.106,  0.014, 0.250, 0.041, 0.046),
-    "ankle":       (0.106,  0.016, 0.098, 0.032, 0.036),
+    "thigh":       (0.101,  0.004, 0.700, 0.092, 0.098),
+    "above_knee":  (0.104,  0.008, 0.560, 0.070, 0.076),
+    "knee":        (0.106,  0.010, 0.492, 0.062, 0.066),
+    "calf":        (0.106,  0.014, 0.392, 0.069, 0.073),
+    "shin":        (0.106,  0.014, 0.250, 0.045, 0.050),
+    "ankle":       (0.106,  0.016, 0.098, 0.034, 0.038),
 
     # --- foot ---------------------------------------------------------------
-    # Rebuilt after the clay render showed a rounded club: no heel, no instep,
-    # no toe box. A foot is WIDER than it is tall and its widest point is the
-    # ball, not the ankle — the previous radii were nearly circular the whole
-    # way, which is what produced the tube-bent-forward silhouette.
-    "heel":        (0.104,  0.070, 0.032, 0.029, 0.032),
-    "instep":      (0.105,  0.016, 0.048, 0.030, 0.034),
-    "arch":        (0.106, -0.018, 0.028, 0.033, 0.038),
-    "ball":        (0.107, -0.072, 0.024, 0.043, 0.034),
-    "toe":         (0.107, -0.116, 0.019, 0.038, 0.021),
+    # AXIS NOTE, and it is the whole reason the foot kept reading wrong: the
+    # skin modifier's two radii lie in the plane PERPENDICULAR to the bone. The
+    # foot chain runs along Y, so its radii map to X (width) and **Z (height)**
+    # — not to X and Y as they do on the vertical spine and limb chains.
+    #
+    # The second value was therefore setting foot HEIGHT, and 0.036 made the
+    # ball of the foot 72 mm tall. A real foot is ~40 mm there. That is why it
+    # read as an inflated slipper no matter how the length was adjusted.
+    "heel":        (0.104,  0.074, 0.036, 0.031, 0.030),
+    "instep":      (0.105,  0.014, 0.052, 0.032, 0.032),
+    "arch":        (0.106, -0.020, 0.034, 0.037, 0.026),
+    "ball":        (0.107, -0.082, 0.028, 0.048, 0.022),
+    "toe":         (0.107, -0.128, 0.022, 0.042, 0.015),
 }
 
 SIDE_BONES = [
