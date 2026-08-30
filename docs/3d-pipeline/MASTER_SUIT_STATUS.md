@@ -1,6 +1,20 @@
 # VOX master suit — status against the quality gate
 
+**Verdict: HERO tier PASS on the automated gate; NON-PRODUCTION on visual
+inspection. `modelUrl` is NOT assigned.**
+
 Build: `tools/3d-pipeline/build_suit.py`. Renders in `renders/`.
+
+| Measure | Value |
+| --- | --- |
+| Triangles | 72,700 (HERO budget 180k; over STANDARD 60k) |
+| Vertices / meshes / materials | 36,678 / 14 / 6 |
+| Textures | 2048 garment, 1024 mask — base colour, roughness, normal |
+| Texture bytes | 8.5 MB (first textured export was 75 MB) |
+| GLB | 10,912,568 bytes |
+| Asset QA gate | **HERO PASS (17 checks)**; STANDARD and MOBILE fail on triangle + byte budget |
+| glTF container check | **PASS** — 6/6 images embedded, 14/14 meshes with TEXCOORD_0 |
+| Repo gate | 418 tests, typecheck clean, lint 0 errors, production build passes |
 
 ---
 
@@ -21,7 +35,7 @@ missing — **baked PBR textures**.
 | Head mesh density | uniform with the body | head region locally refined (`meshops.refine_region`) |
 | Body anatomy | 26 muscle fields | + clavicle, clavicle hollow, serratus, lat insertion, trapezius neck |
 | Materials | 8, three of them per-face zones on one mesh | 6 real substances; garment differentiation moved into base-colour and roughness maps |
-| Textures | none | 4096 px garment set, 2048 px mask set (base colour, roughness, normal) |
+| Textures | none | 2048 px garment set, 1024 px mask set (base colour, roughness, normal), 8-bit PNG |
 
 **Why the body collapsed from three materials to one, deliberately:** a real
 stretch suit is one fabric with dyed panels, not three substances welded
@@ -32,8 +46,10 @@ remain separate materials.
 
 ## 2. Gate results
 
-**Geometry — PASS.** Continuous body, no booleans in the anatomy, defined hands
-and feet, head with real facial structure, fitted mask, integrated lenses.
+**Geometry — PARTIAL.** Continuous body, no booleans in the anatomy, head with
+real facial structure, fitted mask, integrated lenses. Hands and feet are
+defined and unmistakable but were NOT refined this pass — §11 and §12 of the
+brief are outstanding.
 
 **Head/mask/lenses — PASS.** The mask is built from the head's own surface at a
 4.5 mm offset and 3.5 mm thickness, so every landmark telegraphs through it.
@@ -42,9 +58,14 @@ Lenses are shaped superellipse solids recessed into the mask by boolean.
 **Garment — PASS.** Panel boundaries are smooth curves following anatomy; the
 web pattern is present, continuous across UV islands, and legible at both hero
 and close range; the weave holds up at close inspection without becoming noise.
+The knee shields' falloff is wider than a cut panel would be — they read
+slightly airbrushed at close range.
 
-**Technology — PASS.** Five named parts per arm, housing curved to the forearm
-radius, cartridge interfacing with the mechanism, trigger palm-side.
+**Technology — PARTIAL.** Five named parts per arm, housing curved to the
+forearm radius and flush-mounted, cartridge interfacing with the mechanism,
+trigger palm-side, plus retention straps and fasteners added this pass. It still
+reads as a slab-and-cylinder assembly rather than a compact engineered
+mechanism, which is a named reject criterion — see §5.
 
 **Rendering — PASS.** Diagnostic and cinematic rigs remain separate. All
 required views render with the full figure contained.
@@ -101,7 +122,38 @@ Guards added for the ones that can recur silently: `uv-on-every-mesh`,
   texel density at the same file size.
 - The suit has no insignia or emblem.
 
-## 5. modelUrl
+## 5. modelUrl — withheld, deliberately
 
-See the final section of the accompanying report for the assignment decision and
-its justification.
+The automated gate passes at HERO. The visual bar does not, and the brief is
+explicit that both are required.
+
+Two items on the reject list are still true of this asset:
+
+- **Primitive wrist hardware.** The web-shooter gained retention straps,
+  fasteners, a gunmetal finish and an emitter aperture this pass, and it is
+  mounted flush to the forearm radius rather than floating. It is still a
+  slab-and-cylinder assembly rather than a compact engineered mechanism.
+- **Sausage fingers.** Untouched this pass. §11 and §12 (finger taper, foot
+  silhouette) were not attempted.
+
+Assigning `modelUrl` now would mean widening the bar to fit the asset, which is
+the opposite of what the gate is for. It stays withheld.
+
+## 6. Bugs found this pass — none visible to the automated gate
+
+Every one of these passed typecheck, lint and the full suite while producing a
+visibly broken asset. They are recorded because the pattern is the point: the
+render loop is not optional.
+
+1. `image.colorspace_settings.name` **zeroes the pixel buffer**. Set after
+   writing pixels it discarded every map; the suit rendered black with grey
+   shards for three consecutive builds.
+2. `float_buffer=False` images never reach the render/save buffer at all —
+   readbacks succeed, saves are empty. 602 bytes vs 350 on the same gradient.
+3. Voronoi strand width was in normalised cell units, so raising cell density
+   silently shrank the strand to 0.5 mm — sub-texel, invisible at any contrast.
+4. Facial fields at 3x workable strength produced a grotesque. Reverted.
+5. Float buffers export as **16-bit PNG**: the first textured GLB was 75 MB and
+   unusable. Replaced with a hand-rolled 8-bit PNG encoder.
+6. Linear values written into an **sRGB-tagged PNG** are decoded again on load —
+   a 0.215 red came back as 0.04 and the whole suit rendered muddy.

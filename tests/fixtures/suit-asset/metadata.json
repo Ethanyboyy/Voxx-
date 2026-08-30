@@ -4,10 +4,11 @@
   "provider": "blender-local",
   "recipe": "suit",
   "parameters": {
+    "textureSize": 2048,
     "subdivisions": 3,
     "sculpt": 2.1,
-    "samples": 56,
-    "resolution": 640
+    "samples": 48,
+    "resolution": 820
   },
   "provenance": {
     "origin": "AUTHORED",
@@ -17,17 +18,44 @@
   "upAxis": "Y",
   "facingAxis": "+Z",
   "stats": {
-    "triangles": 55640,
-    "vertices": 27756,
+    "triangles": 72700,
+    "vertices": 36678,
     "meshes": 14,
-    "materials": 8,
-    "heightM": 1.721528,
+    "materials": 6,
+    "heightM": 1.72156,
     "widthM": 0.604574,
     "depthM": 0.257441,
     "skinned": false,
     "joints": 0,
-    "skinAttributesComplete": true
+    "skinAttributesComplete": true,
+    "uvMeshes": 14,
+    "textures": [
+      {
+        "name": "vox_garment_basecolor",
+        "size": 2048
+      },
+      {
+        "name": "vox_garment_normal",
+        "size": 2048
+      },
+      {
+        "name": "vox_garment_roughness",
+        "size": 2048
+      },
+      {
+        "name": "vox_mask_basecolor",
+        "size": 1024
+      },
+      {
+        "name": "vox_mask_normal",
+        "size": 1024
+      },
+      {
+        "name": "vox_mask_roughness",
+        "size": 1024
+      }
+    ]
   },
-  "generatedAt": "2026-08-30T17:23:05Z",
-  "buildMs": 156332
+  "generatedAt": "2026-08-30T21:04:02Z",
+  "buildMs": 255668
 }

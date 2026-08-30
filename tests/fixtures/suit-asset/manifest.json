@@ -1,17 +1,17 @@
 {
   "contractVersion": 1,
   "suitId": "vox-master",
-  "generatedAt": "2026-08-30T17:23:05Z",
+  "generatedAt": "2026-08-30T21:04:02Z",
   "files": [
     {
       "path": "metadata.json",
-      "bytes": 981,
-      "sha256": "81e8ee3294077d45967c4cfcca40627adfc0ac71ae6ce402e74c866fd4728e88"
+      "bytes": 1508,
+      "sha256": "f55cbe2f42bc2170c1d463768304aa3a0cae1b7ec9fd098785a797ccf57fb332"
     },
     {
       "path": "suit.glb",
-      "bytes": 1515364,
-      "sha256": "e67aeb6185f9ba1eb38630f2893fed644289a5d1b0c201931b33e058b278141e"
+      "bytes": 10912568,
+      "sha256": "fea9c2660f8466585053f2cc675b0ba75a1fe4535a13ff80329f4e4d2ea4347d"
     },
     {
       "path": "source/anatomy.py",
@@ -20,18 +20,18 @@
     },
     {
       "path": "source/body.py",
-      "bytes": 4031,
-      "sha256": "9552cae28daee19312d02912a0b515f93f3ccf810291bd85fb0977d2ece3cb50"
+      "bytes": 4457,
+      "sha256": "891749054aa3f1c8d7da28f32fdf4358db890ba65618da43ae04fb528a19ee71"
     },
     {
       "path": "source/build_suit.py",
-      "bytes": 7474,
-      "sha256": "45d9201bd6a3b3d584d547c270cb57ba46265fe4d667d8320b93268b1347f997"
+      "bytes": 9235,
+      "sha256": "254d5da5f3f9dbe782a0ad508adb56f91ad65dc0f5d9018e862880aa27c9ed55"
     },
     {
       "path": "source/contract.py",
-      "bytes": 4912,
-      "sha256": "87a892c5c719486d206a01ce0363baf7875b29f818ba6836f82818622011736a"
+      "bytes": 5881,
+      "sha256": "9504b9f3ffdcfa04c6d5900b5310e0b694091f75b09539dc90b883ce6db84a40"
     },
     {
       "path": "source/garment.py",
@@ -40,13 +40,13 @@
     },
     {
       "path": "source/materials.py",
-      "bytes": 6270,
-      "sha256": "ac3ca24e3afdd6e6d19049c515d571610106491e80f758d7fcfc7ed624bea8fb"
+      "bytes": 6488,
+      "sha256": "a696bd647acdd0cd4cbb6c013a9877523337aa16ad3cb787680055fad93f7f8b"
     },
     {
       "path": "source/meshops.py",
-      "bytes": 7441,
-      "sha256": "88ad448058e956b575d1a021d3cc39f15217c8cd0ff8c9c41155199ffd152ff5"
+      "bytes": 8618,
+      "sha256": "a83343a5e734ad701119c426f07d7d63a3ec2a87c5adef6b8669bac6290ea623"
     },
     {
       "path": "source/rendering.py",
@@ -55,68 +55,103 @@
     },
     {
       "path": "source/sculpt.py",
-      "bytes": 7686,
-      "sha256": "8e0e0e60cb4ac5445bc2f343fed1543295f854dd6b9156e3ac70da4d46de1e45"
+      "bytes": 9479,
+      "sha256": "977aff1c101d5fb4cf41c1f65046636b0bb38192fbfe40484ffd061550715421"
+    },
+    {
+      "path": "source/texturing.py",
+      "bytes": 22564,
+      "sha256": "9263ec6be2c24c9c7c36e98509114260d817dd6ef0fba171cc990ec8b33424d8"
     },
     {
       "path": "source/webshooter.py",
-      "bytes": 7395,
-      "sha256": "fecfc365b3a82f6157f5480451a506250ad76d6c7c112b4930917ee65955196f"
+      "bytes": 9864,
+      "sha256": "829014c4ee723cb0752b5abd8f12e5aaed82fcd21f01117ff9ed3ce7df8dcfd9"
     },
     {
       "path": "renders/cinematic.png",
-      "bytes": 565891,
-      "sha256": "39ef832477f18e7a92c49e021b475eeeff4642ffac8c3a4569bc286924d340b6"
+      "bytes": 1054126,
+      "sha256": "a212f84f58882f2daafae61c307a64907e2095143b9493da90736e5b9026507f"
     },
     {
       "path": "renders/foot.png",
-      "bytes": 662120,
-      "sha256": "a0409beaa555891f5fb329edfdabc126ef62fe7eba8b4bd4cdea11923e7a1456"
+      "bytes": 1087059,
+      "sha256": "e636fbae53aded7312ec72ea9bb55c5996f41e56d6d1a5643c5e2c2ca85d3ceb"
     },
     {
       "path": "renders/front.png",
-      "bytes": 580624,
-      "sha256": "07059e880719c70ba20698bb2c10f3a0d670b0ae247309e31f8a4d66ada17091"
+      "bytes": 1078789,
+      "sha256": "a037c9d4528d2a14189bc038e5b776f3db9c7e298edb5cda39a13317633a600a"
     },
     {
       "path": "renders/hand.png",
-      "bytes": 687789,
-      "sha256": "1aa62c0b11eeb2c79f467a9b752ad2f477406dd4817d7e50a77b53ebad977bb5"
+      "bytes": 1116613,
+      "sha256": "5223c2eddf9e4631bb7ea83d9c298303030121c88d7f19d05ea2d65081b89d6d"
     },
     {
       "path": "renders/head.png",
-      "bytes": 699583,
-      "sha256": "3fa127b356548eca1a560501a16ba3f29ebee7225b2504c82f7ea786ec60eee9"
+      "bytes": 1208427,
+      "sha256": "64d74efd70373b5140b1d60e0c816805718f162e89aa5ff34034d7da300d2e30"
     },
     {
       "path": "renders/mask_lens.png",
-      "bytes": 748253,
-      "sha256": "07fbabf62a4228e4e3219411cf80857ac2ab92a1e538de1b4bad23918fad87fd"
+      "bytes": 1227014,
+      "sha256": "1d2d688168d496f7c1de7702418ce500d1eca2d0ea7816c85b860dc5a620aeff"
     },
     {
       "path": "renders/rear.png",
-      "bytes": 582155,
-      "sha256": "ce856d1b115ef634ea03ffa309b50cb0dfdf1bb11d58a5cce2b354bfd7746b49"
+      "bytes": 1072705,
+      "sha256": "4e97412f1df87771d376e9864eb60a0bdb9aeba7c9d4531bed2a68e75593ddef"
     },
     {
       "path": "renders/side.png",
-      "bytes": 567123,
-      "sha256": "2e3722bab35b1a877a628ac44d61a59f26fac185c8d1cd869f5bbe9667348529"
+      "bytes": 1018219,
+      "sha256": "57fe3d0b9b3d2ba897e295c72691f76fa7025bf394b77e0d1763e3a025d3fcb5"
     },
     {
       "path": "renders/three_quarter.png",
-      "bytes": 584118,
-      "sha256": "db72fd5c96eebf5b8d8e94e2fdf668ef695dd52b6ff9faaae579652f94925bfa"
+      "bytes": 1081469,
+      "sha256": "63c3f76fcf7fda03560ead3b490b28b0706a32a51d4d5ef63face928e7ecb189"
     },
     {
       "path": "renders/torso.png",
-      "bytes": 730825,
-      "sha256": "348b25119d260d1786900b6df08832c4c68054ae782560c6a0b436aac447c2a2"
+      "bytes": 1424870,
+      "sha256": "3d5f1eafe58b2aacaa6724eabd60d7e7b100670879d44b3940bba2c259a11735"
     },
     {
       "path": "renders/web_shooter.png",
-      "bytes": 714942,
-      "sha256": "33bcbdff85357fa561494223b0422dc8d82117cca1e9f5ae89fc9d1e8511ae2d"
+      "bytes": 1138078,
+      "sha256": "dced9c700c31b47d836679863d25b497ef4ed7e35f0770e8973ecc964482e21d"
+    },
+    {
+      "path": "textures/vox_garment_basecolor.png",
+      "bytes": 1038212,
+      "sha256": "4b5ee60895e66e5b87c6ba93d40650336c6b649f2f618c7fb09f049d2d1d1bdd"
+    },
+    {
+      "path": "textures/vox_garment_normal.png",
+      "bytes": 3564517,
+      "sha256": "8322bdb7948e4392026d1155e90293aba72f299f8152d25f86de81d7259d9bb4"
+    },
+    {
+      "path": "textures/vox_garment_roughness.png",
+      "bytes": 1706168,
+      "sha256": "9075930f1a877a1306b2bad13c99a6918ef4c51f1159f3aea2eea38a002abdae"
+    },
+    {
+      "path": "textures/vox_mask_basecolor.png",
+      "bytes": 378394,
+      "sha256": "ad9ec1ae3ca6287817be0f11a43153b11717e76815b86fcc3c22bac7d5b0bc2e"
+    },
+    {
+      "path": "textures/vox_mask_normal.png",
+      "bytes": 1532528,
+      "sha256": "626df3ba4d83c3a7d7550373e2fac075f3711052dba068775520f75417f59f94"
+    },
+    {
+      "path": "textures/vox_mask_roughness.png",
+      "bytes": 656452,
+      "sha256": "d46620c7eb890ba1af7524a03852e19c8ba5583e762828ae113592a0bb364956"
     }
   ]
 }
