@@ -111,7 +111,7 @@ def build(args):
         panel_colour=(0.215, 0.026, 0.042),
         accent_colour=(0.022, 0.024, 0.032),
     )
-    _mat, imgs = texturing.apply_baked_material(suit, body_maps, "vox_garment")
+    _mat, imgs = texturing.apply_baked_material(suit, body_maps, "vox_garment", texture_dir=args.texture_dir)
     images += imgs
     log["body_texture"] = f"{args.texture_size}px, {body_maps['coverage'] * 100:.1f}% UV coverage"
 
@@ -123,7 +123,7 @@ def build(args):
         web_scale=130.0,
         weave_scale=2600.0,
     )
-    _mmat, mimgs = texturing.apply_baked_material(mask, mask_maps, "vox_mask")
+    _mmat, mimgs = texturing.apply_baked_material(mask, mask_maps, "vox_mask", texture_dir=args.texture_dir)
     images += mimgs
     log["mask_texture"] = f"{max(args.texture_size // 2, 512)}px, {mask_maps['coverage'] * 100:.1f}% UV coverage"
     log["images"] = [i.name for i in images]
@@ -137,7 +137,8 @@ def main():
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--subdivisions", type=int, default=3)
     ap.add_argument("--sculpt", type=float, default=2.1)
-    ap.add_argument("--texture-size", type=int, default=4096)
+    ap.add_argument("--texture-size", type=int, default=2048)
+    ap.add_argument("--texture-dir", default=None)
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--resolution", type=int, default=720)
     ap.add_argument("--views", default="")
@@ -150,6 +151,7 @@ def main():
     for sub in ("", "source", "qa", "renders"):
         os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
 
+    args.texture_dir = os.path.join(out_dir, 'textures')
     suit, objects, log = build(args)
     for key, value in log.items():
         print(f"BUILD {key}: {value}", flush=True)

@@ -24,6 +24,8 @@ what the Suit Bay loads are the same surface.
 """
 
 import math
+import os
+import tempfile
 
 import bpy
 import numpy as np
@@ -346,6 +348,58 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
 
 # --- Blender plumbing --------------------------------------------------------
 
+def _write_png(path, array):
+    """Writes an 8-bit RGB PNG from a float array in [0, 1].
+
+    Hand-rolled because the route through Blender is the problem being solved.
+    A `float_buffer=True` image is required to get pixels IN (see the history in
+    image_from_array), but glTF then exports it as a 16-bit PNG: the first
+    textured export was 75 MB, which fails the byte budget at every delivery
+    tier and is unusable in a browser. Quantising to 8 bits and compressing here
+    produces a file an order of magnitude smaller with no visible difference on
+    a colour, roughness or normal map.
+    """
+    import struct
+    import zlib
+
+    height, width = array.shape[:2]
+    data = (np.clip(array, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+
+    # PNG scanlines are top-down and each is prefixed with a filter byte. The
+    # arrays here are bottom-up (v=0 at row 0), matching the UV convention, so
+    # they are flipped exactly once, here, at the boundary.
+    rows = np.flipud(data)
+    raw = np.zeros((height, width * 3 + 1), dtype=np.uint8)
+    raw[:, 1:] = rows.reshape(height, width * 3)
+
+    def chunk(tag, payload):
+        return (struct.pack(">I", len(payload)) + tag + payload
+                + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit truecolour
+    with open(path, "wb") as fh:
+        fh.write(b"\x89PNG\r\n\x1a\n")
+        fh.write(chunk(b"IHDR", header))
+        fh.write(chunk(b"IDAT", zlib.compress(raw.tobytes(), 6)))
+        fh.write(chunk(b"IEND", b""))
+    return path
+
+
+def image_from_file(name, path, *, colorspace):
+    """Loads a PNG written by _write_png as a normal 8-bit Blender image.
+
+    Going through a file sidesteps the entire float-buffer/colorspace-ordering
+    minefield: nothing is written through `image.pixels`, so nothing can be
+    silently zeroed, and what the exporter embeds is byte-for-byte the file that
+    was inspected on disk.
+    """
+    image = bpy.data.images.load(path)
+    image.name = name
+    image.colorspace_settings.name = colorspace
+    image.pack()
+    return image
+
+
 def image_from_array(name, array, *, colorspace):
     """numpy → a real bpy.types.Image that glTF will embed."""
     size = array.shape[0]
@@ -377,7 +431,7 @@ def image_from_array(name, array, *, colorspace):
     return image
 
 
-def apply_baked_material(ob, maps, name):
+def apply_baked_material(ob, maps, name, texture_dir=None):
     """Replaces the object's materials with ONE material driven by baked maps.
 
     Collapsing the body's three per-face slots into a single textured material
@@ -395,9 +449,23 @@ def apply_baked_material(ob, maps, name):
     nt = mat.node_tree
     bsdf = nt.nodes["Principled BSDF"]
 
-    base_img = image_from_array(f"{name}_basecolor", maps["base_color"], colorspace="sRGB")
-    rough_img = image_from_array(f"{name}_roughness", maps["roughness"], colorspace="Non-Color")
-    normal_img = image_from_array(f"{name}_normal", maps["normal"], colorspace="Non-Color")
+    # Written to disk as 8-bit PNGs and loaded back, rather than pushed through
+    # image.pixels — see _write_png for why (75 MB export, and a pixel path with
+    # two separate silent-zeroing failure modes).
+    out = texture_dir or tempfile.mkdtemp(prefix="vox-tex-")
+    os.makedirs(out, exist_ok=True)
+    base_img = image_from_file(
+        f"{name}_basecolor",
+        _write_png(os.path.join(out, f"{name}_basecolor.png"), maps["base_color"]),
+        colorspace="sRGB")
+    rough_img = image_from_file(
+        f"{name}_roughness",
+        _write_png(os.path.join(out, f"{name}_roughness.png"), maps["roughness"]),
+        colorspace="Non-Color")
+    normal_img = image_from_file(
+        f"{name}_normal",
+        _write_png(os.path.join(out, f"{name}_normal.png"), maps["normal"]),
+        colorspace="Non-Color")
 
     tex_base = nt.nodes.new("ShaderNodeTexImage")
     tex_base.image = base_img
