@@ -348,7 +348,7 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
 
 # --- Blender plumbing --------------------------------------------------------
 
-def _write_png(path, array):
+def _write_png(path, array, *, srgb=False):
     """Writes an 8-bit RGB PNG from a float array in [0, 1].
 
     Hand-rolled because the route through Blender is the problem being solved.
@@ -363,7 +363,20 @@ def _write_png(path, array):
     import zlib
 
     height, width = array.shape[:2]
-    data = (np.clip(array, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+    values = np.clip(array, 0.0, 1.0)
+
+    if srgb:
+        # The design is authored in LINEAR light, but a PNG tagged sRGB is
+        # DECODED sRGB->linear when Blender loads it. Writing linear values into
+        # an sRGB file therefore darkens everything twice over: a 0.215 red came
+        # back as ~0.04 and the whole suit rendered muddy. Encoding here means
+        # the decode on load returns exactly the values that were authored.
+        # Roughness and normal are Non-Color and must NOT take this path.
+        low = values * 12.92
+        high = 1.055 * np.power(values, 1.0 / 2.4) - 0.055
+        values = np.where(values <= 0.0031308, low, high)
+
+    data = (values * 255.0 + 0.5).astype(np.uint8)
 
     # PNG scanlines are top-down and each is prefixed with a filter byte. The
     # arrays here are bottom-up (v=0 at row 0), matching the UV convention, so
@@ -456,7 +469,7 @@ def apply_baked_material(ob, maps, name, texture_dir=None):
     os.makedirs(out, exist_ok=True)
     base_img = image_from_file(
         f"{name}_basecolor",
-        _write_png(os.path.join(out, f"{name}_basecolor.png"), maps["base_color"]),
+        _write_png(os.path.join(out, f"{name}_basecolor.png"), maps["base_color"], srgb=True),
         colorspace="sRGB")
     rough_img = image_from_file(
         f"{name}_roughness",
