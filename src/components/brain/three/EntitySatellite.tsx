@@ -32,6 +32,11 @@ export function EntitySatellite({
   const meshRef = useRef<Mesh>(null);
   const [hovered, setHovered] = useState(false);
   const posRef = useRef(new THREE.Vector3(...targetPosition));
+  // Scratch vector reused every frame. A satellite runs at 60fps and there can
+  // be up to SATELLITE_REVEAL_CAP of them per system, so allocating the lerp
+  // target inside useFrame handed the GC a few thousand short-lived Vector3s a
+  // second for no reason. Mutated, never read outside the frame it is set in.
+  const scratch = useRef(new THREE.Vector3());
   const color = SYSTEM_COLOR[SYSTEM_OF[node.type]];
   const weight = importanceOf(node);
   const size = 0.028 + weight * 0.022;
@@ -42,7 +47,7 @@ export function EntitySatellite({
   useFrame((_, delta) => {
     if (!meshRef.current) return;
     const alpha = Math.min(1, DAMP * delta * 60);
-    posRef.current.lerp(new THREE.Vector3(...targetPosition), alpha);
+    posRef.current.lerp(scratch.current.set(...targetPosition), alpha);
     meshRef.current.position.copy(posRef.current);
   });
 

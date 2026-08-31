@@ -1,22 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Line } from "@react-three/drei";
 import { cn } from "@/lib/utils/cn";
-import { useEventStream } from "@/lib/events/useEventStream";
-import type { LiveEvent } from "@/lib/events/bus";
 import type { BrainNode } from "@/lib/brain/graph";
 import type { BrainPayload } from "@/components/brain/BrainWorkspace";
-import { InspectorPanel, type GraphPatch } from "@/components/brain/InspectorPanel";
+import { InspectorPanel } from "@/components/brain/InspectorPanel";
 import { ActivityTimeline } from "@/components/brain/ActivityTimeline";
 import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
 import { BrainActivityFeedCard } from "@/components/brain/BrainActivityFeedCard";
 import { BrainInspectorCard } from "@/components/brain/BrainInspectorCard";
+import { useBrainVisualState } from "@/components/brain/three/useBrainVisualState";
 import { BrainScene } from "@/components/brain/three/BrainScene";
 import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
 import { NeuralWeb } from "@/components/brain/three/NeuralWeb";
 import { ActivityPulse } from "@/components/brain/three/ActivityPulse";
-import { activeSignalKinds, signalWeights, SIGNAL_HEX, SIGNAL_LABEL, type SignalKind } from "@/lib/3d/signals";
+import { SIGNAL_HEX, SIGNAL_LABEL } from "@/lib/3d/signals";
 import { buildNeuralWeb } from "@/components/brain/three/brainGeometry";
 import { useQualityTier } from "@/lib/3d/useQualityTier";
 import { usePrefersReducedMotion } from "@/lib/3d/useReducedMotion";
@@ -31,12 +30,9 @@ import {
   SYSTEM_LABEL,
   SYSTEM_COLOR,
   SYSTEM_ANCHOR,
-  SUBJECT_TYPE_TO_SYSTEM,
   type BrainSystem,
   type Vec3,
 } from "@/components/brain/three/anatomy";
-
-const PULSE_MS = 1600;
 
 function ToolbarIconButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: ReactNode }) {
   return (
@@ -97,10 +93,11 @@ function add(a: Vec3, b: Vec3): Vec3 {
 }
 
 export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPayload; onSwitchToStructural?: () => void }) {
-  const [nodes, setNodes] = useState<BrainNode[]>(initial.nodes);
-  const [edges, setEdges] = useState(initial.edges);
-  const [events, setEvents] = useState(initial.events);
-  const [brain, setBrain] = useState(initial.brain);
+  // The live graph, the event stream and their derived signals. Everything
+  // below this line is view state — what the user is looking at, not what VOX
+  // is doing. See useBrainVisualState for why the two are separated.
+  const { nodes, edges, events, brain, nodesById, signalKinds, signalMix, pulses, liveStatus, applyPatch } =
+    useBrainVisualState(initial);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [focusedSystem, setFocusedSystem] = useState<BrainSystem | null>(null);
@@ -109,7 +106,6 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   const [showSystems, setShowSystems] = useState(false);
   const [showFullInspector, setShowFullInspector] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [pulses, setPulses] = useState<Partial<Record<BrainSystem, number>>>({});
 
   const [explodeAmount, setExplodeAmount] = useState(0);
   const [xray, setXray] = useState(false);
@@ -133,63 +129,12 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   // structure the user can actually see rather than over the top of it.
   const web = useMemo(() => buildNeuralWeb(2), []);
 
-  // What the Brain is DOING maps to which signals travel, and the mapping is
-  // driven by the REAL event stream — a run of memory.created events makes the
-  // brain visibly memory-heavy. `brain.state` is only the fallback for a system
-  // that has genuinely done nothing yet: a state label is a summary, an event
-  // is evidence, and evidence wins.
-  const signalKinds = useMemo<SignalKind[]>(
-    () => activeSignalKinds(events, brain.state),
-    [events, brain.state],
-  );
-
-  // The same classification, as counts, for the legend. Empty means idle —
-  // and an idle brain is allowed to look idle.
-  const signalMix = useMemo(() => signalWeights(events), [events]);
 
   const reducedMotion = usePrefersReducedMotion();
   const isNarrowViewport = useIsNarrowViewport();
 
-  const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const selectedNode = selectedNodeId ? (nodesById.get(selectedNodeId) ?? null) : null;
 
-  // Real authoritative refetch — identical pattern to BrainWorkspace's own
-  // refreshGraph/handleLiveEvent: a live event never guesses at what
-  // changed, it just triggers a debounced re-read of the real graph.
-  const refreshGraph = useCallback(async () => {
-    try {
-      const res = await fetch("/api/brain/graph");
-      if (!res.ok) return;
-      const data: BrainPayload = await res.json();
-      setNodes(data.nodes);
-      setEdges(data.edges);
-      setEvents(data.events);
-      setBrain(data.brain);
-    } catch {
-      // transient network hiccup — next event/poll retries
-    }
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(refreshGraph, 60000);
-    return () => clearInterval(interval);
-  }, [refreshGraph]);
-
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleLiveEvent = useCallback(
-    (event: LiveEvent) => {
-      setEvents((prev) => [{ id: event.id, type: event.type, subjectType: event.subjectType, subjectId: event.subjectId, createdAt: event.createdAt }, ...prev].slice(0, 60));
-
-      const system = event.subjectType ? SUBJECT_TYPE_TO_SYSTEM[event.subjectType] : undefined;
-      if (system) setPulses((prev) => ({ ...prev, [system]: performance.now() + PULSE_MS }));
-
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = setTimeout(refreshGraph, 600);
-    },
-    [refreshGraph]
-  );
-  const { status: liveStatus } = useEventStream({ onEvent: handleLiveEvent });
-  useEffect(() => () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); }, []);
 
   // Which systems currently show their real entity satellites — the brain
   // itself is always fully visible (it's the hero, not something that
@@ -335,12 +280,6 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
       setXray(false);
       setClipEnabled(false);
     }
-  }
-
-  function applyGraphPatch(patch: GraphPatch) {
-    if (patch.kind === "addNodes") setNodes((prev) => [...prev, ...patch.nodes]);
-    else if (patch.kind === "addEdges") setEdges((prev) => [...prev, ...patch.edges]);
-    else if (patch.kind === "updateNode") setNodes((prev) => prev.map((n) => (n.id === patch.id ? { ...n, ...patch.patch } : n)));
   }
 
   const searchResults = useMemo(() => {
@@ -580,7 +519,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             onClose={() => setShowFullInspector(false)}
             onFocus={refocus}
             onSelectNode={(id) => setSelectedNodeId(id)}
-            onGraphPatch={applyGraphPatch}
+            onGraphPatch={applyPatch}
             onTogglePin={() =>
               setPinnedIds((prev) => {
                 const next = new Set(prev);

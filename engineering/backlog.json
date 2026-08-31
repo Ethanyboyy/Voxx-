@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T21:05:00Z",
+  "updatedAt": "2026-08-31T21:45:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -240,7 +240,12 @@
       ],
       "verificationCriteria": "brain-geometry/brain-visual-state/brain-event-coverage tests plus a browser state sweep (idle, thinking, executing, iterating, waiting, degraded, error, completed) at both viewports.",
       "designNote": "Do NOT create a second brain component tree, a client state library, a second event bus, or a BrainEngine class wrapper. Seven new files, listed in section 6. VoxBrain3D.tsx is already 684 lines — extract state into useBrainVisualState before adding to it.",
-      "startAt": "Phase A (anatomical foundation): cortical depth layer + lobe submeshes in brainGeometry.ts, with brain-geometry.test.ts extended first."
+      "startAt": "Phase A (anatomical foundation): cortical depth layer + lobe submeshes in brainGeometry.ts, with brain-geometry.test.ts extended first. Phase C is now cheaper: useBrainVisualState is the seam and intensity.ts is its scalar — wire getBrainVisualState() in lib/brain/ to feed ActivitySnapshot from CapabilityRun/AgentRun rows.",
+      "preparationDone": [
+        "GPU lifecycle audited — already correct; fixed per-frame Vector3 allocation in BrainMesh and EntitySatellite.",
+        "useBrainVisualState extracted: VoxBrain3D 684 -> 616 lines, domain/event state separated from view state.",
+        "lib/brain/intensity.ts — deterministic 0..1 activity scalar with 17 tests."
+      ]
     }
   ]
 }

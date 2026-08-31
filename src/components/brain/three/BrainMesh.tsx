@@ -95,10 +95,17 @@ function PartMesh({
   const meshRef = useRef<Mesh>(null);
   const rimRef = useRef<Mesh>(null);
   const targetPos = useRef(new THREE.Vector3(...part.basePosition));
+  // Scratch vector reused every frame — see the note in EntitySatellite. Five
+  // parts each allocated a Vector3 per frame purely to scale a constant.
+  const explodeVec = useRef(new THREE.Vector3());
 
   useFrame((_, delta) => {
-    const explodeVec = new THREE.Vector3(...part.explodeOffset).multiplyScalar(explodeAmount);
-    targetPos.current.set(part.basePosition[0] + explodeVec.x, part.basePosition[1] + explodeVec.y, part.basePosition[2] + explodeVec.z);
+    explodeVec.current.set(...part.explodeOffset).multiplyScalar(explodeAmount);
+    targetPos.current.set(
+      part.basePosition[0] + explodeVec.current.x,
+      part.basePosition[1] + explodeVec.current.y,
+      part.basePosition[2] + explodeVec.current.z,
+    );
     if (groupRef.current) {
       const alpha = Math.min(1, DAMP * delta * 60);
       groupRef.current.position.lerp(targetPos.current, alpha);
