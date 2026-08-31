@@ -1,7 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logger } from "@/lib/observability/logger";
+import { isSupportedImageMimeType, toContentBlocks } from "@/lib/ai/types";
 import type {
   AIProvider,
+  ChatMessageInput,
   GenerateOptions,
   GenerateResult,
   StreamEvent,
@@ -21,9 +23,43 @@ function toAnthropicTools(tools: ToolDefinition[] | undefined): Anthropic.Tool[]
   }));
 }
 
+
+/**
+ * VOX message content -> Anthropic content.
+ *
+ * A plain string is passed straight through rather than wrapped in a
+ * single-element block array. Both are valid to the API, but keeping the
+ * string form means this change is invisible on the wire for every existing
+ * text-only caller — which is the point of widening the type rather than
+ * replacing it.
+ *
+ * Image blocks use the SDK's base64 source shape. The MIME type is checked
+ * here, not just at the caller, because this is the last place before the
+ * request leaves: an unsupported type produces a slow 400 from the API, and a
+ * local throw names the actual problem.
+ */
+function toAnthropicContent(content: ChatMessageInput["content"]): Anthropic.MessageParam["content"] {
+  if (typeof content === "string") return content;
+
+  return toContentBlocks(content).map((block) => {
+    if (block.type === "text") return { type: "text" as const, text: block.text };
+    if (!isSupportedImageMimeType(block.mimeType)) {
+      throw new Error(
+        `Unsupported image type "${block.mimeType}" — Anthropic accepts png, jpeg, gif and webp.`,
+      );
+    }
+    return {
+      type: "image" as const,
+      source: { type: "base64" as const, media_type: block.mimeType, data: block.data },
+    };
+  });
+}
+
 export class AnthropicProvider implements AIProvider {
   readonly id = "anthropic";
   readonly defaultModel = DEFAULT_MODEL;
+  /** Every current Claude model accepts image blocks. */
+  readonly supportsVision = true;
   private readonly client: Anthropic;
 
   constructor(apiKey: string) {
@@ -46,7 +82,7 @@ export class AnthropicProvider implements AIProvider {
         temperature: options.temperature,
         messages: options.messages.filter((m) => m.role !== "system").map((m) => ({
           role: m.role as "user" | "assistant",
-          content: m.content,
+          content: toAnthropicContent(m.content),
         })),
         tools: toAnthropicTools(options.tools),
       });
@@ -116,7 +152,7 @@ export class AnthropicProvider implements AIProvider {
         temperature: options.temperature,
         messages: options.messages.filter((m) => m.role !== "system").map((m) => ({
           role: m.role as "user" | "assistant",
-          content: m.content,
+          content: toAnthropicContent(m.content),
         })),
         tools: toAnthropicTools(options.tools),
       });

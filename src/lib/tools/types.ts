@@ -35,7 +35,7 @@ export interface ToolDefinition<TInput = unknown> {
   /** Stable key, e.g. "memory.search" — referenced by AgentStep.toolName. */
   name: string;
   description: string;
-  category: "memory" | "project" | "knowledge" | "research" | "connection" | "external";
+  category: "memory" | "project" | "knowledge" | "research" | "connection" | "external" | "workspace";
   /** Permission capability key checked before execution — never bypassed. */
   capability: string;
   requiredLevel: CapabilityLevel;

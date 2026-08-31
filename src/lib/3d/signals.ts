@@ -70,6 +70,20 @@ const EXACT: Record<string, SignalKind> = {
   "artifact.version_created": "memory",
   // Judging output against intent is inference over evidence.
   "qa.completed": "reasoning",
+
+  // --- workspace execution --------------------------------------------------
+  // Editing a file and running the project's checks are VOX acting on the
+  // world, and both are things the activity feed should show while they
+  // happen. They live under `execution.` which already maps to execution via
+  // no prefix rule, so they are listed explicitly rather than relying on one.
+  "execution.file_changed": "execution",
+  "execution.validation_started": "execution",
+  "execution.validation_passed": "execution",
+  "execution.validation_failed": "execution",
+  // An iteration completing carries a verdict — that is the system evaluating
+  // its own work, which is reasoning rather than doing.
+  "iteration.completed": "reasoning",
+  "iteration.started": "execution",
 };
 
 /**
@@ -102,6 +116,12 @@ const VIEW_ONLY: ReadonlySet<string> = new Set([
   "provider.refused",
   // Choosing which stored version to point at is a pointer move, not thought.
   "artifact.version_selected",
+  // A review that could not run produced no judgement, so there is no
+  // cognition to report — the same reasoning as provider.refused.
+  "qa.failed",
+  // An iteration that died before producing anything is a failure notice, not
+  // work; `iteration.completed` already carries the verdict that matters.
+  "iteration.failed",
 ]);
 
 /** Prefix rules, longest-first so the more specific rule wins. */

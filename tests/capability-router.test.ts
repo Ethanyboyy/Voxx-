@@ -243,6 +243,70 @@ describe("capability router", () => {
     });
   });
 
+  describe("visual QA routing", () => {
+    it("routes a pure judgement request to QA with nothing to generate", () => {
+      const plan = routeDeterministic({ request: "Does this image match the reference?" })!;
+      expect(caps(plan)).toContain("VISUAL_QA");
+      expect(caps(plan)).not.toContain("IMAGE_GENERATION");
+      expect(caps(plan)).not.toContain("VIDEO_GENERATION");
+    });
+
+    it("routes 'compare these three concepts' to generation plus QA", () => {
+      const plan = routeDeterministic({ request: "Compare these three concepts and tell me which is strongest" })!;
+      expect(caps(plan)).toContain("VISUAL_QA");
+    });
+
+    it("makes QA REQUIRED when the request states a bar to clear", () => {
+      // "Make a trailer" is a generation task. "Make a trailer and make sure
+      // the suit stays consistent" is a generation task plus an acceptance
+      // criterion, and skipping the check would answer a different question.
+      const casual = routeDeterministic({ request: "Make a trailer for the Mark 07 suit" })!;
+      expect(casual.steps.find((s) => s.capability === "VISUAL_QA")?.optional).toBe(true);
+
+      const strict = routeDeterministic({
+        request: "Create a cinematic trailer for the Mark 07 and make sure the suit stays consistent",
+      })!;
+      expect(strict.steps.find((s) => s.capability === "VISUAL_QA")?.optional).toBe(false);
+    });
+
+    it("adds QA to an execution task that must match a reference", () => {
+      // Without this the agent edits the code and never looks at the result.
+      const plan = routeDeterministic({ request: "Build this design into the Suit Bay and make it match the reference" })!;
+      expect(caps(plan)).toContain("EXECUTION");
+      expect(caps(plan)).toContain("VISUAL_QA");
+    });
+
+    it("routes 'find what is wrong with the Suit Bay and fix it' to execution plus QA", () => {
+      const plan = routeDeterministic({ request: "Find what is wrong with the current Suit Bay and fix it" })!;
+      expect(caps(plan)).toContain("EXECUTION");
+      expect(caps(plan)).toContain("VISUAL_QA");
+    });
+
+    it("does not add QA to an execution task with no visual bar", () => {
+      const plan = routeDeterministic({ request: "Refactor the memory service" })!;
+      expect(caps(plan)).not.toContain("VISUAL_QA");
+    });
+  });
+
+  describe("the full acceptance request", () => {
+    it("plans generation, execution and video from one sentence", () => {
+      const plan = routeDeterministic({
+        request:
+          "Take this suit reference, make it look like premium realistic performance fabric instead of armor, " +
+          "create three variations, choose the strongest one, build the chosen design into the Suit Bay, " +
+          "and make a cinematic reveal video",
+        hasVisualReference: true,
+      })!;
+      const order = caps(plan);
+      expect(order).toContain("MEMORY");
+      expect(order).toContain("EXECUTION");
+      expect(order).toContain("VIDEO_GENERATION");
+      expect(order).toContain("VISUAL_QA");
+      // A reference exists, so no concept needs generating before the video.
+      expect(order.indexOf("MEMORY")).toBe(0);
+    });
+  });
+
   describe("taxonomy", () => {
     it("gives every capability a deliberate permission decision", () => {
       // A new capability that silently defaults to ungated is the failure this

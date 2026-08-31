@@ -95,11 +95,29 @@ const IMAGE_EDIT = [
   "more realistic", "redesign the",
 ];
 
-/** Words that ask VOX to change the actual software. */
-const EXECUTION = [
-  "fix the", "build it into", "build this into", "implement", "refactor",
-  "add a", "wire up", "make the code", "in the codebase", "run the tests",
-  "get it working", "make it match", "apply this to the",
+/**
+ * Requests that ask VOX to change the actual software.
+ *
+ * PATTERNS, not fixed phrases. A literal list failed on real sentences that
+ * are obviously execution requests: "build THE CHOSEN DESIGN into the Suit
+ * Bay" does not contain "build it into", and "find what is wrong ... and fix
+ * it" does not contain "fix the". The variable part is the object, so the
+ * pattern has to allow for one rather than enumerate every phrasing.
+ */
+const EXECUTION_PATTERNS: RegExp[] = [
+  /\bfix (the|this|that|it)\b/,
+  // "build X into the Suit Bay" for any reasonable X.
+  /\bbuild\b[^.?!]{0,60}\b(into|in) the\b/,
+  /\b(implement|refactor)\b/,
+  /\bwire (it |this |them )?up\b/,
+  /\badd a\b/,
+  /\bmake the code\b/,
+  /\bin the (codebase|code|repo|repository|project)\b/,
+  /\brun the tests\b/,
+  /\bget (it|this|them) working\b/,
+  // "make it match", "make the Suit Bay match the reference".
+  /\bmake\b[^.?!]{0,40}\bmatch\b/,
+  /\bapply (this|that|it)\b[^.?!]{0,30}\bto the\b/,
 ];
 
 /** Asking for more than one option is an image-generation tell. */
@@ -108,8 +126,44 @@ const VARIATION = /\b(\d+|two|three|four|five|six|ten|several|multiple)\s+(varia
 /** Something VOX would have to look up rather than recall. */
 const RESEARCH = ["look up", "research", "find out", "what's the latest", "current best practice"];
 
+/**
+ * Requests that are ASKING FOR A JUDGEMENT about something visual.
+ *
+ * Distinct from the QA that automatically follows generation. These are cases
+ * where evaluation is the whole task and nothing needs to be produced:
+ * "does this match the reference?" wants an answer, not an image.
+ */
+const QA_REQUEST_PATTERNS: RegExp[] = [
+  // "does this match", and also "does this IMAGE match the reference".
+  /\bdoes (this|it|that|the)\b[^.?!]{0,40}\bmatch\b/,
+  /\bcompare (these|those|the)\b/,
+  /\bis (this|it|that)\b[^.?!]{0,30}\bclose to\b/,
+  /\bhow close\b/,
+  /\bcheck (whether|if)\b/,
+  /\b(review|evaluate|assess) (this|that|these|the)\b/,
+  /\b(what'?s|what is) wrong with\b/,
+  /\bfind what(?:'?s| is)? wrong\b/,
+];
+
+/**
+ * Phrases that attach a correctness bar to work being requested.
+ *
+ * "Make a trailer" is a generation task. "Make a trailer and make sure the
+ * suit stays consistent" is a generation task WITH an acceptance criterion,
+ * and the criterion is what turns the optional QA step into a required one.
+ */
+const QUALITY_BAR = [
+  "make sure", "make it match", "match the reference", "as close as possible",
+  "get it as close", "stays consistent", "stay consistent", "keep it consistent",
+  "verify", "validate", "make certain", "ensure",
+];
+
 function mentionsAny(text: string, needles: string[]): boolean {
   return needles.some((n) => text.includes(n));
+}
+
+function matchesAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
 }
 
 /**
@@ -137,10 +191,12 @@ export function routeDeterministic(context: RoutingContext): CapabilityPlan | nu
     (mentionsAny(text, PRESENTATIONAL) && mentionsAny(text, MOTION_VERBS));
   const wantsEdit = mentionsAny(text, IMAGE_EDIT) || (context.hasVisualReference === true && /\b(this|it)\b/.test(text) && mentionsAny(text, ["color", "colour", "lens", "material", "realistic"]));
   const wantsImage = mentionsAny(text, IMAGE_MAKE) || VARIATION.test(context.request);
-  const wantsExecution = mentionsAny(text, EXECUTION);
+  const wantsExecution = matchesAny(text, EXECUTION_PATTERNS);
   const wantsResearch = mentionsAny(text, RESEARCH);
+  const asksForJudgement = matchesAny(text, QA_REQUEST_PATTERNS);
+  const setsQualityBar = mentionsAny(text, QUALITY_BAR);
 
-  if (!wantsVideo && !wantsEdit && !wantsImage && !wantsExecution && !wantsResearch) {
+  if (!wantsVideo && !wantsEdit && !wantsImage && !wantsExecution && !wantsResearch && !asksForJudgement) {
     // No signal at all is not the same as "answer directly" — a short, vague
     // request may still need routing. Defer rather than assert.
     return null;
@@ -159,6 +215,12 @@ export function routeDeterministic(context: RoutingContext): CapabilityPlan | nu
 
   if (wantsExecution) {
     steps.push(step("EXECUTION", "request asks to change the application itself"));
+    // "Build it into the Suit Bay AND make it match the reference" is not one
+    // instruction, it is a change plus an acceptance test. Without this the
+    // agent would edit the code and never look at what it produced.
+    if (setsQualityBar || asksForJudgement) {
+      steps.push(step("VISUAL_QA", "implementation must be checked against the target"));
+    }
   }
 
   // Video needs something to film. When there is no usable visual reference
@@ -177,9 +239,20 @@ export function routeDeterministic(context: RoutingContext): CapabilityPlan | nu
     steps.push(step("IMAGE_GENERATION", "request asks for an image that does not exist yet"));
   }
 
-  // QA is only worth its cost when something visual was actually produced.
-  if (steps.some((s) => s.capability === "IMAGE_GENERATION" || s.capability === "IMAGE_EDIT" || s.capability === "VIDEO_GENERATION")) {
-    steps.push(step("VISUAL_QA", "verify generated media before presenting it", true));
+  const producesMedia = steps.some(
+    (s) => s.capability === "IMAGE_GENERATION" || s.capability === "IMAGE_EDIT" || s.capability === "VIDEO_GENERATION",
+  );
+
+  if (producesMedia) {
+    // Optional by default — QA being unavailable should not block delivering
+    // the media. But when the request states a bar to clear, the check IS the
+    // task and skipping it would answer a different question.
+    const required = setsQualityBar || asksForJudgement;
+    steps.push(step("VISUAL_QA", required ? "request states a quality bar to clear" : "verify generated media before presenting it", !required));
+  } else if (asksForJudgement && !steps.some((s) => s.capability === "VISUAL_QA")) {
+    // Evaluation as the whole task: "does this match the reference?" wants an
+    // answer, not a new image.
+    steps.push(step("VISUAL_QA", "request asks for a judgement about existing media"));
   }
 
   return finalize({ steps, strategy: "deterministic", degraded: false, notes: [] }, context);
@@ -218,11 +291,18 @@ export function finalize(plan: CapabilityPlan, context: RoutingContext): Capabil
     steps.push(s);
   }
 
-  // QA with nothing left to check is noise, not diligence.
+  // QA with nothing left to check is noise, not diligence — but only when it
+  // was the OPTIONAL follow-up to generation that then got dropped. A required
+  // QA step is the task itself: "does this match the reference?" judges media
+  // that already exists, and "build it and make it match" judges a render the
+  // execution step produces. Stripping those because no generator ran would
+  // silently answer a different question.
   const producesMedia = steps.some(
     (s) => s.capability === "IMAGE_GENERATION" || s.capability === "IMAGE_EDIT" || s.capability === "VIDEO_GENERATION",
   );
-  const cleaned = producesMedia ? steps : steps.filter((s) => s.capability !== "VISUAL_QA");
+  const cleaned = producesMedia
+    ? steps
+    : steps.filter((s) => s.capability !== "VISUAL_QA" || !s.optional);
 
   // A plan that lost everything is a direct answer, not an empty ceremony.
   if (cleaned.length === 0) {

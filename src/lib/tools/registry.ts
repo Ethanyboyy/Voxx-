@@ -9,6 +9,16 @@ import { createRequirement, nextRequirementCode } from "@/lib/lab/requirements";
 import { createQuestion } from "@/lib/lab/questions";
 import { recordOpportunitySpend } from "@/lib/economic/service";
 import { evaluateSpendPolicy } from "@/lib/economic/policy";
+import { recordEvent } from "@/lib/observability/events";
+import {
+  listDirectory,
+  patchWorkspaceFile,
+  projectStructure,
+  readWorkspaceFile,
+  searchWorkspace,
+  writeWorkspaceFile,
+} from "@/lib/workspace/fs";
+import { gitStatus, runValidation, VALIDATION_NAMES, type ValidationName } from "@/lib/workspace/validate";
 import type { ToolDefinition } from "@/lib/tools/types";
 
 /**
@@ -288,6 +298,211 @@ register({
   execute: async (_userId, _input) => {
     requireConfiguredCalendar();
     throw new Error("Google Calendar integration is not implemented yet — no real OAuth client is registered.");
+  },
+});
+
+// --- Workspace tools: the execution agent's hands ---------------------------
+//
+// These are what turn "fix the Suit Bay" from an objective the planner cannot
+// express into one it can plan real steps for. They wrap src/lib/workspace/,
+// which owns containment and the closed validation set.
+//
+// PERMISSION MAPPING (the brief's Phase 15, and the reason no second
+// hierarchy was created). Every tool below sits on the EXISTING
+// OBSERVE < ANALYZE < RECOMMEND < ASK < ACT ladder:
+//
+//   workspace.read     OBSERVE   Reading project source. Granted by default,
+//                                because inspecting the code it is working on
+//                                is the least an engineering agent can do, and
+//                                secrets are excluded at the path layer rather
+//                                than by withholding the capability.
+//   workspace.inspect  ANALYZE   Git state. A notch higher because it reveals
+//                                what is uncommitted, which is a different
+//                                kind of information from the code itself.
+//   workspace.validate ANALYZE   Running the project's own checks. Changes
+//                                nothing; spends CPU. Granted by default so an
+//                                agent can verify its own work without an
+//                                approval round-trip for every test run.
+//   workspace.write    ACT       Editing files. NOT granted by default. This
+//                                is the consequential one, and ACT is exactly
+//                                the level VOX already reserves for actions
+//                                that change something.
+//
+// There is deliberately no "run a command" tool at any level — see
+// src/lib/workspace/validate.ts for why that is a security boundary rather
+// than a permission question.
+
+register({
+  name: "workspace.list",
+  description: "List the files and directories at a path in the project, one level deep.",
+  category: "workspace",
+  capability: "workspace.read",
+  requiredLevel: "OBSERVE",
+  inputSchema: z.object({ path: z.string().min(1).max(400).default(".") }),
+  execute: async (_userId, input) => {
+    const entries = await listDirectory(input.path);
+    return {
+      output: entries,
+      summary: `${entries.length} entr${entries.length === 1 ? "y" : "ies"} in ${input.path}.`,
+    };
+  },
+});
+
+register({
+  name: "workspace.structure",
+  description: "Get a bounded overview of the project's directory structure — where things live.",
+  category: "workspace",
+  capability: "workspace.read",
+  requiredLevel: "OBSERVE",
+  inputSchema: z.object({ maxDepth: z.number().int().min(1).max(4).optional() }),
+  execute: async (_userId, input) => {
+    const structure = await projectStructure(input.maxDepth ?? 2);
+    return { output: structure, summary: `Mapped ${structure.length} top-level entries.` };
+  },
+});
+
+register({
+  name: "workspace.read",
+  description: "Read a text file from the project. Long files are truncated, and the result says so.",
+  category: "workspace",
+  capability: "workspace.read",
+  requiredLevel: "OBSERVE",
+  inputSchema: z.object({ path: z.string().min(1).max(400) }),
+  execute: async (_userId, input) => {
+    const result = await readWorkspaceFile(input.path);
+    return {
+      output: result,
+      summary: `Read ${result.path} (${result.bytes} bytes${result.truncated ? ", truncated" : ""}).`,
+    };
+  },
+});
+
+register({
+  name: "workspace.search",
+  description: "Search project file contents by regular expression, optionally filtered by a glob.",
+  category: "workspace",
+  capability: "workspace.read",
+  requiredLevel: "OBSERVE",
+  inputSchema: z.object({
+    pattern: z.string().min(1).max(500),
+    directory: z.string().max(400).optional(),
+    glob: z.string().max(200).optional(),
+  }),
+  execute: async (_userId, input) => {
+    const matches = await searchWorkspace(input.pattern, { directory: input.directory, glob: input.glob });
+    const files = new Set(matches.map((m) => m.path));
+    return {
+      output: matches,
+      summary: `${matches.length} match${matches.length === 1 ? "" : "es"} across ${files.size} file(s).`,
+    };
+  },
+});
+
+register({
+  name: "workspace.git_status",
+  description: "Show the current branch, which files are modified, and a diff summary.",
+  category: "workspace",
+  capability: "workspace.inspect",
+  requiredLevel: "ANALYZE",
+  inputSchema: z.object({}),
+  execute: async () => {
+    const status = await gitStatus();
+    return {
+      output: status,
+      summary: `On ${status.branch} with ${status.changed.length} changed file(s).`,
+    };
+  },
+});
+
+register({
+  name: "workspace.write",
+  description: "Write a file in the project, creating it and any parent directories if needed.",
+  category: "workspace",
+  capability: "workspace.write",
+  requiredLevel: "ACT",
+  inputSchema: z.object({ path: z.string().min(1).max(400), content: z.string().max(2_000_000) }),
+  execute: async (userId, input) => {
+    const result = await writeWorkspaceFile(input.path, input.content);
+    await recordEvent({
+      userId,
+      type: "execution.file_changed",
+      subjectType: "WorkspaceFile",
+      subjectId: result.path,
+      payload: { path: result.path, bytes: result.bytes, action: result.created ? "created" : "overwritten" },
+      consequential: true,
+    });
+    return {
+      output: result,
+      summary: `${result.created ? "Created" : "Wrote"} ${result.path} (${result.bytes} bytes).`,
+    };
+  },
+});
+
+register({
+  name: "workspace.patch",
+  description:
+    "Replace an exact string in a project file. Fails when the text is absent or ambiguous, so a stale view cannot corrupt the file.",
+  category: "workspace",
+  capability: "workspace.write",
+  requiredLevel: "ACT",
+  inputSchema: z.object({
+    path: z.string().min(1).max(400),
+    find: z.string().min(1).max(100_000),
+    replace: z.string().max(100_000),
+    replaceAll: z.boolean().optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await patchWorkspaceFile(input.path, input.find, input.replace, { replaceAll: input.replaceAll });
+    await recordEvent({
+      userId,
+      type: "execution.file_changed",
+      subjectType: "WorkspaceFile",
+      subjectId: result.path,
+      payload: { path: result.path, replacements: result.replacements, action: "patched" },
+      consequential: true,
+    });
+    return { output: result, summary: `Patched ${result.path} (${result.replacements} replacement(s)).` };
+  },
+});
+
+register({
+  name: "workspace.validate",
+  description:
+    "Run one of the project's own checks: typecheck, lint, test, or build. A failing check is a result, not an error.",
+  category: "workspace",
+  capability: "workspace.validate",
+  requiredLevel: "ANALYZE",
+  inputSchema: z.object({ check: z.enum(VALIDATION_NAMES as [string, ...string[]]) }),
+  execute: async (userId, input) => {
+    const name = input.check as ValidationName;
+    await recordEvent({
+      userId,
+      type: "execution.validation_started",
+      subjectType: "WorkspaceValidation",
+      subjectId: name,
+      payload: { check: name },
+    });
+
+    const result = await runValidation(name);
+
+    await recordEvent({
+      userId,
+      // Distinct types rather than one event with a boolean, so the Brain's
+      // activity feed and the signal map can treat a red check differently
+      // from a green one without parsing payloads.
+      type: result.passed ? "execution.validation_passed" : "execution.validation_failed",
+      subjectType: "WorkspaceValidation",
+      subjectId: name,
+      payload: { check: name, durationMs: result.durationMs, exitCode: result.exitCode, timedOut: result.timedOut },
+      consequential: !result.passed,
+    });
+
+    return {
+      output: result,
+      summary: result.passed
+        ? `${result.label} passed in ${(result.durationMs / 1000).toFixed(1)}s.`
+        : `${result.label} FAILED${result.timedOut ? " (timed out)" : ""} after ${(result.durationMs / 1000).toFixed(1)}s.`,
+    };
   },
 });
 

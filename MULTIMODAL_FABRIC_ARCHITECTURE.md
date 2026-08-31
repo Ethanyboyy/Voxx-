@@ -283,6 +283,130 @@ bytes exist.
 
 ---
 
+## 3.9 Execution tools
+
+`AgentRun`/`AgentStep` was already a working execution engine; what it lacked
+was hands. `src/lib/workspace/` supplies them, registered as ordinary tools in
+the EXISTING registry (`src/lib/tools/registry.ts`) so they go through the same
+`checkCapability()` gate as everything else.
+
+| Tool | Capability | Level |
+| --- | --- | --- |
+| `workspace.list` / `structure` / `read` / `search` | `workspace.read` | OBSERVE |
+| `workspace.git_status` | `workspace.inspect` | ANALYZE |
+| `workspace.validate` | `workspace.validate` | ANALYZE |
+| `workspace.write` / `patch` | `workspace.write` | **ACT** |
+
+Reading is OBSERVE because inspecting the code it is working on is the least an
+engineering agent can do, and secrets are excluded at the path layer rather
+than by withholding the capability. Validation is ANALYZE because it changes
+nothing and an agent should not need an approval round-trip to run the tests.
+Writing is ACT — not granted by default — because that is the level VOX already
+reserves for actions that change something.
+
+### There is no "run a command" tool
+
+This is a security boundary, not a permission question. Agent plans come from a
+model working over text that may include a pasted reference, a caption from a
+generated image, or a filename inside an artifact. A tool taking a command
+string turns all of that into remote code execution on the server.
+
+So `src/lib/workspace/validate.ts` holds a CLOSED, hardcoded set — typecheck,
+lint, test, build — each naming an npm script that already exists. The agent
+chooses *which* check to run; it never composes one. `execFile` with an
+argument array means there is no shell to inject into. Adding a check is a code
+change and a review, which is the correct amount of friction.
+
+### Path containment
+
+Two checks, because they catch different things: `resolve()` + prefix stops
+`../../etc/passwd`, and `realpath()` + prefix stops a symlink *inside* the
+workspace pointing out of it — which passes the first check, since lexically it
+is still under the root. A denylist sits on top: `.env`, `*.db`, `.git/` and
+`node_modules/` are unreadable at any level, and `src/generated/` and
+`prisma/migrations/` are additionally unwritable.
+
+## 3.10 Multimodal AIProvider
+
+`ChatMessageInput.content` now accepts `string | ContentBlock[]`. The string
+form is kept, not deprecated: widening a type is a change nobody has to react
+to, while replacing one is a change everybody does. Every existing VOX caller
+passes a string and still compiles.
+
+`AIProvider.supportsVision` is optional and treated as false when absent.
+`MockAIProvider` sets it to **false**, and that flag is load-bearing — see
+below.
+
+## 3.11 Visual QA
+
+`src/lib/qa/` turns "the provider returned 200" into "the result is usable",
+which are not the same fact. Output is structured (`PASS`/`FAIL`, score, typed
+issues, recommendations) because a caller has to branch on it and prose cannot
+be branched on reliably.
+
+**QA refuses to run without a vision-capable provider.** A text-only model
+asked to judge an image answers anyway, fluently, entirely from the prompt.
+That verdict would be stored as a real QA result, gate a real iteration loop
+and mark a real artifact approved — a fabricated judgement about work nothing
+ever looked at. Refusing is the only honest option.
+
+Criteria are per-task (`CRITERIA_PRESETS`) rather than universal: asking a
+cinematic shot about "material realism" invites an invented complaint.
+
+The parser is deliberately conservative. A PASS that contradicts its own
+blocker, a PASS below the pass score, an unparseable response — all resolve to
+FAIL, because the failure mode of a lenient parser here is silently approving
+bad output.
+
+No chain-of-thought is requested, returned or stored. The cheapest way to
+honour that is never to ask for it: a "think then answer" prompt produces
+reasoning that must be stripped, and stripping is where it leaks.
+
+## 3.12 Bounded iteration
+
+`src/lib/capabilities/iterate.ts` runs generate → review → improve. Three gates
+are checked BEFORE each attempt, because checking after means it already cost
+something: the iteration limit (hard, default 3), the budget, and provider
+availability.
+
+Every attempt is persisted as an append-only `ArtifactVersion` with lineage —
+**including rejected ones**. Discarding failures would make the history a lie:
+it would show three clean successes where there was one success and two
+rejections, and destroy the evidence for why the prompt changed.
+
+### Failures route differently
+
+Blindly regenerating for every failure wastes attempts on problems
+regeneration cannot fix:
+
+| Failure | Response |
+| --- | --- |
+| `REFERENCE_MISMATCH`, `MATERIAL_PROBLEM`, `PROPORTION_PROBLEM`, `COMPOSITION_PROBLEM` | Refine the prompt |
+| `GENERATION_ARTIFACT` | Resample — the prompt was fine, the draw was not |
+| `IMPLEMENTATION_PROBLEM` | **Stop.** The picture is of the application and the application is wrong; hand back to the execution agent |
+| `MISSING_REQUIREMENT` | **Stop and ask.** Guessing produces confident, wrong work |
+| `PROVIDER_FAILURE` | **Abort.** A broken provider will break again |
+
+The loop returns an `IterationResult` with a `stop` reason rather than throwing,
+because "still failing after three tries", "budget exhausted" and "no provider"
+are answers the caller must be able to tell apart and report.
+
+## 3.13 Lab integration
+
+`src/lib/lab/artifacts.ts` reads the same `Artifact` rows every other surface
+reads — the Lab is a consumer of the capability system, not a parallel one. It
+owns no storage.
+
+It does **not** replace `LabSuitImage`. That is a hand-curated gallery a human
+chose and captioned; an Artifact is something VOX produced or was given, with
+provenance and lineage. They answer different questions, and merging them would
+lose the provenance that makes the second answerable.
+
+`getApprovedSuitModel()` serves the **approved** version, not the newest. The
+Suit Bay renders what a human or a QA pass accepted; a newer unreviewed version
+appearing automatically would let an experiment silently replace the shipped
+asset.
+
 ## 4. Delivery order
 
 Phases follow the brief, resequenced only where a dependency forces it —
