@@ -11,6 +11,7 @@ import { BrainStateBadge } from "@/components/brain/BrainStateBadge";
 import { BrainActivityFeedCard } from "@/components/brain/BrainActivityFeedCard";
 import { BrainInspectorCard } from "@/components/brain/BrainInspectorCard";
 import { useBrainVisualState } from "@/components/brain/three/useBrainVisualState";
+import { AssetAttribution } from "@/components/brain/three/AssetAttribution";
 import { BrainScene } from "@/components/brain/three/BrainScene";
 import { BrainMesh, type ClipAxis } from "@/components/brain/three/BrainMesh";
 import { NeuralWeb } from "@/components/brain/three/NeuralWeb";
@@ -617,6 +618,11 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             onOpenFull={() => setShowFullInspector(true)}
           />
         </div>
+
+        {/* CC BY 4.0 attribution for the anatomical asset. Renders nothing when
+            no third-party asset is registered, and must not be removed while
+            one is — attribution is a condition of displaying the model. */}
+        <AssetAttribution kind="brain" />
       </div>
     </div>
   );

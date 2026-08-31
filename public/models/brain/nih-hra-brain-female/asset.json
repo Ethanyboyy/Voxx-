@@ -1,0 +1,20 @@
+{
+  "$comment": "PLACEHOLDER MANIFEST — the GLB is not bundled. See README.md. Do not add this path to public/models/index.json until the file exists and the measured fields below have been filled in from tools/3d-pipeline/inspect_glb.ts.",
+  "assetId": "nih-hra-brain-female",
+  "kind": "brain",
+  "label": "Human Reference Atlas Brain (Female)",
+  "lods": [
+    {
+      "url": "/models/brain/nih-hra-brain-female/brain.hero.glb",
+      "tier": "HIGH"
+    }
+  ],
+  "components": [],
+  "provenance": {
+    "origin": "THIRD_PARTY",
+    "description": "NIH 3D — Human Reference Atlas 3D Reference Object Library, 'Brain, Female', entry 3DPX-020959, v1.3 GLB. A whole human brain derived from Allen Human Reference Atlas data, with 141 anatomical structures mirrored into a whole brain. Values recorded from the NIH entry; re-verify against the live entry before shipping, as version and licence there can change.",
+    "license": "CC BY 4.0 (Creative Commons Attribution 4.0 International). NOT public domain — attribution is required wherever the model is displayed.",
+    "sourceUrl": "https://3d.nih.gov/entries/20959"
+  },
+  "animations": []
+}

@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T23:40:00Z",
+  "updatedAt": "2026-09-01T00:05:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -257,7 +257,22 @@
       ],
       "proceduralVerdict": "REJECTED after the one allocated focused iteration. Domain-warped, anisotropic, 2-octave ridge carving with Laplacian smoothing removed the needle speckle and produced rounded folds, but the surface still reads as a lumpy mass rather than cortex. The reason is structural, not tuning: gyri are RIBBONS with coherent global topology, and noise on a sphere produces BUMPS with none. Going from bumps to ribbons is a different kind of data, not a parameter change. Do not spend further budget on noise parameters.",
       "meshStrategy": "The repository ALREADY supports this with no new infrastructure: AssetKind includes 'brain', src/lib/3d/assetRegistry.ts validates asset.json manifests with per-tier LODs, assetLoader reads public/models/index.json, and GltfSuitModel proves the drei useGLTF path end to end. components/brain/three/AnatomicalBrainAsset.tsx is now the slot: it renders a registered 'brain' GLB with the same clipping planes, state emissive and opacity contract BrainMesh already uses, and reports absence so the procedural mesh stays as fallback. BLOCKED ON ASSET ONLY.",
-      "assetBlocker": "No anatomical brain mesh is bundled and none can be responsibly sourced from this environment: the egress proxy reaches raw.githubusercontent.com but blocks 3d.nih.gov and upload.wikimedia.org, and bundling a third-party licensed binary into the product is the owner's decision, not the agent's. NEXT SESSION needs the user to supply or approve a specific licensed mesh (public-domain options: NIH 3D Print Exchange brain models, FreeSurfer fsaverage pial surfaces). Once a .glb is at public/models/brain/<id>/ with an asset.json and listed in index.json, it renders with no further code change."
+      "assetBlocker": "HARD BLOCKER, UNCHANGED AND NOT WORKAROUNDABLE FROM THIS SESSION. The chosen asset is NIH 3D 3DPX-020959 'Brain, Female' v1.3 GLB (CC BY 4.0, https://3d.nih.gov/entries/20959). The egress policy denies 3d.nih.gov: the proxy answers 403 to CONNECT and logs it as a policy denial, and /root/.ccr/README.md instructs that such denials be reported rather than retried or routed around. A mirror was rejected on purpose: it routes around the policy AND would mean bundling a file whose version and licence could not be verified against the authoritative entry, which the directive forbids. RESOLUTION IS THE OWNER'S: either allowlist 3d.nih.gov for this project, or download the GLB and drop it at public/models/brain/nih-hra-brain-female/brain.hero.glb. Everything else is done; see that directory's README for the 6 remaining mechanical steps.",
+      "assetSlotReady": [
+        "BrainMesh renders a registered 'brain' asset in place of the procedural cortex and falls back when none is registered.",
+        "AnatomicalBrainAsset normalises any GLB to the procedural mesh's bounds (centred, longest axis 1.9), so camera framing, region anchors, clip planes and satellite layout keep working with no recalibration per asset.",
+        "Clipping planes, state emissive colour and X-ray opacity are applied to the asset's own cloned materials, so CUTAWAY and X-RAY work on the GLB.",
+        "Scene cloned before material mutation (useGLTF shares one cached graph); owned materials disposed on unmount, cached geometry left alone.",
+        "State pulse driven via three's onBeforeRender rather than a React frame callback.",
+        "public/models/brain/nih-hra-brain-female/ scaffolded with asset.json carrying exact NIH provenance, CC BY 4.0 licence text and sourceUrl, plus a README with the completion steps.",
+        "AssetAttribution renders CC BY 4.0 credit in the Brain workspace, driven by the registry, and renders nothing when no third-party asset is registered.",
+        "tools/3d-pipeline/inspect_glb.ts reports meshes, vertices, triangles, materials, textures, bbox and the node hierarchy, and answers whether the 141 structures are individually addressable."
+      ],
+      "notDone": [
+        "The GLB is not bundled, so the rendered Brain is STILL the procedural fallback and STILL fails the anatomical acceptance test.",
+        "Per-structure selection is designed but unimplemented: it depends on the real node names, which cannot be known until the file exists.",
+        "Asset performance (size, load time, mobile LOD need) is unmeasured for the same reason."
+      ]
     }
   ]
 }

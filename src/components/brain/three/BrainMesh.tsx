@@ -6,6 +6,8 @@ import * as THREE from "three";
 import type { Group, Mesh } from "three";
 import type { BrainState } from "@/lib/brain/graph";
 import { buildBrainParts } from "@/components/brain/three/brainGeometry";
+import { AnatomicalBrainAsset, anatomicalBrainUrl } from "@/components/brain/three/AnatomicalBrainAsset";
+import { useQualityTier } from "@/lib/3d/useQualityTier";
 
 const DAMP = 0.08;
 
@@ -183,6 +185,11 @@ export function BrainMesh({
   clipPosition: number;
 }) {
   const parts = useParts();
+  const tier = useQualityTier();
+  // A registered anatomical GLB replaces the procedural cortex entirely; with
+  // none registered this is null and the procedural mesh renders, so the Brain
+  // is never blank because an asset has not been bundled yet.
+  const assetUrl = anatomicalBrainUrl(tier);
   const emissiveColor = useMemo(() => new THREE.Color(STATE_COLOR[brainState]), [brainState]);
   const pulseRef = useRef(0.18);
 
@@ -209,9 +216,19 @@ export function BrainMesh({
 
   return (
     <group>
-      {parts.map((part) => (
-        <PartMesh key={part.key} part={part} explodeAmount={explodeAmount} xray={xray} clipPlanes={clipPlanes} emissiveColor={emissiveColor} pulseRef={pulseRef} />
-      ))}
+      {assetUrl ? (
+        <AnatomicalBrainAsset
+          url={assetUrl}
+          clipPlanes={clipPlanes}
+          emissiveColor={emissiveColor}
+          pulseRef={pulseRef}
+          opacity={xray ? 0.22 : 1}
+        />
+      ) : (
+        parts.map((part) => (
+          <PartMesh key={part.key} part={part} explodeAmount={explodeAmount} xray={xray} clipPlanes={clipPlanes} emissiveColor={emissiveColor} pulseRef={pulseRef} />
+        ))
+      )}
       {/* Deep internal glow — a small, mostly-occluded core light standing in
           for "cognitive activity happening somewhere inside," genuinely
           visible only once X-Ray or Dissection reveals the interior. */}
