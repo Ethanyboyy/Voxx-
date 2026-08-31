@@ -95,6 +95,61 @@ export function layoutBays(
 }
 
 /**
+ * Illuminated concentric rings inscribed in the floor.
+ *
+ * The reference's floor is not a dark plane — it is a machined surface with
+ * large lit circles struck around the centre of the hall, and they do an
+ * enormous amount of work: they establish the room's scale, they give the
+ * reflection something to carry, and they turn the empty foreground into
+ * architecture instead of absence. Without them the bays read as objects
+ * floating in black, which is exactly what the capture showed.
+ *
+ * Rings are thin emissive bands laid just above the floor, so they cost one
+ * unlit draw call each and never light the scene by accident.
+ */
+function FloorRings({ accent, tier }: { accent: string; tier: QualityTier }) {
+  const segments = tier === "MOBILE" ? 64 : 128;
+
+  // Struck at real radii rather than evenly spaced: a machined floor has a
+  // tight group of service rings around the centre and a wide perimeter one.
+  const rings: Array<{ r: number; w: number; o: number; cool?: boolean }> = [
+    { r: 1.65, w: 0.02, o: 0.5 },
+    { r: 2.05, w: 0.008, o: 0.22 },
+    { r: 3.4, w: 0.014, o: 0.3, cool: true },
+    { r: 4.9, w: 0.01, o: 0.18, cool: true },
+    { r: 7.2, w: 0.02, o: 0.24 },
+    { r: 10.5, w: 0.012, o: 0.12, cool: true },
+  ];
+
+  return (
+    <group position={[0, 0.004, -1.2]} rotation={[-Math.PI / 2, 0, 0]}>
+      {rings.map((ring, i) => (
+        <mesh key={i}>
+          <ringGeometry args={[ring.r, ring.r + ring.w, segments]} />
+          <meshBasicMaterial
+            color={ring.cool ? "#7f8cb4" : accent}
+            transparent
+            opacity={ring.o}
+            toneMapped={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+
+      {/* Radial service seams. Four only — the floor is machined, not hatched. */}
+      {tier !== "MOBILE"
+        ? [0, Math.PI / 2, Math.PI, -Math.PI / 2].map((a) => (
+            <mesh key={a} rotation={[0, 0, a]} position={[0, 0, 0]}>
+              <planeGeometry args={[0.012, 9]} />
+              <meshBasicMaterial color="#6b7490" transparent opacity={0.08} toneMapped={false} />
+            </mesh>
+          ))
+        : null}
+    </group>
+  );
+}
+
+/**
  * The display case around a bay.
  *
  * The single element that most separates "figures standing on discs" from "a
@@ -130,7 +185,7 @@ function DisplayCase({
       new THREE.MeshBasicMaterial({
         color: accent,
         transparent: true,
-        opacity: active ? 0.085 : 0.04,
+        opacity: active ? 0.16 : 0.07,
         side: THREE.BackSide,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -143,7 +198,7 @@ function DisplayCase({
     [],
   );
   const glow = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: active ? 0.5 : 0.16, toneMapped: false }),
+    () => new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: active ? 0.95 : 0.42, toneMapped: false }),
     [accent, active],
   );
 
@@ -224,6 +279,31 @@ function Platform({
       </mesh>
 
       <DisplayCase radius={PLATFORM_RADIUS} active={active} accent={slot.accent} tier={tier} />
+
+      {/* Internal case illumination.
+          Aimed at chest height inside the glazing, with `distance` clamped to
+          just past the case so it cannot leak into the hall and flatten the
+          falloff between bays. This is what makes a suit readable through its
+          own glass rather than receding into it. */}
+      <spotLight
+        position={[0, 2.62, 0.78]}
+        target-position={[0, 1.0, 0]}
+        angle={0.62}
+        penumbra={0.85}
+        intensity={active ? 10 : dimmed ? 3 : 6.5}
+        distance={4.2}
+        decay={2}
+        color={active ? "#f6f3ff" : slot.accent}
+      />
+      {/* Base uplight: a thin wash off the platform, which is what gives the
+          legs and boots any shape at all under a downlight. */}
+      <pointLight
+        position={[0, 0.14, 0.24]}
+        intensity={active ? 0.5 : dimmed ? 0.18 : 0.32}
+        distance={1.5}
+        decay={2}
+        color={slot.accent}
+      />
 
       {/* Overhead pool of light, per bay. The falloff between bays is what
           makes the room feel like a room. */}
@@ -310,13 +390,30 @@ function Architecture({ lighting, tier }: { lighting: LightingPreset; tier: Qual
       <mesh position={[0, 7.1, -2]} material={dark}>
         <boxGeometry args={[46, 0.5, 24]} />
       </mesh>
-      {tier !== "MOBILE"
-        ? [-6, -2, 2, 6].map((z) => (
-            <mesh key={z} position={[0, 6.82, z]} rotation={[Math.PI / 2, 0, 0]} material={cool}>
-              <planeGeometry args={[26, 0.09]} />
+      {/* Radial ribs and ring lights overhead. The reference's ceiling
+          converges toward the centre of the hall, which is what makes the
+          space read as circular rather than as a corridor — and it fills the
+          upper third of the frame that was previously pure black. */}
+      {Array.from({ length: tier === "MOBILE" ? 8 : 16 }, (_, i) => {
+        const a = (i / (tier === "MOBILE" ? 8 : 16)) * Math.PI * 2;
+        return (
+          <group key={a} rotation={[0, a, 0]} position={[0, 6.6, -1.2]}>
+            <mesh position={[0, 0, -6.5]} material={dark}>
+              <boxGeometry args={[0.34, 0.4, 13]} />
             </mesh>
-          ))
-        : null}
+            <mesh position={[0, -0.21, -6.5]} rotation={[Math.PI / 2, 0, 0]} material={cool}>
+              <planeGeometry args={[0.075, 12]} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Concentric ceiling rings, mirroring the floor. */}
+      {[3.1, 5.4].map((r) => (
+        <mesh key={r} position={[0, 6.5, -1.2]} rotation={[Math.PI / 2, 0, 0]} material={strip}>
+          <ringGeometry args={[r, r + 0.05, tier === "MOBILE" ? 48 : 96]} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -492,6 +589,7 @@ export function SuitBayStage({
       </mesh>
 
       <Architecture lighting={lighting} tier={tier} />
+      <FloorRings accent={lighting.accent} tier={tier} />
 
       {slots.map((slot) => (
         <Platform

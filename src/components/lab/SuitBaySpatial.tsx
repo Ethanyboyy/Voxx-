@@ -74,8 +74,28 @@ export interface BaySuitItem {
   assetId?: string | null;
 }
 
+/**
+ * How heavy a suit's silhouette should read, 0-1.
+ *
+ * Derived from the suit's own archetype and armour level rather than from a
+ * hash: a background form's only job is to communicate what KIND of suit it is,
+ * and a random build makes the collection look arbitrary instead of designed.
+ */
+function buildOf(suit: BaySuitItem): number {
+  const byArchetype: Record<string, number> = {
+    Stealth: 0.15,
+    Speed: 0.2,
+    Recon: 0.35,
+    Utility: 0.5,
+    Endurance: 0.85,
+  };
+  const byArmour: Record<string, number> = { MINIMAL: -0.12, LIGHT: 0, MEDIUM: 0.12, HEAVY: 0.24 };
+  const base = byArchetype[suit.archetype] ?? 0.5;
+  return Math.min(1, Math.max(0, base + (byArmour[suit.armorLevel ?? "LIGHT"] ?? 0)));
+}
+
 /** How many suits stand in the room at once. The rest live in the archive. */
-const MAX_BAYS = 5;
+const MAX_BAYS = 7;
 
 export function SuitBaySpatial({
   suits,
@@ -237,7 +257,7 @@ export function SuitBaySpatial({
       <Canvas
         dpr={canvasDpr(tier)}
         gl={{ antialias: tier !== "MOBILE", alpha: false, powerPreference: "high-performance" }}
-        camera={{ position: [0, 2.0, 8.4], fov: 38, near: 0.1, far: 60 }}
+        camera={{ position: [0, 1.62, 6.6], fov: 44, near: 0.1, far: 70 }}
         shadows={budget.shadows}
         onPointerMissed={() => setFocused(false)}
       >
@@ -305,7 +325,14 @@ export function SuitBaySpatial({
                     </Materialize>
                     )
                   ) : (
-                    <BaySuitForm id={slot.id} accent={suit.colorPrimary} dimmed={focused} onSelect={select} />
+                    <BaySuitForm
+                      id={slot.id}
+                      accent={suit.colorPrimary}
+                      dimmed={focused}
+                      onSelect={select}
+                      build={buildOf(suit)}
+                      tone={suit.colorSecondary}
+                    />
                   )}
                 </group>
               );
@@ -315,7 +342,7 @@ export function SuitBaySpatial({
           <StageCamera
             controls={controls}
             subject={focused && selectedSlot ? selectedSlot.position : null}
-            home={{ position: [(selectedSlot?.position[0] ?? 0) * 0.45, 2.0, 8.4], target: [(selectedSlot?.position[0] ?? 0) * 0.7, 0.95, -0.5] }}
+            home={{ position: [(selectedSlot?.position[0] ?? 0) * 0.4, 1.62, 6.6], target: [(selectedSlot?.position[0] ?? 0) * 0.65, 1.15, -1.1] }}
             anchorX={selectedSlot?.position[0] ?? 0}
             distance={2.65}
             aim={CANONICAL_BODY_HEIGHT * 0.55}

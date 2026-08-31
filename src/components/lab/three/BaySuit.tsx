@@ -30,23 +30,28 @@ export function BaySuitForm({
   dimmed,
   onSelect,
   id,
+  /** 0-1. Drives build: 0 is lean, 1 is heavy. */
+  build = 0.5,
+  tone = "#2a2b33",
 }: {
   accent: string;
   dimmed: boolean;
   id: string;
   onSelect?: (id: string) => void;
+  build?: number;
+  tone?: string;
 }) {
   // One shared dark material: these are silhouettes, and giving each its own
   // material would cost draw calls for a difference nobody can see.
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#2a2b33",
+        color: tone,
         roughness: 0.7,
         metalness: 0.22,
         envMapIntensity: 0.75,
       }),
-    [],
+    [tone],
   );
   const rim = useMemo(
     () => new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.09, side: THREE.BackSide, toneMapped: false, depthWrite: false }),
@@ -76,17 +81,22 @@ export function BaySuitForm({
 
   // Proportions from the same canonical body every real asset is normalised
   // to, so a form and a loaded suit are the same size on their platforms.
+  // Chest, shoulder and thigh mass all key off `build`, so a lean recon suit
+  // and a heavy endurance suit read as different garments at distance —
+  // which is the only thing a background form has to communicate.
+  const g = 0.86 + build * 0.3;
+  const sh = 0.175 + build * 0.055;
   const parts: Array<{ pos: [number, number, number]; args: [number, number, number]; rot?: [number, number, number] }> = [
     { pos: [0, H * 0.9, 0], args: [0.085, 0.105, 0.1] },      // head
     { pos: [0, H * 0.82, 0], args: [0.05, 0.05, 0.06] },      // neck
-    { pos: [0, H * 0.66, 0], args: [0.155, 0.19, 0.34] },     // chest
-    { pos: [0, H * 0.5, 0], args: [0.13, 0.13, 0.22] },       // waist
-    { pos: [-0.19, H * 0.68, 0], args: [0.052, 0.052, 0.3], rot: [0, 0, 0.09] },
-    { pos: [0.19, H * 0.68, 0], args: [0.052, 0.052, 0.3], rot: [0, 0, -0.09] },
+    { pos: [0, H * 0.66, 0], args: [0.155 * g, 0.19, 0.34] },  // chest
+    { pos: [0, H * 0.5, 0], args: [0.13 * (0.94 + build * 0.16), 0.13, 0.22] }, // waist
+    { pos: [-sh, H * 0.68, 0], args: [0.052 * g, 0.052, 0.3], rot: [0, 0, 0.09] },
+    { pos: [sh, H * 0.68, 0], args: [0.052 * g, 0.052, 0.3], rot: [0, 0, -0.09] },
     { pos: [-0.205, H * 0.47, 0], args: [0.044, 0.044, 0.26], rot: [0, 0, 0.05] },
     { pos: [0.205, H * 0.47, 0], args: [0.044, 0.044, 0.26], rot: [0, 0, -0.05] },
-    { pos: [-0.082, H * 0.3, 0], args: [0.068, 0.068, 0.36] },
-    { pos: [0.082, H * 0.3, 0], args: [0.068, 0.068, 0.36] },
+    { pos: [-0.082, H * 0.3, 0], args: [0.068 * g, 0.068, 0.36] },
+    { pos: [0.082, H * 0.3, 0], args: [0.068 * g, 0.068, 0.36] },
     { pos: [-0.082, H * 0.09, 0], args: [0.05, 0.05, 0.3] },
     { pos: [0.082, H * 0.09, 0], args: [0.05, 0.05, 0.3] },
   ];
@@ -107,7 +117,7 @@ export function BaySuitForm({
       {/* A single thin back-side shell for edge separation from the black
           background. Any more than this and the form starts to glow. */}
       <mesh position={[0, H * 0.66, 0]} material={rim} scale={1.05}>
-        <capsuleGeometry args={[0.155, 0.34, 4, 12]} />
+        <capsuleGeometry args={[0.155 * g, 0.34, 4, 12]} />
       </mesh>
     </group>
   );
