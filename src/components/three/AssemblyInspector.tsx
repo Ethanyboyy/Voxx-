@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type RootState } from "@react-three/fiber";
 import { OrbitControls, Environment, Lightformer, ContactShadows } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
@@ -192,6 +192,32 @@ function PartMesh({
   );
 }
 
+/**
+ * Pulls the camera back as the assembly separates.
+ *
+ * The assembled device is ~90mm and deserves a tight frame; separated it spans
+ * closer to 190mm. Holding one distance for both means either a distant view of
+ * an assembled object or parts flying out of frame — the capture showed the
+ * second. The dolly runs along the current view direction so it composes with
+ * whatever angle the user has orbited to.
+ */
+function ExplodeDolly({ amount, reducedMotion }: { amount: number; reducedMotion: boolean }) {
+  const camera = useThree((s: RootState) => s.camera);
+  const controls = useThree((s: RootState) => s.controls) as OrbitControlsImpl | null;
+
+  useFrame((_, delta) => {
+    const target = 0.155 + amount * 0.12;
+    const k = reducedMotion ? 1 : approach(2.2, delta);
+    const centre = controls?.target ?? new THREE.Vector3();
+    const offset = camera.position.clone().sub(centre);
+    const current = offset.length() || target;
+    offset.setLength(current + (target - current) * k);
+    camera.position.copy(centre).add(offset);
+  });
+
+  return null;
+}
+
 export interface AssemblyInspectorProps {
   assembly: Assembly;
   accent?: string;
@@ -257,7 +283,7 @@ export function AssemblyInspector({
       <Canvas
         dpr={canvasDpr(tier)}
         gl={{ antialias: tier !== "MOBILE", alpha: false, powerPreference: "high-performance" }}
-        camera={{ position: [0.14, 0.08, 0.17], fov: 34, near: 0.005, far: 4 }}
+        camera={{ position: [0.115, 0.075, 0.145], fov: 34, near: 0.005, far: 4 }}
         shadows={budget.shadows}
         onPointerMissed={() => setSelectedId(null)}
       >
@@ -291,6 +317,8 @@ export function AssemblyInspector({
           ))}
         </group>
 
+        <ExplodeDolly amount={explode} reducedMotion={reducedMotion} />
+
         {budget.shadows ? <ContactShadows position={[0, -0.028, 0]} opacity={0.5} scale={0.35} blur={2.2} far={0.12} /> : null}
 
         <OrbitControls
@@ -299,8 +327,8 @@ export function AssemblyInspector({
           enablePan={false}
           enableDamping
           dampingFactor={0.08}
-          minDistance={0.09}
-          maxDistance={0.42}
+          minDistance={0.1}
+          maxDistance={0.5}
           rotateSpeed={0.5}
           zoomSpeed={0.6}
           autoRotate={!reducedMotion && explode === 0 && !selectedId}
