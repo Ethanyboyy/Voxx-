@@ -114,30 +114,36 @@ function PartMesh({
     if (mat) {
       mat.emissive.copy(emissiveColor);
       mat.emissiveIntensity = pulseRef.current;
-      // The solid shell is deliberately a faint translucent "ghost" silhouette
-      // now, not the hero surface — the NeuralWeb connectome layer (rendered
-      // alongside this) carries the primary visual read, matching the
-      // reference's translucent-outline-plus-glowing-network look.
-      const targetOpacity = part.fadesWhenExploded ? Math.max(0, 1 - explodeAmount * 2.2) : xray ? 0.08 : 0.15;
+      // THE ANATOMY IS THE HERO. This shell used to render at 0.15 opacity as
+      // a "ghost silhouette" behind the connectome wireframe, which is why the
+      // Brain read as a point cloud rather than as a brain: the cortical folds
+      // were being carved into a surface nobody could see. The solid pass is
+      // now opaque and depth-writing, so the sulci actually catch light and
+      // occlude what is behind them; translucency is reserved for X-ray, where
+      // seeing through the cortex is the whole point.
+      const targetOpacity = part.fadesWhenExploded ? Math.max(0, 1 - explodeAmount * 2.2) : xray ? 0.22 : 1;
       mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, Math.min(1, 0.12 * delta * 60));
-      mat.depthWrite = false;
+      // Depth-write only when solid enough to be an occluder. A depth-writing
+      // translucent surface hides everything inside it, which would break
+      // X-ray and Dissect.
+      mat.depthWrite = mat.opacity > 0.6;
     }
     const rimMat = rimRef.current?.material as THREE.MeshBasicMaterial | undefined;
-    if (rimMat) rimMat.opacity = xray ? 0.24 : 0.16;
+    if (rimMat) rimMat.opacity = xray ? 0.3 : 0.07;
   });
 
   return (
     <group ref={groupRef} position={part.basePosition} rotation={part.rotation ?? [0, 0, 0]}>
-      <mesh ref={meshRef} geometry={part.geometry} castShadow receiveShadow>
+      <mesh ref={meshRef} geometry={part.geometry}>
         <meshPhysicalMaterial
           color={part.color}
-          roughness={0.56}
-          metalness={0.03}
-          transmission={0.1}
-          thickness={0.6}
-          ior={1.3}
-          clearcoat={0.15}
-          clearcoatRoughness={0.55}
+          roughness={0.72}
+          metalness={0}
+          clearcoat={0.22}
+          clearcoatRoughness={0.6}
+          sheen={0.35}
+          sheenRoughness={0.85}
+          sheenColor="#b9a8ff"
           transparent
           opacity={1}
           side={THREE.DoubleSide}
@@ -145,16 +151,18 @@ function PartMesh({
           clipShadows
         />
       </mesh>
-      {/* Rim-glow shell — same proven BackSide-additive technique as the
-          prior milestone's CoreOrb, now wrapping real anatomy instead of a
-          sphere: a holographic edge treatment that enhances the brain
-          rather than hiding it (per the brief's material hierarchy).
-          vertexColors reads the baked cyan (low) -> violet (high) gradient
-          from applyGradientVertexColors instead of one flat accent —
-          `color` stays white so it multiplies the vertex colors unchanged. */}
-      <mesh ref={rimRef} geometry={part.geometry} scale={1.015}>
-        <meshBasicMaterial color="#ffffff" vertexColors transparent opacity={0.16} side={THREE.BackSide} toneMapped={false} depthWrite={false} />
-      </mesh>
+      {/* Rim-glow shell: the SAME geometry drawn again at a uniform scale-up.
+          That was safe on a smooth shell, but once real sulci are carved a
+          uniform scale no longer stays outside them — it erupts through the
+          grooves as speckle. It is also a second full-geometry draw call per
+          part, the wrong trade on a phone. X-ray still needs it, because a
+          translucent cortex has to have its edge described somehow; the solid
+          view reads its own silhouette from the lighting. */}
+      {xray ? (
+        <mesh ref={rimRef} geometry={part.geometry} scale={1.012}>
+          <meshBasicMaterial color="#ffffff" vertexColors transparent opacity={0.22} side={THREE.BackSide} toneMapped={false} depthWrite={false} />
+        </mesh>
+      ) : null}
     </group>
   );
 }
@@ -194,7 +202,7 @@ export function BrainMesh({
 
   useFrame(({ clock }) => {
     const speed = STATE_PULSE_SPEED[brainState];
-    pulseRef.current = 0.16 + (0.5 + Math.sin(clock.elapsedTime * speed) * 0.5) * 0.22;
+    pulseRef.current = 0.05 + (0.5 + Math.sin(clock.elapsedTime * speed) * 0.5) * 0.09;
   });
 
   const clipPlanes = clipEnabled ? [clipPlane] : [];

@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T21:45:00Z",
+  "updatedAt": "2026-08-31T23:05:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -216,7 +216,7 @@
       "id": "BRAIN-030",
       "category": "brain",
       "priority": "P1",
-      "status": "ready",
+      "status": "in_progress",
       "needsOpus": true,
       "description": "Brain Visual Engine — deepen the shipping 3D Brain into a real interactive cognitive interface.",
       "whyItMatters": "The Brain is the product's centre and currently under-represents what VOX actually does: the capability orchestrator is invisible to it, there is no intensity signal, the cortex is a single shell, and signals ride an abstract web rather than anatomy.",
@@ -245,6 +245,15 @@
         "GPU lifecycle audited — already correct; fixed per-frame Vector3 allocation in BrainMesh and EntitySatellite.",
         "useBrainVisualState extracted: VoxBrain3D 684 -> 616 lines, domain/event state separated from view state.",
         "lib/brain/intensity.ts — deterministic 0..1 activity scalar with 17 tests."
+      ],
+      "phaseAStatus": "PARTIAL. Root cause found and fixed: THREE.IcosahedronGeometry's `detail` is a LINEAR edge subdivision count, not a recursion level, so `detail: 6` built 980 triangles (~1.5k verts). The cortex was a low-poly shell that could not hold a fold at any amplitude. Now CEREBRUM_DETAIL=48 (~48k tris, 72,387 verts, 353ms build). Also fixed: the ridged-noise carve was using `1 - value` on a signal whose real range is ~[0.55, 1.0], spending a tenth of the requested amplitude; it now remaps that range first. Folds now displace visibly.",
+      "openDefect": "The cortex surface reads as fine needle speckle rather than rounded gyri. The displacement mechanism is correct and the resolution is now real; the remaining problem is high-frequency content inside ridgedNoise3D's own octaves (lacunarity compounding to ~4x the base frequency). Next session: reduce ridgedNoise3D octaves to 2 with lacunarity ~1.5 for the coarse band, and/or add a Laplacian smoothing pass over the displaced positions before computeVertexNormals(). Verify by rendering, not by reading the code.",
+      "alsoDone": [
+        "Inverted the visual hierarchy: the anatomy shell rendered at 0.15 opacity as a deliberate 'ghost' behind the connectome wireframe, which is why the Brain read as a point cloud. It is now opaque and depth-writing; the NeuralWeb drops to 0.22 in solid view and returns to full strength in X-ray.",
+        "Removed castShadow/receiveShadow on the cortex — a 1024 shadow map cannot resolve a sulcus and was banding the surface into hard facet panels. Also one less pass on mobile.",
+        "Rim-glow shell now renders only in X-ray: at 1.008 scale on the same geometry it erupted through the newly carved grooves, and it was a second full-geometry draw call per part.",
+        "Whole-brain camera distance 2.55 -> 3.35; the brain was cropped at both edges.",
+        "Empty region markers (count 0) dimmed to 0.16 opacity and 0.55 scale — eight full-strength haloes announcing a count of zero were a large part of the 'floating blobs' read."
       ]
     }
   ]

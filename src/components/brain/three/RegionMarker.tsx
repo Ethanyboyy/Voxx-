@@ -40,10 +40,17 @@ export function RegionMarker({
   useFrame(() => {
     if (!meshRef.current) return;
     const pulsing = pulseUntil != null && performance.now() < pulseUntil;
-    const scale = pulsing ? baseSize * (1.5 + Math.sin(performance.now() * 0.014) * 0.25) : hovered || focused ? baseSize * 1.5 : active ? baseSize * 1.15 : baseSize;
+    const empty0 = count === 0 && !pulsing && !hovered && !focused;
+    const scale = pulsing ? baseSize * (1.5 + Math.sin(performance.now() * 0.014) * 0.25) : hovered || focused ? baseSize * 1.5 : active ? baseSize * 1.15 : empty0 ? baseSize * 0.55 : baseSize;
     meshRef.current.scale.setScalar(scale);
     const mat = meshRef.current.material as THREE.MeshBasicMaterial;
-    mat.opacity = pulsing ? 1 : hovered || focused ? 1 : active ? 0.85 : 0.6;
+    // A region holding nothing has nothing to say. It stays present and
+    // clickable — it is still the way into that system — but it must not
+    // smear a coloured halo across the cortex to announce a count of zero.
+    // Eight of these at full strength were a large part of why the anatomy
+    // read as "floating blobs" rather than as a brain.
+    const empty = count === 0 && !pulsing && !hovered && !focused;
+    mat.opacity = empty ? 0.16 : pulsing ? 1 : hovered || focused ? 1 : active ? 0.85 : 0.6;
   });
 
   return (

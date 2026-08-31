@@ -15,6 +15,10 @@ import { ridgedNoise3D } from "@/components/brain/three/noise";
  * disclosure applied to the system→region mapping.
  */
 
+/** Linear edge subdivision — see the note in buildBrainParts. */
+const CEREBRUM_DETAIL = 48;
+const CEREBELLUM_DETAIL = 22;
+
 const CEREBRUM_SCALE: [number, number, number] = [0.72, 0.58, 0.95];
 const CEREBELLUM_SCALE: [number, number, number] = [0.34, 0.24, 0.3];
 
@@ -98,8 +102,31 @@ function displaceCortex(geometry: THREE.BufferGeometry, scale: [number, number, 
     // smaller gyri/sulci texture — a single mid-frequency band at this mesh
     // resolution reads as faceted "rock," not organic brain surface.
     const coarse = ridgedNoise3D(dx * foldFreq, dy * foldFreq, dz * foldFreq, 3, 1.9, 0.5);
-    const fine = ridgedNoise3D(dx * foldFreq * 3.4, dy * foldFreq * 3.4, dz * foldFreq * 3.4, 2, 1.8, 0.5);
-    const foldSigned = (coarse - 0.5) * 2 * foldAmplitude + (fine - 0.5) * 2 * foldAmplitude * 0.35;
+    const fine = ridgedNoise3D(dx * foldFreq * 1.6, dy * foldFreq * 1.6, dz * foldFreq * 1.6, 2, 1.7, 0.45);
+    // Ridged noise is already peaked; keeping it UNSIGNED and subtracting it
+    // carves sulci INTO the surface rather than rippling the radius evenly
+    // above and below it. That asymmetry is what real cortex looks like —
+    // broad gyral crowns separated by narrow deep grooves — and it is the
+    // difference between a folded brain and a lumpy potato. The previous
+    // centred `(n - 0.5) * 2` form spent half its amplitude pushing outward,
+    // so at any amplitude subtle enough to keep the silhouette it produced no
+    // readable grooves at all.
+    // ridgedNoise3D accumulates (1 - |simplex|)^2, and simplex output clusters
+    // near zero, so its practical range is roughly [0.55, 1.0] — NOT [0, 1].
+    // Using `1 - value` raw therefore spends only a tenth of the requested
+    // amplitude and produces a surface that measures as displaced but reads as
+    // smooth. Remapping that real range to full [0, 1] first is what turns the
+    // ridges into gyral crowns and the gaps into sulci deep enough to shade.
+    const RIDGE_FLOOR = 0.55;
+    const RIDGE_SPAN = 1 - RIDGE_FLOOR;
+    // Smoothstep rather than a linear clamp: a hard clamp leaves the valley
+    // floors flat-bottomed and their walls sharp, which at this resolution
+    // renders as spikes rather than folds. Real gyri are rounded crowns with
+    // rounded troughs.
+    const crown = smoothstep(0, 1, Math.min(1, Math.max(0, (coarse - RIDGE_FLOOR) / RIDGE_SPAN)));
+    const crownFine = smoothstep(0, 1, Math.min(1, Math.max(0, (fine - RIDGE_FLOOR) / RIDGE_SPAN)));
+    const sulcal = (1 - crown) * 0.9 + (1 - crownFine) * 0.1;
+    const foldSigned = -sulcal * foldAmplitude;
 
     // A small lateral push away from the midline near the fissure — turns
     // the radius dip into an actual visible GAP between hemispheres, not
@@ -229,7 +256,7 @@ export function buildNeuralWeb(detail = 2): NeuralWeb {
   const raw = new THREE.IcosahedronGeometry(1, detail);
   const welded = weldGeometry(raw);
   raw.dispose();
-  displaceCortex(welded, CEREBRUM_SCALE, cerebrumShapeFactor, 2.6, 0.042);
+  displaceCortex(welded, CEREBRUM_SCALE, cerebrumShapeFactor, 2.6, 0.03);
 
   const position = welded.getAttribute("position") as THREE.BufferAttribute;
   const positions = new Float32Array(position.array);
@@ -283,17 +310,24 @@ export function buildNeuralWeb(detail = 2): NeuralWeb {
 const PART_Y_OFFSET = { right: 0, left: 0, cerebellum: -0.64, brainstem: -0.56, corpusCallosum: 0.08 } as const;
 
 export function buildBrainParts(): BrainParts {
-  const cerebrumRaw = new THREE.IcosahedronGeometry(1, 5);
+  // NOTE ON `detail`: three.js PolyhedronGeometry subdivides each icosahedron
+  // edge into (detail + 1) segments — it is a LINEAR count, not a recursion
+  // level. `detail: 6` therefore yields 20 * 7^2 = 980 triangles, roughly 500
+  // vertices, which is why the cortex rendered as a faceted low-poly shell and
+  // swallowed every fold displacement no matter how deep: a sulcus simply had
+  // no vertices to be carved into. 48 gives 20 * 49^2 ~= 48k triangles, which
+  // is the resolution gyri need and still a single modest draw call.
+  const cerebrumRaw = new THREE.IcosahedronGeometry(1, CEREBRUM_DETAIL);
   const cerebrumBase = weldGeometry(cerebrumRaw);
   cerebrumRaw.dispose();
-  displaceCortex(cerebrumBase, CEREBRUM_SCALE, cerebrumShapeFactor, 2.6, 0.042);
+  displaceCortex(cerebrumBase, CEREBRUM_SCALE, cerebrumShapeFactor, 5.4, 0.05);
   const { positiveX: right, negativeX: left } = splitByX(cerebrumBase);
   cerebrumBase.dispose();
 
-  const cerebellumRaw = new THREE.IcosahedronGeometry(1, 4);
+  const cerebellumRaw = new THREE.IcosahedronGeometry(1, CEREBELLUM_DETAIL);
   const cerebellumGeo = weldGeometry(cerebellumRaw);
   cerebellumRaw.dispose();
-  displaceCortex(cerebellumGeo, CEREBELLUM_SCALE, () => 0, 6.5, 0.05);
+  displaceCortex(cerebellumGeo, CEREBELLUM_SCALE, () => 0, 12.0, 0.035);
 
   const brainstem = new THREE.CylinderGeometry(0.15, 0.21, 0.5, 14, 3);
   brainstem.computeVertexNormals();

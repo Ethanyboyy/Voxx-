@@ -247,7 +247,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     if (explodeAmount > 0.4) return withZoom([0, 0, 0], 4);
     // The brain is the hero. Portrait framing is handled once, in CameraRig —
     // see the framing note above.
-    return withZoom([0, 0.05, 0], 2.55);
+    return withZoom([0, 0.02, 0], 3.35);
   }, [selectedNode, focusedSystem, explodeAmount, entityPositions, manualZoom]);
 
   function resetToWholeBrain() {
@@ -304,7 +304,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
             real activity (see NeuralWeb's per-state intensity/pulse-speed),
             just from a baseline that already matches what "Idle" actually
             looks like in the reference, not a faded-out default. */}
-        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} />
+        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} xray={xray || explodeAmount > 0.15} />
 
         {/* Signals travelling the real pathways. This is what makes the Brain
             read as thinking rather than as a rotating object: emission is

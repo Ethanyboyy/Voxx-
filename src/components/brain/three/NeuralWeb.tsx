@@ -45,7 +45,7 @@ const STATE_PULSE_SPEED: Record<BrainState, number> = {
  * the solid shell in BrainMesh is now a faint translucent silhouette
  * behind it, not the hero surface.
  */
-export function NeuralWeb({ brainState, opacity }: { brainState: BrainState; opacity: number }) {
+export function NeuralWeb({ brainState, opacity, xray = false }: { brainState: BrainState; opacity: number; xray?: boolean }) {
   const { positions, edges, colors, hubs } = useMemo(() => buildNeuralWeb(2), []);
   const pointsRef = useRef<Points>(null);
   const linesRef = useRef<LineSegments>(null);
@@ -87,16 +87,19 @@ export function NeuralWeb({ brainState, opacity }: { brainState: BrainState; opa
 
   useFrame(({ clock }) => {
     const pulse = 0.75 + Math.sin(clock.elapsedTime * pulseSpeed) * 0.15;
+    // Anatomy first: the web recedes behind an opaque cortex and comes
+    // forward only when the user asks to see inside.
+    const depthScale = xray ? 1 : 0.22;
     const pointsMat = pointsRef.current?.material as THREE.PointsMaterial | undefined;
-    if (pointsMat) pointsMat.opacity = opacity * pulse * intensity;
+    if (pointsMat) pointsMat.opacity = opacity * pulse * intensity * depthScale;
     const lineMat = linesRef.current?.material as THREE.LineBasicMaterial | undefined;
-    if (lineMat) lineMat.opacity = opacity * 0.55 * pulse * intensity;
+    if (lineMat) lineMat.opacity = opacity * 0.55 * pulse * intensity * depthScale;
 
     const hubPulse = 0.8 + Math.sin(clock.elapsedTime * pulseSpeed * 1.3) * 0.2;
     for (const mesh of hubRefs.current) {
       if (!mesh) continue;
       const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = Math.min(1, opacity * 1.3 * hubPulse * intensity);
+      mat.opacity = Math.min(1, opacity * 1.3 * hubPulse * intensity * depthScale);
       const s = 0.052 * hubPulse;
       mesh.scale.setScalar(s);
     }
