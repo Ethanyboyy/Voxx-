@@ -1,8 +1,8 @@
 {
   "$comment": "Durable engineering state. See engineering/README.md. Update at each meaningful checkpoint; a stale entry is worse than none because it gets acted on.",
-  "updatedAt": "2026-08-31T20:30:00Z",
+  "updatedAt": "2026-08-31T21:05:00Z",
   "verifiedAtCommit": "a415526",
-  "phase": "Orchestration — chat starts work asynchronously and streams its progress",
+  "phase": "Brain Visual Engine — architecture prepared, implementation NOT started",
   "architecture": {
     "stack": "Next.js 16.3 App Router, TypeScript, Prisma 7.9 on SQLite, Vitest, Tailwind, three.js + React Three Fiber",
     "commands": {
@@ -48,7 +48,8 @@
     "notes": [
       "src/lib/orchestrator/service.ts is NOT the run driver — it is a cross-domain snapshot for prompt context. The run driver is src/lib/capabilities/orchestrator.ts. Same word, different concerns.",
       "AgentRun.traceId is what lets a restarted process reconnect a run to its provider spend. Before it existed the link lived only in memory and in tool arguments.",
-      "Sequencing lives in the orchestrator, not the router: the router decides WHICH capabilities are needed, the orchestrator decides what order they can actually run in."
+      "Sequencing lives in the orchestrator, not the router: the router decides WHICH capabilities are needed, the orchestrator decides what order they can actually run in.",
+      "BRAIN_VISUAL_ENGINE.md is the implementation architecture for the next milestone. Section 1 lists what already exists and must be reused; section 9 is the start-here checklist. The Brain Visual Engine is a DEEPENING of the shipping 3D Brain, not a rebuild — src/components/brain/three/ already carries procedural two-hemisphere anatomy, cortical folding, per-state materials, event-driven signal travel, camera rig and quality tiers."
     ],
     "decisions": {
       "iteration_loop_shape": "ONE STEP OWNS THE LOOP, not dynamic step insertion. Step references are keyed by step ORDER, so inserting a step renumbers everything after it and silently repoints every existing reference; and resume is currentStep plus per-step status, which insertion invalidates retroactively. The cost — a step is the executor's unit of recovery, so an interrupted loop would restart at attempt 1 — is handled by recovering position from the append-only ArtifactVersions, which carry parameters.attempt.",
@@ -97,6 +98,9 @@
     "The inline panel's WAITING_FOR_PERMISSION rendering (awaiting line + Stop button) is covered by tests but was NOT photographed in a browser: in this environment every chat-reachable capability is either already granted to the QA user or has no configured provider, so no chat message could be made to park on permission.",
     "A background run's failure is visible in the rewritten message and the trace, but nothing pushes a notification if the user has closed the tab — they see it on their next visit.",
     "Chat carries no Lab subject context, so a chat-started run cannot attach an artifact to a specific suit — the orchestrator declines rather than picking one arbitrarily.",
-    "Resume re-reviews an attempt generated but not yet judged (ORCH-012)."
+    "Resume re-reviews an attempt generated but not yet judged (ORCH-012).",
+    "getBrainState() does not read CapabilityRun, the iteration loop or provider calls, so a chat-started run reaches the Brain only as a generic 'executing'. BRAIN-030 phase C fixes this.",
+    "Brain state is categorical with no intensity scalar, so concurrency and attempt number are discarded before they reach the visualization.",
+    "Brain 3D components do not explicitly dispose geometries/materials on unmount; a route change leaks until GC."
   ]
 }

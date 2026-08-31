@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T20:30:00Z",
+  "updatedAt": "2026-08-31T21:05:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -211,6 +211,36 @@
         "Nothing pushes a notification when a background run finishes with the tab closed; the rewritten message is waiting on the next visit.",
         "A run interrupted by a process restart is recoverable via resumeRun but nothing resumes it automatically."
       ]
+    },
+    {
+      "id": "BRAIN-030",
+      "category": "brain",
+      "priority": "P1",
+      "status": "ready",
+      "needsOpus": true,
+      "description": "Brain Visual Engine — deepen the shipping 3D Brain into a real interactive cognitive interface.",
+      "whyItMatters": "The Brain is the product's centre and currently under-represents what VOX actually does: the capability orchestrator is invisible to it, there is no intensity signal, the cortex is a single shell, and signals ride an abstract web rather than anatomy.",
+      "complexity": "high — 10 bounded phases (A-J), each independently verifiable",
+      "plan": "BRAIN_VISUAL_ENGINE.md — read section 1 (reuse inventory) before writing code, then section 9.",
+      "dependencies": [
+        "src/components/brain/three/brainGeometry.ts",
+        "src/components/brain/three/anatomy.ts",
+        "src/lib/brain/graph.ts",
+        "src/lib/3d/quality.ts",
+        "src/lib/3d/signals.ts",
+        "src/lib/events/bus.ts"
+      ],
+      "acceptanceCriteria": [
+        "Anatomy reads as a brain (two hemispheres, visible folding, distinct cerebellum and brainstem) at 390px and 1100px",
+        "Every visual state is reachable from a real recorded event, and no state is reachable without one",
+        "WAITING_FOR_PERMISSION is visually distinct from executing and from error; degraded is grey, error is red",
+        "Reduced motion keeps state colour and drops signal travel",
+        "No WebGL context leak across route changes",
+        "MOBILE tier holds 30fps at 390px with transmission and vascular layers off"
+      ],
+      "verificationCriteria": "brain-geometry/brain-visual-state/brain-event-coverage tests plus a browser state sweep (idle, thinking, executing, iterating, waiting, degraded, error, completed) at both viewports.",
+      "designNote": "Do NOT create a second brain component tree, a client state library, a second event bus, or a BrainEngine class wrapper. Seven new files, listed in section 6. VoxBrain3D.tsx is already 684 lines — extract state into useBrainVisualState before adding to it.",
+      "startAt": "Phase A (anatomical foundation): cortical depth layer + lobe submeshes in brainGeometry.ts, with brain-geometry.test.ts extended first."
     }
   ]
 }
