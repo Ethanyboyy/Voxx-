@@ -199,8 +199,13 @@ const ACTIVITY_LABEL: Record<string, string> = {
   "artifact.version_created": "Produced a result",
   "artifact.selected": "Selected the strongest",
   "artifact.attached": "Added to the Lab",
-  "iteration.started": "Retrying",
+  "iteration.started": "Attempt started",
+  "iteration.generated": "Candidate produced",
+  "iteration.reviewed": "Review returned",
+  "iteration.revision_created": "Revision written",
   "iteration.completed": "Review returned",
+  "iteration.approved": "Cleared the bar",
+  "iteration.stopped": "Loop ended",
   "iteration.failed": "Attempt failed",
 };
 
@@ -508,10 +513,19 @@ export function RunWorkspace({
       {/* REVIEWS — the comparison behind a selection. */}
       {trace.reviews.length > 0 ? (
         <InstrumentPanel className="overflow-hidden">
+          {/* Two different things wear the same panel, and calling both a
+              "comparison" misreports one of them: competing candidates are
+              judged against each other, successive attempts are judged against
+              the same bar over time. The iteration record is what tells them
+              apart. */}
           <PanelHeader
             eyebrow="Visual QA"
-            title="How the candidates scored"
-            description="Each candidate judged against the same requirements. The strongest was approved."
+            title={trace.iterations.length > 0 ? "How each attempt scored" : "How the candidates scored"}
+            description={
+              trace.iterations.length > 0
+                ? "Each attempt judged against the same requirements. A failing one is revised, not discarded."
+                : "Each candidate judged against the same requirements. The strongest was approved."
+            }
           />
           <Seam className="mt-4" />
           <ul className="px-5 py-3">

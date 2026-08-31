@@ -21,6 +21,7 @@ import {
 import { gitStatus, runValidation, VALIDATION_NAMES, type ValidationName } from "@/lib/workspace/validate";
 import { generateImage, submitVideo, reviewArtifact } from "@/lib/capabilities/execute";
 import { selectBestVersion, attachArtifactToSubject } from "@/lib/capabilities/select";
+import { refineUntilAcceptable } from "@/lib/capabilities/refine";
 import { LAB_SUBJECT_TYPES } from "@/lib/lab/artifacts";
 import type { ToolDefinition } from "@/lib/tools/types";
 
@@ -431,6 +432,50 @@ register({
         candidates: result.candidates,
       },
       summary: result.reason,
+    };
+  },
+});
+
+register({
+  name: "media.image.refine",
+  description:
+    "Generate, review and revise an image until it clears the bar or the iteration limit is reached. Each attempt is judged and the next one receives structured revision instructions. Bounded — never an open-ended loop.",
+  category: "external",
+  capability: "media.image.generate",
+  requiredLevel: "ACT",
+  isExternal: true,
+  inputSchema: z.object({
+    requirements: z.string().min(1).max(4000),
+    prompt: z.string().max(4000).optional(),
+    artifactId: z.string().max(64).optional(),
+    label: z.string().max(120).optional(),
+    subjectType: z.string().max(60).optional(),
+    subjectId: z.string().max(64).optional(),
+    referenceVersionIds: z.array(z.string().max(64)).max(8).optional(),
+    // Bounded at the schema, not only in code: an input that could ask for a
+    // hundred attempts is a spend problem even if the loop would refuse it.
+    maxIterations: z.number().int().min(1).max(5).optional(),
+    minImprovement: z.number().min(0).max(100).optional(),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await refineUntilAcceptable({ userId, ...input });
+    return {
+      output: {
+        artifactId: result.artifactId,
+        selectedVersionId: result.best?.versionId ?? null,
+        selectedVersion: result.best?.version ?? null,
+        finalScore: result.best?.qa?.score ?? null,
+        stoppedBecause: result.stoppedBecause,
+        attempts: result.attempts.map((a) => ({
+          attempt: a.attempt,
+          version: a.version,
+          status: a.qa?.status ?? null,
+          score: a.qa?.score ?? null,
+          decision: a.decision,
+        })),
+      },
+      summary: `${result.attempts.length} attempt(s), ${result.generations} generation(s): ${result.reason}`,
     };
   },
 });

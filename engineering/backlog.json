@@ -1,24 +1,34 @@
 {
-  "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T17:50:00Z",
+  "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest \u2014 a backlog of a thousand generated items is a backlog nobody reads.",
+  "updatedAt": "2026-08-31T18:55:00Z",
   "items": [
     {
       "id": "ORCH-010",
       "category": "orchestration",
       "priority": "P1",
-      "status": "todo",
+      "status": "done",
       "needsOpus": true,
-      "description": "Wire bounded iteration into orchestrated runs, so a failed review drives a second generation attempt inside the run rather than only when iterateWithReview is called directly.",
-      "whyItMatters": "Today an orchestrated run generates once and reviews once. The retry loop exists, is tested, and is unreachable from a real request — which means the autonomous-improvement behaviour the workspace UI can display cannot actually occur.",
+      "description": "Bounded autonomous iteration, reachable from a real request: generate, review, decide, revise, generate again.",
+      "whyItMatters": "RESOLVED. The loop was previously tested but unreachable \u2014 an orchestrated run generated once and reviewed once, so the autonomous-improvement behaviour the workspace could display could not actually occur.",
       "complexity": "medium",
-      "dependencies": ["capabilities/iterate.ts", "capabilities/orchestrator.ts", "agents/executor.ts"],
+      "dependencies": [
+        "capabilities/iterate.ts",
+        "capabilities/orchestrator.ts",
+        "agents/executor.ts"
+      ],
       "acceptanceCriteria": [
         "A run whose review fails produces a second attempt without a new user request",
         "The attempt ceiling is enforced inside the run, not only inside iterateWithReview",
         "Every attempt persists as an ArtifactVersion with lineage, including rejected ones"
       ],
       "verificationCriteria": "An acceptance test where the first review fails and the second passes, asserting exactly two provider calls and two persisted versions.",
-      "designNote": "The executor runs a flat ordered step list; it has no loop construct. Either the orchestrator appends a retry step when a review fails (needs the executor to support dynamic step insertion), or a single step owns the whole loop internally. The second is smaller and keeps the executor unchanged — decide deliberately."
+      "designNote": "The executor runs a flat ordered step list; it has no loop construct. Either the orchestrator appends a retry step when a review fails (needs the executor to support dynamic step insertion), or a single step owns the whole loop internally. The second is smaller and keeps the executor unchanged \u2014 decide deliberately.",
+      "implementation": "One step owns the loop (capabilities/refine.ts), registered as media.image.refine at ACT. Rejected dynamic step insertion because step references are keyed by step ORDER and insertion silently repoints them. Loop position recovers from append-only ArtifactVersions carrying parameters.attempt, so an interrupted run does not re-pay for generation. Revision directives (capabilities/revision.ts) carry CHANGE plus a derived PRESERVE list; the decision engine (capabilities/decide.ts) is pure and covers approve, iterate, ceiling, stalling, not-fixable-by-generation, provider-unavailable and execution-failure.",
+      "verification": "20 tests in tests/iteration-acceptance.test.ts, all starting at driveRequest with an English sentence. Tests A-H plus the brief's full sentence (three variations, compare, improve the winner, attach to the Suit Bay) and its negative case (a one-shot request stays one shot, one provider call). Provider-call counts asserted throughout, so the cost claims are measured rather than asserted. Full suite 712/712, typecheck clean, lint 0 errors. Workspace inspected as rendered at 1100px and 390px.",
+      "remainingLimitations": [
+        "IMAGE only \u2014 no video equivalent, which would need frame sampling that does not exist.",
+        "Resume re-reviews an attempt that was generated but not yet reviewed (one extra review call). Generation is never repeated."
+      ]
     },
     {
       "id": "ORCH-011",
@@ -29,7 +39,10 @@
       "description": "Poll submitted video jobs and close their CapabilityRun rows.",
       "whyItMatters": "submitVideo returns a job and leaves the CapabilityRun RUNNING forever. The trace therefore reports a run as permanently live, and no cost is ever recorded for video.",
       "complexity": "low",
-      "dependencies": ["capabilities/execute.ts", "lib/video/"],
+      "dependencies": [
+        "capabilities/execute.ts",
+        "lib/video/"
+      ],
       "acceptanceCriteria": [
         "A completed provider job closes its CapabilityRun with status, duration and cost",
         "A failed job records the failure reason",
@@ -46,7 +59,10 @@
       "description": "Route the chat entry point through the capability orchestrator so a conversational request can start a real run.",
       "whyItMatters": "The directive's target flow is USER -> BRAIN -> ROUTER -> ORCHESTRATOR -> EXECUTOR. Chat currently ends at a text response; only /agents and the API can start orchestrated work, so the main entry point cannot do the main thing.",
       "complexity": "medium",
-      "dependencies": ["lib/chat/service.ts", "capabilities/orchestrator.ts"],
+      "dependencies": [
+        "lib/chat/service.ts",
+        "capabilities/orchestrator.ts"
+      ],
       "acceptanceCriteria": [
         "A chat message that routes to a non-empty plan starts a run and returns its id",
         "A message that routes to an empty plan still answers normally, with no AgentRun created",
@@ -63,7 +79,10 @@
       "description": "Suit asset lifecycle: catalog -> preview -> selected -> hero, so 60+ suits do not each hold hero-resolution resources.",
       "whyItMatters": "Directive section 22. Without a promotion/demotion lifecycle, scaling the catalogue degrades memory and frame rate on exactly the devices that matter most.",
       "complexity": "high",
-      "dependencies": ["components/lab/SuitBaySpatial.tsx", "public/models/suits/"],
+      "dependencies": [
+        "components/lab/SuitBaySpatial.tsx",
+        "public/models/suits/"
+      ],
       "acceptanceCriteria": [
         "Only the active suit holds hero-fidelity resources",
         "Deselecting a suit disposes its GPU resources",
@@ -80,10 +99,17 @@
       "description": "Hands: five-finger definition, thumb opposition, fingernail plates.",
       "whyItMatters": "Hands are the second thing a viewer looks at after the mask, and currently read as mittens at close camera distances.",
       "complexity": "high",
-      "dependencies": ["tools/3d-pipeline/anatomy.py", "tools/3d-pipeline/sculpt.py"],
-      "acceptanceCriteria": ["Five separated digits", "Thumb opposes rather than sitting in the finger plane", "Nail plates read at hero camera distance"],
+      "dependencies": [
+        "tools/3d-pipeline/anatomy.py",
+        "tools/3d-pipeline/sculpt.py"
+      ],
+      "acceptanceCriteria": [
+        "Five separated digits",
+        "Thumb opposes rather than sitting in the finger plane",
+        "Nail plates read at hero camera distance"
+      ],
       "verificationCriteria": "Render at hero distance and inspect the image. Blender (bpy 5.0.1) must be reinstalled in a fresh container: pip install bpy==5.0.1.",
-      "note": "Recorded lesson from earlier passes: a feature only reads by CONTRAST with its surroundings — scaling every sculpt field up together produces pouches, not detail."
+      "note": "Recorded lesson from earlier passes: a feature only reads by CONTRAST with its surroundings \u2014 scaling every sculpt field up together produces pouches, not detail."
     },
     {
       "id": "SUIT-041",
@@ -92,11 +118,17 @@
       "status": "todo",
       "needsOpus": true,
       "description": "Garment and fabric micro-detail: seam pressure, panel transitions, roughness variation that reads as technical textile rather than armour.",
-      "whyItMatters": "Directive section 16 — the design language is ADVANCED TECHNICAL FABRIC, not armoured sci-fi. This is the difference.",
+      "whyItMatters": "Directive section 16 \u2014 the design language is ADVANCED TECHNICAL FABRIC, not armoured sci-fi. This is the difference.",
       "complexity": "high",
-      "dependencies": ["tools/3d-pipeline/texturing.py", "tools/3d-pipeline/garment.py"],
-      "acceptanceCriteria": ["Fabric reads as woven at hero distance", "No moiré at any supported camera distance"],
-      "verificationCriteria": "Render and inspect. Respect the Nyquist clamp already in texturing.py — weave period must stay above ~5 texels or it aliases.",
+      "dependencies": [
+        "tools/3d-pipeline/texturing.py",
+        "tools/3d-pipeline/garment.py"
+      ],
+      "acceptanceCriteria": [
+        "Fabric reads as woven at hero distance",
+        "No moir\u00e9 at any supported camera distance"
+      ],
+      "verificationCriteria": "Render and inspect. Respect the Nyquist clamp already in texturing.py \u2014 weave period must stay above ~5 texels or it aliases.",
       "note": "Recorded lesson: never derive a texture feature from a texture-space gradient. Adjacent texels are metres apart across UV seams; derive in world space."
     },
     {
@@ -114,7 +146,7 @@
         "Appends deduplicated items to backlog.json rather than rewriting it",
         "Only auto-fixes changes that are deterministic, reversible and test-verified; everything else becomes a needsOpus item"
       ],
-      "verificationCriteria": "Run twice in succession — the second run must add nothing new. A scanner that regenerates its own findings is noise.",
+      "verificationCriteria": "Run twice in succession \u2014 the second run must add nothing new. A scanner that regenerates its own findings is noise.",
       "constraint": "MUST NOT circumvent Anthropic usage limits, impersonate Claude, or substitute another paid model. Deterministic tooling and genuinely local tools only."
     },
     {
@@ -124,11 +156,31 @@
       "status": "todo",
       "needsOpus": false,
       "description": "Establish measured baselines: JS bundle, 3D payload, initial load, suit-switch time.",
-      "whyItMatters": "Directive section 32 — improvements cannot be claimed without measurement, and there is currently no baseline to compare against.",
+      "whyItMatters": "Directive section 32 \u2014 improvements cannot be claimed without measurement, and there is currently no baseline to compare against.",
       "complexity": "low",
       "dependencies": [],
-      "acceptanceCriteria": ["Baseline numbers recorded in engineering/state.json", "Reproducible command documented"],
+      "acceptanceCriteria": [
+        "Baseline numbers recorded in engineering/state.json",
+        "Reproducible command documented"
+      ],
       "verificationCriteria": "Two consecutive measurements agree within a stated tolerance."
+    },
+    {
+      "id": "ORCH-012",
+      "category": "orchestration",
+      "priority": "P3",
+      "status": "todo",
+      "needsOpus": false,
+      "description": "Persist per-attempt review state so resume does not re-review an attempt that was generated but not yet judged.",
+      "whyItMatters": "The loop recovers generation (the expensive half) but not review. An interruption between generating and reviewing costs one extra vision call on resume. Small, but it is the one remaining place where recovery is not exact.",
+      "complexity": "low",
+      "dependencies": [
+        "capabilities/refine.ts"
+      ],
+      "acceptanceCriteria": [
+        "A resumed loop re-reviews nothing that was already reviewed"
+      ],
+      "verificationCriteria": "Interrupt between generation and review; assert the review call count on resume."
     }
   ]
 }

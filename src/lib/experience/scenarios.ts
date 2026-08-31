@@ -366,10 +366,38 @@ export function scenarioProgress(scenario: ScenarioDefinition) {
       { order: 3, description: "Apply the chosen lens profile to the Suit Bay build", toolName: "workspace.patch", capability: "workspace.write", requiredLevel: "ACT", status: "PENDING" as const, error: null, durationMs: null, retryCount: 0 },
     ],
     providerCalls: [
-      { id: "preview-call-1", capability: "IMAGE_GENERATION", provider: "gemini", model: "nano-banana-2", status: "RUNNING" as const, error: null, durationMs: null, costUsd: null, startedAt: "2026-01-01T12:00:00.000Z" },
+      { id: "preview-call-1", capability: "IMAGE_GENERATION", provider: "gemini", model: "nano-banana-2", status: "SUCCEEDED" as const, error: null, durationMs: 8100, costUsd: 0.0021, startedAt: "2026-01-01T12:00:00.000Z" },
+      { id: "preview-call-2", capability: "VISUAL_QA", provider: "anthropic", model: "claude-opus-5", status: "SUCCEEDED" as const, error: null, durationMs: 2900, costUsd: null, startedAt: "2026-01-01T12:00:08.000Z" },
+      { id: "preview-call-3", capability: "IMAGE_GENERATION", provider: "gemini", model: "nano-banana-2", status: "RUNNING" as const, error: null, durationMs: null, costUsd: null, startedAt: "2026-01-01T12:00:12.000Z" },
     ],
-    costUsd: null,
-    unpricedCalls: 1,
+    // A real loop mid-flight: attempt 1 was judged and failed, a revision was
+    // written from it, attempt 2 is generating now.
+    iterations: [
+      {
+        artifactId: "preview-artifact",
+        limit: 3,
+        attempts: [
+          { attempt: 1, of: 3, status: "FAIL" as const, score: 64 },
+          { attempt: 2, of: 3, status: "RUNNING" as const, score: null },
+        ],
+      },
+    ],
+    reviews: [
+      { artifactId: "preview-artifact", version: 1, status: "FAIL" as const, score: 64, issues: ["Material still reads as armored"], at: "2026-01-01T12:00:11.000Z" },
+    ],
+    artifacts: [
+      { versionId: "rv1", artifactId: "preview-artifact", artifactLabel: "Mask concept", kind: "IMAGE", version: 1, url: "", mimeType: "application/octet-stream", capability: "IMAGE_GENERATION", provider: "gemini", state: "QA_FAILED" as const, score: 64 },
+    ],
+    activity: [
+      { id: "r1", type: "capability.requested", at: "2026-01-01T11:59:58.000Z", detail: null },
+      { id: "r2", type: "iteration.started", at: "2026-01-01T12:00:00.000Z", detail: "attempt 1 of 3" },
+      { id: "r3", type: "iteration.generated", at: "2026-01-01T12:00:08.000Z", detail: null },
+      { id: "r4", type: "iteration.reviewed", at: "2026-01-01T12:00:11.000Z", detail: "FAIL (64)" },
+      { id: "r5", type: "iteration.revision_created", at: "2026-01-01T12:00:11.000Z", detail: "1 change(s) requested" },
+      { id: "r6", type: "iteration.started", at: "2026-01-01T12:00:12.000Z", detail: "attempt 2 of 3" },
+    ],
+    costUsd: 0.0021,
+    unpricedCalls: 2,
     live: true,
   };
 }

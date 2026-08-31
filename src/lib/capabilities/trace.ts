@@ -154,7 +154,12 @@ const ACTIVITY_TYPES = [
   "artifact.selected",
   "artifact.attached",
   "iteration.started",
+  "iteration.generated",
+  "iteration.reviewed",
+  "iteration.revision_created",
   "iteration.completed",
+  "iteration.approved",
+  "iteration.stopped",
   "iteration.failed",
 ];
 
@@ -186,8 +191,20 @@ function activityDetail(type: string, payload: Record<string, unknown>): string 
       return typeof payload.subjectType === "string" ? `to ${payload.subjectType}` : null;
     case "iteration.started":
       return typeof payload.attempt === "number" ? `attempt ${payload.attempt} of ${payload.of}` : null;
+    case "iteration.generated":
+      return typeof payload.revisionOf === "number" ? `revising attempt ${payload.revisionOf}` : null;
+    case "iteration.reviewed":
     case "iteration.completed":
       return typeof payload.status === "string" ? `${payload.status} (${payload.score})` : null;
+    case "iteration.revision_created":
+      return typeof payload.directives === "number"
+        ? `${payload.directives} change(s) requested`
+        : null;
+    case "iteration.approved":
+    case "iteration.stopped":
+      // The termination reason, which is the question a reader most wants
+      // answered when a loop ends without passing.
+      return typeof payload.decision === "string" ? String(payload.decision).toLowerCase().replace(/_/g, " ") : null;
     case "agent.run.failed":
       return typeof payload.error === "string" ? String(payload.error).slice(0, 120) : null;
     default:
@@ -367,7 +384,11 @@ export async function getRunTrace(userId: string, lookup: TraceLookup): Promise<
     const existing = entry.attempts.find((a) => a.attempt === attempt);
     if (event.type === "iteration.started") {
       if (!existing) entry.attempts.push({ attempt, of: entry.limit, status: "RUNNING", score: null });
-    } else if (event.type === "iteration.completed") {
+    } else if (event.type === "iteration.reviewed" || event.type === "iteration.completed") {
+      // Two vocabularies, deliberately both accepted. `iteration.reviewed` is
+      // written by the orchestrated loop in refine.ts; `iteration.completed` by
+      // iterateWithReview, which callers still use directly. A trace that only
+      // understood one would show the other's runs as permanently in progress.
       const status = payload.status === "PASS" ? "PASS" : "FAIL";
       const score = typeof payload.score === "number" ? payload.score : null;
       if (existing) {

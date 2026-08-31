@@ -1,9 +1,8 @@
 {
   "$comment": "Durable engineering state. See engineering/README.md. Update at each meaningful checkpoint; a stale entry is worse than none because it gets acted on.",
-  "updatedAt": "2026-08-31T17:50:00Z",
-  "verifiedAtCommit": "2b6e597",
-  "phase": "Orchestration — Brain to executor connective tissue",
-
+  "updatedAt": "2026-08-31T18:55:00Z",
+  "verifiedAtCommit": "pending-orch-010",
+  "phase": "Orchestration \u2014 bounded autonomous iteration reachable from a real request",
   "architecture": {
     "stack": "Next.js 16.3 App Router, TypeScript, Prisma 7.9 on SQLite, Vitest, Tailwind, three.js + React Three Fiber",
     "commands": {
@@ -15,27 +14,30 @@
     },
     "requestFlow": [
       "user request (chat, /agents DriveConsole, or API)",
-      "capabilities/router.ts — deterministic pass, then model-assisted fallback; produces a CapabilityPlan",
-      "capabilities/orchestrator.ts — sequences the plan, expands capabilities into PlanSteps, wires {{stepN.output}} references, persists traceId + plan",
-      "agents/service.ts startAgentRun — persists AgentRun + AgentStep rows",
-      "agents/executor.ts — THE only execution engine: ordered steps, checkCapability() gate, retries, reference resolution, pause/resume",
-      "tools/registry.ts — the closed tool set; each tool declares capability + requiredLevel",
-      "capabilities/execute.ts — provider calls, each wrapped in a CapabilityRun ledger row",
-      "artifacts/service.ts — append-only ArtifactVersion + ArtifactLink lineage",
-      "observability/events.ts recordEvent — the single event writer",
-      "capabilities/trace.ts getRunTrace — reassembles everything for the UI"
+      "capabilities/router.ts \u2014 deterministic pass, then model-assisted fallback; produces a CapabilityPlan",
+      "capabilities/orchestrator.ts \u2014 sequences the plan, expands capabilities into PlanSteps, wires {{stepN.output}} references, persists traceId + plan",
+      "agents/service.ts startAgentRun \u2014 persists AgentRun + AgentStep rows",
+      "agents/executor.ts \u2014 THE only execution engine: ordered steps, checkCapability() gate, retries, reference resolution, pause/resume",
+      "tools/registry.ts \u2014 the closed tool set; each tool declares capability + requiredLevel",
+      "capabilities/execute.ts \u2014 single provider calls, each wrapped in a CapabilityRun ledger row",
+      "capabilities/refine.ts \u2014 the bounded improvement loop, owned by ONE step: generate, review, decide, revise, repeat",
+      "capabilities/decide.ts \u2014 pure decision engine (APPROVE / ITERATE / five stop reasons)",
+      "capabilities/revision.ts \u2014 turns a review into CHANGE directives plus a PRESERVE list",
+      "artifacts/service.ts \u2014 append-only ArtifactVersion + ArtifactLink lineage",
+      "observability/events.ts recordEvent \u2014 the single event writer",
+      "capabilities/trace.ts getRunTrace \u2014 reassembles everything for the UI"
     ],
     "singleSourcesOfTruth": {
-      "execution": "src/lib/agents/executor.ts — no second executor exists or should",
-      "authorization": "src/lib/permissions/service.ts checkCapability/enforceCapability — one ladder OBSERVE < ANALYZE < RECOMMEND < ASK < ACT, default grant ANALYZE",
-      "events": "src/lib/observability/events.ts recordEvent — the only writer",
+      "execution": "src/lib/agents/executor.ts \u2014 no second executor exists or should",
+      "authorization": "src/lib/permissions/service.ts checkCapability/enforceCapability \u2014 one ladder OBSERVE < ANALYZE < RECOMMEND < ASK < ACT, default grant ANALYZE",
+      "events": "src/lib/observability/events.ts recordEvent \u2014 the only writer",
       "routing": "src/lib/capabilities/router.ts",
-      "tools": "src/lib/tools/registry.ts — closed set; there is deliberately NO arbitrary-command tool",
-      "validation": "src/lib/workspace/validate.ts — closed set of four npm scripts, execFile with an argument array, no shell"
+      "tools": "src/lib/tools/registry.ts \u2014 closed set; there is deliberately NO arbitrary-command tool",
+      "validation": "src/lib/workspace/validate.ts \u2014 closed set of four npm scripts, execFile with an argument array, no shell"
     },
     "providerAbstractions": {
       "ai": "src/lib/ai/ (Anthropic + mock; mock has supportsVision false, deliberately)",
-      "image": "src/lib/image/ (Gemini/Nano Banana + an Unavailable provider — no mock image provider)",
+      "image": "src/lib/image/ (Gemini/Nano Banana + an Unavailable provider \u2014 no mock image provider)",
       "video": "src/lib/video/ (Higgsfield + Unavailable)",
       "generation3d": "src/lib/generation/",
       "research": "src/lib/research/",
@@ -43,31 +45,53 @@
       "integrations": "src/lib/integrations/"
     },
     "notes": [
-      "src/lib/orchestrator/service.ts is NOT the run driver — it is a cross-domain snapshot for prompt context. The run driver is src/lib/capabilities/orchestrator.ts. Same word, different concerns.",
+      "src/lib/orchestrator/service.ts is NOT the run driver \u2014 it is a cross-domain snapshot for prompt context. The run driver is src/lib/capabilities/orchestrator.ts. Same word, different concerns.",
       "AgentRun.traceId is what lets a restarted process reconnect a run to its provider spend. Before it existed the link lived only in memory and in tool arguments.",
       "Sequencing lives in the orchestrator, not the router: the router decides WHICH capabilities are needed, the orchestrator decides what order they can actually run in."
-    ]
+    ],
+    "decisions": {
+      "iteration_loop_shape": "ONE STEP OWNS THE LOOP, not dynamic step insertion. Step references are keyed by step ORDER, so inserting a step renumbers everything after it and silently repoints every existing reference; and resume is currentStep plus per-step status, which insertion invalidates retroactively. The cost \u2014 a step is the executor's unit of recovery, so an interrupted loop would restart at attempt 1 \u2014 is handled by recovering position from the append-only ArtifactVersions, which carry parameters.attempt.",
+      "iteration_trigger": "Two signals, either sufficient: an explicit refinement verb in the request, or a REQUIRED VISUAL_QA step (the router's own signal that the request states a bar to clear). A request with neither gets exactly one generation \u2014 inferring 'improve it' would spend money on an assumption."
+    }
   },
-
   "verification": {
-    "typecheck": { "status": "pass", "at": "2026-08-31T17:50:00Z" },
-    "lint": { "status": "pass", "errors": 0, "warnings": 14, "note": "warnings are pre-existing intentional unused-parameter names (_request, _input) in provider stubs" },
-    "tests": { "status": "pass", "files": 66, "count": 692, "at": "2026-08-31T17:50:00Z" },
-    "build": { "status": "pass", "at": "2026-08-31T17:45:00Z", "note": "re-run after the orchestrator commit" }
+    "typecheck": {
+      "status": "pass",
+      "at": "2026-08-31T18:55:00Z"
+    },
+    "lint": {
+      "status": "pass",
+      "errors": 0,
+      "warnings": 13,
+      "note": "pre-existing intentional unused-parameter names in provider stubs"
+    },
+    "tests": {
+      "status": "pass",
+      "files": 67,
+      "count": 712,
+      "at": "2026-08-31T18:50:00Z"
+    },
+    "build": {
+      "status": "pending-rerun",
+      "note": "re-run after the ORCH-010 commit"
+    },
+    "visual": {
+      "status": "pass",
+      "note": "workspace inspected as rendered at 1100px and 390px; 0px horizontal overflow at both; QA panel copy corrected to distinguish successive attempts from competing candidates"
+    }
   },
-
   "providerReality": {
     "$comment": "Reported by each provider's own isConfigured. Never claim connectivity that has not been verified.",
-    "image_gemini_nano_banana": "CONFIGURATION REQUIRED — GOOGLE_API_KEY absent",
-    "vision_anthropic": "CONFIGURATION REQUIRED — ANTHROPIC_API_KEY absent; Visual QA refuses to run rather than guessing a verdict",
-    "video_higgsfield": "CONFIGURATION REQUIRED — HIGGSFIELD_API_KEY absent; egress proxy also prevents verification from this environment",
+    "image_gemini_nano_banana": "CONFIGURATION REQUIRED \u2014 GOOGLE_API_KEY absent",
+    "vision_anthropic": "CONFIGURATION REQUIRED \u2014 ANTHROPIC_API_KEY absent; Visual QA refuses to run rather than guessing a verdict",
+    "video_higgsfield": "CONFIGURATION REQUIRED \u2014 HIGGSFIELD_API_KEY absent; egress proxy also prevents verification from this environment",
     "consequence": "End-to-end media workflows are exercised by acceptance tests with injected providers. No live provider call has been verified from this environment."
   },
-
   "knownLimitations": [
-    "MODEL_3D is planned by the router but no tool binds it — the orchestrator emits a described, tool-less step rather than failing on an unknown tool.",
-    "Video generation is submit-only: the CapabilityRun stays RUNNING until a later poll closes it. No poller exists yet.",
-    "Bounded iteration (capabilities/iterate.ts) is fully implemented and tested but is NOT yet wired into orchestrated runs — a run generates once and reviews once rather than looping.",
-    "The chat entry point does not yet route through the orchestrator; /agents DriveConsole and the API do."
+    "MODEL_3D is planned by the router but no tool binds it \u2014 the orchestrator emits a described, tool-less step rather than failing on an unknown tool.",
+    "Video generation is submit-only: the CapabilityRun stays RUNNING until a later poll closes it. No poller exists yet (ORCH-011).",
+    "The improvement loop covers IMAGE generation only. Video has no equivalent, because a video review would need frame sampling that does not exist yet.",
+    "The chat entry point does not yet route through the orchestrator; /agents DriveConsole and the API do (BRAIN-020).",
+    "Resume recovers completed ATTEMPTS but not a partially-reviewed one: an attempt generated and not yet reviewed is re-reviewed on resume, costing one extra review call. Generation, the expensive half, is never repeated."
   ]
 }

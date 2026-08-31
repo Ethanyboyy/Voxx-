@@ -143,6 +143,36 @@ export function sequencePlan<T extends { capability: Capability }>(steps: T[]): 
   return ranked.map((entry) => entry.step);
 }
 
+/**
+ * Words that ask for the result to be made BETTER, not merely produced.
+ *
+ * This is the signal that turns a one-shot generation into a bounded loop, so
+ * it is deliberately narrow. Iterating costs a provider call per attempt, and
+ * inferring "improve it" from a request that never said so would spend the
+ * user's money on an assumption.
+ */
+const REFINEMENT_INTENT = [
+  "improve", "refine", "iterate", "make it better", "better version",
+  "if necessary", "if needed", "until it", "keep going until",
+  "polish", "fix it until", "get it right",
+];
+
+/**
+ * Whether the request asks VOX to keep working at the result.
+ *
+ * Two independent signals, either of which is enough:
+ *
+ *   - an explicit refinement verb ("improve the strongest design");
+ *   - a REQUIRED quality bar from the router. The router already marks
+ *     VISUAL_QA non-optional when the request states a bar to clear, and
+ *     "make sure it matches the reference" is an instruction to keep working
+ *     until it does, not an instruction to check once and report failure.
+ */
+export function wantsRefinement(request: string, qaIsRequired: boolean): boolean {
+  const text = request.toLowerCase();
+  return qaIsRequired || REFINEMENT_INTENT.some((phrase) => text.includes(phrase));
+}
+
 /** True when a subject is one the Lab actually renders. */
 function isLabSubject(subjectType: string | undefined): boolean {
   return !!subjectType && (LAB_SUBJECT_TYPES as readonly string[]).includes(subjectType);
@@ -153,19 +183,41 @@ interface ExpansionState {
   imageStepIndex: number | null;
   /** Index of the step that approved a specific version, if any. */
   selectionStepIndex: number | null;
+  /** Index of the bounded improvement loop, when one was planned. */
+  refineStepIndex: number | null;
   /** How many candidates the image step was asked for. */
   variations: number;
+  /** Whether the request asks VOX to keep working until the result is good. */
+  refine: boolean;
   nextIndex: number;
 }
 
-/** A reference to the artifact version a later step should act on. */
+/**
+ * A reference to the artifact version a later step should act on.
+ *
+ * Ordered by how settled the choice is: a refined version was improved until
+ * it passed, a selected one won a comparison, a generated one is merely the
+ * first thing that came back. A later stage should film or attach the most
+ * settled result available, never an earlier draft of it.
+ */
 function chosenVersionReference(state: ExpansionState): string | null {
+  if (state.refineStepIndex !== null) {
+    return `{{step${state.refineStepIndex}.output.selectedVersionId}}`;
+  }
   if (state.selectionStepIndex !== null) {
     return `{{step${state.selectionStepIndex}.output.selectedVersionId}}`;
   }
   if (state.imageStepIndex !== null) {
     return `{{step${state.imageStepIndex}.output.versions.0.versionId}}`;
   }
+  return null;
+}
+
+/** The artifact a later stage should attach or extend, by the same ordering. */
+function chosenArtifactReference(state: ExpansionState): string | null {
+  if (state.refineStepIndex !== null) return `{{step${state.refineStepIndex}.output.artifactId}}`;
+  if (state.selectionStepIndex !== null) return `{{step${state.selectionStepIndex}.output.artifactId}}`;
+  if (state.imageStepIndex !== null) return `{{step${state.imageStepIndex}.output.artifactId}}`;
   return null;
 }
 
@@ -200,6 +252,25 @@ function stepsForCapability(
 
     case "IMAGE_GENERATION":
     case "IMAGE_EDIT":
+      // One candidate that has to be GOOD is the improvement loop's own shape:
+      // generate, judge, revise, repeat until it clears the bar. Emitting a
+      // separate generate step and then a separate review step would produce
+      // exactly one attempt and no way to act on the verdict.
+      if (state.variations === 1 && state.refine) {
+        return [{
+          description: "Generate the image, review it, and revise until it clears the bar.",
+          toolName: "media.image.refine",
+          input: {
+            requirements: options.request,
+            prompt: options.request,
+            subjectType: options.subjectType,
+            subjectId: options.subjectId,
+            referenceVersionIds: references,
+            traceId: options.traceId,
+          },
+        }];
+      }
+
       return [{
         description:
           state.variations > 1
@@ -238,12 +309,16 @@ function stepsForCapability(
     }
 
     case "VISUAL_QA": {
+      // The refinement loop reviews every attempt as it goes, so a review step
+      // after it would pay a second time to learn what it already recorded.
+      if (state.refineStepIndex !== null) return [];
+
       // With several candidates in play, the review IS the comparison: judging
       // each one and approving the strongest answers "is this good?" and
       // "which of these?" in a single pass. Emitting a separate review after a
       // selection that already reviewed everything would just pay twice.
       if (state.imageStepIndex !== null && state.variations > 1) {
-        return [{
+        const compare: PlanStep = {
           description: `Compare the ${state.variations} candidates and approve the strongest.`,
           toolName: "artifact.select_best",
           input: {
@@ -252,7 +327,32 @@ function stepsForCapability(
             referenceVersionIds: references,
             traceId: options.traceId,
           },
-        }];
+        };
+
+        if (!state.refine) return [compare];
+
+        // "Make three, then improve the strongest" — comparison first, then
+        // the loop, on the artifact the comparison approved. The loop's own
+        // first act is a review, so a winner that already passes costs nothing
+        // further; only a winner that does not gets revised.
+        return [
+          compare,
+          {
+            description: "Improve the chosen design until it clears the bar.",
+            toolName: "media.image.refine",
+            input: {
+              // Resolved at execution time from the comparison's output — the
+              // artifact does not exist yet at planning time.
+              artifactId: `{{step${state.nextIndex}.output.artifactId}}`,
+              requirements: options.request,
+              prompt: options.request,
+              subjectType: options.subjectType,
+              subjectId: options.subjectId,
+              referenceVersionIds: references,
+              traceId: options.traceId,
+            },
+          },
+        ];
       }
 
       // Nothing produced in this run and nothing supplied means there is
@@ -339,10 +439,16 @@ export async function driveRequest(options: DriveOptions): Promise<DriveResult> 
   }
 
   const steps: PlanStep[] = [];
+  // A REQUIRED review is the router saying the request states a bar to clear.
+  // Clearing a bar means working at it until it is cleared, which is what
+  // turns a one-shot generation into a bounded loop.
+  const qaIsRequired = plan.steps.some((s) => s.capability === "VISUAL_QA" && !s.optional);
   const state: ExpansionState = {
     imageStepIndex: null,
     selectionStepIndex: null,
+    refineStepIndex: null,
     variations: requestedVariations(options.request),
+    refine: wantsRefinement(options.request, qaIsRequired),
     nextIndex: 0,
   };
 
@@ -377,6 +483,9 @@ export async function driveRequest(options: DriveOptions): Promise<DriveResult> 
       if (step.toolName === "artifact.select_best") {
         state.selectionStepIndex = state.nextIndex;
       }
+      if (step.toolName === "media.image.refine") {
+        state.refineStepIndex = state.nextIndex;
+      }
       steps.push(step);
       state.nextIndex += 1;
     }
@@ -385,12 +494,14 @@ export async function driveRequest(options: DriveOptions): Promise<DriveResult> 
   // Phase 18: putting the chosen result where the Lab can see it. Only when
   // the subject is genuinely a Lab subject and something was actually chosen —
   // attaching a version nothing selected would promote an arbitrary candidate.
-  if (isLabSubject(options.subjectType) && options.subjectId && state.selectionStepIndex !== null) {
+  const finalArtifact = chosenArtifactReference(state);
+  const somethingWasChosen = state.refineStepIndex !== null || state.selectionStepIndex !== null;
+  if (isLabSubject(options.subjectType) && options.subjectId && somethingWasChosen && finalArtifact) {
     steps.push({
       description: `Attach the approved design to the ${options.subjectType}.`,
       toolName: "lab.attach_artifact",
       input: {
-        artifactId: `{{step${state.selectionStepIndex}.output.artifactId}}`,
+        artifactId: finalArtifact,
         subjectType: options.subjectType,
         subjectId: options.subjectId,
         traceId,

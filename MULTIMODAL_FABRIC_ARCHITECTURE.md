@@ -528,11 +528,80 @@ because a confident arbitrary pick is worse than an honest refusal.
 Approval is what makes the choice real — the Lab reads `approved`, so this is
 what promotes a concept into what the Suit Bay shows.
 
+### The improvement loop (ORCH-010)
+
+A loop that reads "FAIL" and generates again with the same prompt is retrying,
+not iterating — and retrying a fixed instruction with a new seed improves
+nothing on average. Three pieces make it real:
+
+**`capabilities/revision.ts` — what the next attempt is told.** Two halves, and
+the second is the one systems usually miss: CHANGE (defects, worst first) and
+PRESERVE (dimensions nothing complained about). Without PRESERVE, fixing the
+shoulders loses the lenses — the generator has no memory between calls, and
+anything not restated is free to drift. `preserve` is *derived*, not asserted:
+the reviewer only reports what is wrong, so of the criteria it actually judged,
+the ones no issue implicated drew no complaint. That is a weaker signal than an
+endorsement and is not presented as one.
+
+**`capabilities/decide.ts` — whether to spend another generation.** Pure and
+testable, because every branch costs money when it says go and costs quality
+when it wrongly says stop. Not a score threshold: it also stops on stalling
+(a gain below `DEFAULT_MIN_IMPROVEMENT`, 3 points) and on failures regeneration
+cannot fix (an implementation bug, a missing requirement — see
+`FAILURE_STRATEGY`). Outcomes: `APPROVE`, `ITERATE`,
+`STOP_MAX_ITERATIONS`, `STOP_NO_MEANINGFUL_IMPROVEMENT`,
+`STOP_NOT_FIXABLE_BY_GENERATION`, `STOP_PROVIDER_UNAVAILABLE`,
+`STOP_EXECUTION_FAILURE`.
+
+**`capabilities/refine.ts` — the loop itself, as one step.**
+
+#### Architecture decision: one step owns the loop
+
+The alternative was inserting AgentSteps as attempts are decided on. Rejected
+on the code, not on taste:
+
+- Step references are keyed by step **order** (`{{step3.output}}`). Inserting a
+  step renumbers everything after it, silently repointing every existing
+  reference — a rewrite of the reference contract in the one layer that must
+  never be subtly wrong.
+- Resume is `currentStep` plus per-step status. Insertion changes what
+  `currentStep` meant when it was written.
+- "Produce something that passes" is one logical unit with one outcome.
+
+The cost of that choice is that a step is the executor's unit of recovery, so an
+interrupted loop would ordinarily restart at attempt 1 and re-pay. That is
+handled rather than accepted: the loop **recovers its position from the
+ArtifactVersions it already wrote**, which are append-only and carry their
+attempt number in `parameters.attempt`.
+
+#### Reaching it from a real request
+
+Two orchestrator signals, either sufficient — an explicit refinement verb
+("improve the strongest design"), or a **required** `VISUAL_QA` step, which is
+the router already saying the request states a bar to clear. Clearing a bar
+means working at it, not checking once and reporting failure.
+
+| Request shape | Steps |
+| --- | --- |
+| one image, bar stated | `media.image.refine` (loop owns generate+review) |
+| N variations | `media.image.generate` → `artifact.select_best` |
+| N variations + improve | `media.image.generate` → `artifact.select_best` → `media.image.refine` → `lab.attach_artifact` |
+| one image, no bar | `media.image.generate` only — no loop, one call |
+
+The last row matters as much as the others: inferring "improve it" from a
+request that never said so spends the user's money on an assumption.
+
+Every attempt emits `iteration.started` / `.generated` / `.reviewed` /
+`.revision_created`, and the loop ends with `.approved` or `.stopped` carrying
+the decision. The workspace reconstructs "attempt 2 of 3" and the termination
+reason from those alone.
+
 ### Tools added
 
 | Tool | Capability | Level |
 | --- | --- | --- |
 | `artifact.select_best` | `artifact.select` | **ACT** |
+| `media.image.refine` | `media.image.generate` | **ACT** |
 | `lab.attach_artifact` | `lab.write` | **ACT** |
 
 Both **approve** a version, and approval changes what the user sees — hence ACT,
