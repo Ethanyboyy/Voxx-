@@ -30,6 +30,35 @@ export interface ResolutionResult {
   unresolved: string[];
 }
 
+/**
+ * Renumbers every reference in `input` by `offset`.
+ *
+ * Needed whenever a plan produced in isolation is spliced into a longer one.
+ * The planner numbers its steps from its own zero, so a plan of its steps
+ * appended after two earlier ones has every `{{step0.output}}` in it now
+ * naming a step the planner never saw. That failure is silent and plausible —
+ * the reference resolves, to the wrong thing — so the renumbering happens at
+ * splice time, in one place, rather than being left to each caller.
+ */
+export function offsetStepReferences<T>(input: T, offset: number): T {
+  if (offset === 0) return input;
+
+  function shift(node: unknown): unknown {
+    if (typeof node === "string") {
+      REFERENCE_PATTERN.lastIndex = 0;
+      return node.replace(REFERENCE_PATTERN, (_whole, orderText: string, path: string) =>
+        `{{step${Number(orderText) + offset}.output${path}}}`);
+    }
+    if (Array.isArray(node)) return node.map(shift);
+    if (node && typeof node === "object") {
+      return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, shift(value)]));
+    }
+    return node;
+  }
+
+  return shift(input) as T;
+}
+
 /** True when the input contains at least one step reference. */
 export function hasStepReference(input: unknown): boolean {
   if (typeof input === "string") {

@@ -19,6 +19,7 @@ import {
   writeWorkspaceFile,
 } from "@/lib/workspace/fs";
 import { gitStatus, runValidation, VALIDATION_NAMES, type ValidationName } from "@/lib/workspace/validate";
+import { generateImage, submitVideo, reviewArtifact } from "@/lib/capabilities/execute";
 import type { ToolDefinition } from "@/lib/tools/types";
 
 /**
@@ -298,6 +299,102 @@ register({
   execute: async (_userId, _input) => {
     requireConfiguredCalendar();
     throw new Error("Google Calendar integration is not implemented yet — no real OAuth client is registered.");
+  },
+});
+
+// --- Capability tools: image, video and review ------------------------------
+//
+// PERMISSION MAPPING, continued. Media generation sits at ACT because every
+// call SPENDS MONEY at a third party and sends user content to it. That is the
+// level VOX already reserves for actions with an external effect, and it means
+// a provider key alone is not enough — the user must also grant the capability,
+// which is two independent gates on the same decision.
+//
+// Visual QA sits at RECOMMEND. It was written at ANALYZE on the reasoning that
+// it only spends tokens and returns a judgement rather than an artifact — but
+// that weighs the WRONG THING. ANALYZE is granted by default, and reviewing an
+// image means uploading the user's picture to a third-party API. Category
+// "external" is the declaration that a tool sends data out of VOX, and the
+// registry's standing rule is that no external tool is default-allowed; QA is
+// external by that definition however cheap it is. So it needs a grant, one
+// step below the media tools that also spend money.
+
+register({
+  name: "media.image.generate",
+  description:
+    "Generate or edit an image and store it as an artifact version. Supplying reference version ids makes it an edit conditioned on them, and records the lineage.",
+  category: "external",
+  capability: "media.image.generate",
+  requiredLevel: "ACT",
+  isExternal: true,
+  inputSchema: z.object({
+    prompt: z.string().min(1).max(4000),
+    label: z.string().max(120).optional(),
+    artifactId: z.string().max(64).optional(),
+    subjectType: z.string().max(60).optional(),
+    subjectId: z.string().max(64).optional(),
+    referenceVersionIds: z.array(z.string().max(64)).max(8).optional(),
+    count: z.number().int().min(1).max(8).optional(),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await generateImage({ userId, ...input });
+    return {
+      output: result,
+      summary: `Generated ${result.versions.length} image(s) via ${result.provider} (${result.model}).`,
+    };
+  },
+});
+
+register({
+  name: "media.video.generate",
+  description:
+    "Submit a cinematic video job from a prompt and optional reference frames. Returns the job; video generation is asynchronous.",
+  category: "external",
+  capability: "media.video.generate",
+  requiredLevel: "ACT",
+  isExternal: true,
+  inputSchema: z.object({
+    prompt: z.string().min(1).max(4000),
+    label: z.string().max(120).optional(),
+    subjectType: z.string().max(60).optional(),
+    subjectId: z.string().max(64).optional(),
+    referenceVersionIds: z.array(z.string().max(64)).max(8).optional(),
+    durationSeconds: z.number().min(1).max(60).optional(),
+    cameraMotion: z.string().max(200).optional(),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await submitVideo({ userId, ...input });
+    return {
+      output: { providerJobId: result.job.providerJobId, status: result.job.status, capabilityRunId: result.capabilityRunId },
+      summary: `Submitted a cinematic job (${result.job.status}).`,
+    };
+  },
+});
+
+register({
+  name: "qa.visual_review",
+  description:
+    "Judge a stored artifact version against the requirements and any reference images. Returns a structured PASS/FAIL with typed issues.",
+  category: "external",
+  capability: "qa.visual_review",
+  requiredLevel: "RECOMMEND",
+  isExternal: true,
+  inputSchema: z.object({
+    requirements: z.string().min(1).max(4000),
+    candidateVersionId: z.string().min(1).max(64),
+    referenceVersionIds: z.array(z.string().max(64)).max(8).optional(),
+    criteria: z.string().max(60).optional(),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await reviewArtifact({ userId, ...input });
+    return {
+      // Only the verdict shape — never the reviewer's prose.
+      output: { status: result.status, score: result.score, issues: result.issues, recommendations: result.recommendations },
+      summary: `Review ${result.status} (${result.score}/100) with ${result.issues.length} issue(s).`,
+    };
   },
 });
 

@@ -24,9 +24,19 @@ describe("tool registry", () => {
   it("external/integration tools require RECOMMEND or above — never default-allowed", () => {
     for (const tool of listTools()) {
       if (tool.category === "external") {
-        expect(["RECOMMEND", "ASK", "ACT"]).toContain(tool.requiredLevel);
+        expect(["RECOMMEND", "ASK", "ACT"], `${tool.name} is external`).toContain(tool.requiredLevel);
       }
     }
+  });
+
+  it("gates the capability tools on egress and spend, not on how cheap they are", () => {
+    // Media generation spends money at a third party AND uploads user content.
+    expect(getTool("media.image.generate")!.requiredLevel).toBe("ACT");
+    expect(getTool("media.video.generate")!.requiredLevel).toBe("ACT");
+    // Visual QA only spends tokens — but it still uploads the user's image to
+    // a third-party API, so it must not sit at the default-granted ANALYZE.
+    expect(getTool("qa.visual_review")!.requiredLevel).toBe("RECOMMEND");
+    expect(getTool("qa.visual_review")!.category).toBe("external");
   });
 
   it("calendar tools report a clear 'not configured' error instead of faking a result", async () => {

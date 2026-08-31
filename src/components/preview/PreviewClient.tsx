@@ -6,7 +6,8 @@ import type { BrainNode, BrainEdge, BrainNodeType } from "@/lib/brain/graph";
 import type { BrainPayload } from "@/components/brain/BrainWorkspace";
 import { AssemblyInspector } from "@/components/three/AssemblyInspector";
 import { WRIST_ASSEMBLY } from "@/lib/experience/assembly";
-import { SCENARIO_SUITS, scenarioEvents, type ScenarioDefinition } from "@/lib/experience/scenarios";
+import { SCENARIO_SUITS, scenarioEvents, scenarioProgress, type ScenarioDefinition } from "@/lib/experience/scenarios";
+import { RequestProgress, type RequestProgressPayload } from "@/components/capabilities/RequestProgress";
 
 /**
  * Renders one visual QA scenario using the real production components.
@@ -115,6 +116,21 @@ export function PreviewClient({ scenario }: { scenario: ScenarioDefinition }) {
           // point of this route is that it touches nothing real.
           recordInteractions={false}
         />
+      ) : null}
+
+      {scenario.surface === "progress" ? (
+        // poll={false}: this route has no session and must reach nothing, so
+        // the panel renders the frame it is given and never fetches.
+        <div className="h-full overflow-y-auto px-4 py-10 sm:px-8">
+          <div className="mx-auto max-w-3xl">
+            <RequestProgress
+              traceId={`preview-${scenario.id}`}
+              runId="preview-run"
+              initial={scenarioProgress(scenario) as RequestProgressPayload}
+              poll={false}
+            />
+          </div>
+        </div>
       ) : null}
 
       {scenario.surface === "wrist" ? (

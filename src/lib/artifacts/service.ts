@@ -205,6 +205,40 @@ export async function getArtifact(userId: string, artifactId: string) {
   });
 }
 
+/**
+ * The bytes behind a stored version.
+ *
+ * Reads from disk via the version's recorded URL, mapped back to the artifact
+ * root — never by trusting the URL as a path. A version row is written by this
+ * service and its URL is always `/artifacts/<shard>/<uuid>.<ext>`, so anything
+ * that does not match that shape is not ours and is refused rather than
+ * resolved.
+ */
+export async function readArtifactVersionBytes(
+  userId: string,
+  versionId: string,
+): Promise<{ data: Uint8Array; mimeType: string } | null> {
+  const version = await db.artifactVersion.findFirst({
+    where: { id: versionId, artifact: { userId } },
+    select: { url: true, mimeType: true },
+  });
+  if (!version) return null;
+
+  const match = /^\/artifacts\/([0-9a-f]{2})\/([0-9a-f-]{36}\.[a-z0-9]+)$/.exec(version.url);
+  if (!match) return null;
+
+  const { readFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const absolute = path.join(process.cwd(), "public", "artifacts", match[1], match[2]);
+  try {
+    return { data: new Uint8Array(await readFile(absolute)), mimeType: version.mimeType };
+  } catch {
+    // A row whose bytes are gone is a real state (a cleaned deployment), and
+    // null lets the caller say so rather than crash.
+    return null;
+  }
+}
+
 export interface ListArtifactsFilter {
   kind?: ArtifactKind;
   subjectType?: string;

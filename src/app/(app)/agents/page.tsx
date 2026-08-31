@@ -5,7 +5,8 @@ import { listAgents } from "@/lib/agents/agents";
 import { listProjects } from "@/lib/projects/service";
 import { listTools } from "@/lib/tools/registry";
 import { AgentsClient } from "@/components/agents/AgentsClient";
-import { RoomHeader } from "@/components/ui/Instrument";
+import { DriveConsole } from "@/components/capabilities/DriveConsole";
+import { RoomHeader, Seam } from "@/components/ui/Instrument";
 
 export default async function AgentsPage() {
   const user = await getCurrentUser();
@@ -21,6 +22,14 @@ export default async function AgentsPage() {
         title="Agents"
         description={<>Give VOX an objective. It plans an ordered list of steps using its tool registry, then executes them one at a time — pausing whenever a step needs a permission you haven&apos;t granted yet. Nothing here ever bypasses the real permission check. Saved agents add a second restriction on top: an allowlist of capabilities that agent&apos;s runs may ever use, independent of what you&apos;ve personally granted.</>}
       />
+      {/* The routed entry point sits above the raw objective form: most
+          requests should go through the router, which can also decide that no
+          capability is needed. The form below stays for driving the planner
+          directly against a known objective. */}
+      <div className="mt-6">
+        <DriveConsole />
+      </div>
+      <Seam className="mt-8" />
       <Suspense>
         <AgentsClient
           initialRuns={runs.map(serializeRun)}

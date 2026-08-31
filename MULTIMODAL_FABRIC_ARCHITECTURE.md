@@ -304,6 +304,27 @@ nothing and an agent should not need an approval round-trip to run the tests.
 Writing is ACT — not granted by default — because that is the level VOX already
 reserves for actions that change something.
 
+The capability tools are registered the same way, and none of them is
+default-allowed:
+
+| Tool | Capability | Level |
+| --- | --- | --- |
+| `media.image.generate` | `media.image.generate` | **ACT** |
+| `media.video.generate` | `media.video.generate` | **ACT** |
+| `qa.visual_review` | `qa.visual_review` | **RECOMMEND** |
+
+Media generation is ACT because every call spends money at a third party and
+sends user content to it, so a configured provider key is not on its own
+authorization — the user must grant the capability as well, which is two
+independent gates on the same decision.
+
+Visual QA is RECOMMEND rather than ANALYZE, and the distinction matters:
+ANALYZE is granted by default, and reviewing an image means uploading the
+user's picture to a third-party API. Every tool whose category is `external`
+declares that it sends data out of VOX, and the registry's standing rule —
+asserted in `tests/tools.test.ts` — is that no such tool may sit at a
+default-granted level. Cheapness is not the criterion; egress is.
+
 ### There is no "run a command" tool
 
 This is a security boundary, not a permission question. Agent plans come from a

@@ -30,13 +30,16 @@ export type ScenarioId =
   | "suit-inspection"
   | "wrist-inspection"
   | "wrist-exploded"
-  | "wrist-reassembled";
+  | "wrist-reassembled"
+  | "progress-running"
+  | "progress-waiting"
+  | "progress-complete";
 
 export interface ScenarioDefinition {
   id: ScenarioId;
   label: string;
   /** Which surface renders. */
-  surface: "brain" | "suit-bay" | "wrist";
+  surface: "brain" | "suit-bay" | "wrist" | "progress";
   brainState: BrainStateName;
   /** Synthetic event types, shaping the Brain's signal mix. */
   eventTypes: string[];
@@ -120,6 +123,9 @@ export const SCENARIOS: Record<ScenarioId, ScenarioDefinition> = {
     selectedPart: "wristCartridge",
   },
   "wrist-reassembled": { id: "wrist-reassembled", label: "Wrist — reassembled", surface: "wrist", brainState: "idle", eventTypes: [], explode: 0 },
+  "progress-running": { id: "progress-running", label: "Progress — working", surface: "progress", brainState: "executing", eventTypes: [] },
+  "progress-waiting": { id: "progress-waiting", label: "Progress — needs permission", surface: "progress", brainState: "waiting", eventTypes: [] },
+  "progress-complete": { id: "progress-complete", label: "Progress — finished", surface: "progress", brainState: "idle", eventTypes: [] },
 };
 
 export const SCENARIO_IDS = Object.keys(SCENARIOS) as ScenarioId[];
@@ -243,3 +249,83 @@ export const SCENARIO_SUITS: BaySuitItem[] = [
     stats: { stealth: 66, durability: 48, mobility: 96, weightKg: 2.9, estimatedCostUsd: 19800 },
   },
 ];
+
+/**
+ * Synthetic progress frames for the `progress` surface.
+ *
+ * These are invented, like everything else in this module — no run, no
+ * provider call and no artifact behind them. Their job is to let the three
+ * states the panel has to get right be inspected side by side: work in
+ * flight, work parked on a permission, and work finished with its cost known.
+ *
+ * The finished frame deliberately mixes a priced call with an unpriced one,
+ * because "$0.0042+" versus "$0.0042" is exactly the distinction the panel
+ * exists to keep honest, and it is invisible in a scenario where every call
+ * reported a price.
+ */
+export function scenarioProgress(scenario: ScenarioDefinition) {
+  const base = {
+    traceId: `preview-${scenario.id}`,
+    runId: "preview-run",
+    objective: "Make three variations of the mask, pick the best, then build it in",
+    awaiting: null as { capability: string; requiredLevel: string; toolName: string | null } | null,
+    artifacts: [] as {
+      versionId: string; artifactId: string; version: number; url: string;
+      mimeType: string; capability: string; provider: string;
+    }[],
+    unpricedCalls: 0,
+  };
+
+  if (scenario.id === "progress-waiting") {
+    return {
+      ...base,
+      status: "WAITING_FOR_PERMISSION" as const,
+      awaiting: { capability: "media.image.generate", requiredLevel: "ACT", toolName: "media.image.generate" },
+      steps: [
+        { order: 0, description: "Recall what was decided about the mask", toolName: "memory.search", capability: "memory.search", requiredLevel: "OBSERVE", status: "COMPLETED" as const, error: null, durationMs: 240, retryCount: 0 },
+        { order: 1, description: "Generate three variations", toolName: "media.image.generate", capability: "media.image.generate", requiredLevel: "ACT", status: "WAITING_FOR_PERMISSION" as const, error: null, durationMs: null, retryCount: 0 },
+        { order: 2, description: "Check the result against what was asked for", toolName: "qa.visual_review", capability: "qa.visual_review", requiredLevel: "RECOMMEND", status: "PENDING" as const, error: null, durationMs: null, retryCount: 0 },
+      ],
+      providerCalls: [],
+      costUsd: null,
+      live: true,
+    };
+  }
+
+  if (scenario.id === "progress-complete") {
+    return {
+      ...base,
+      status: "COMPLETED" as const,
+      unpricedCalls: 1,
+      steps: [
+        { order: 0, description: "Recall what was decided about the mask", toolName: "memory.search", capability: "memory.search", requiredLevel: "OBSERVE", status: "COMPLETED" as const, error: null, durationMs: 240, retryCount: 0 },
+        { order: 1, description: "Generate three variations", toolName: "media.image.generate", capability: "media.image.generate", requiredLevel: "ACT", status: "COMPLETED" as const, error: null, durationMs: 8420, retryCount: 0 },
+        { order: 2, description: "Check the result against what was asked for", toolName: "qa.visual_review", capability: "qa.visual_review", requiredLevel: "RECOMMEND", status: "COMPLETED" as const, error: null, durationMs: 3100, retryCount: 0 },
+        { order: 3, description: "Apply the chosen lens profile to the Suit Bay build", toolName: "workspace.patch", capability: "workspace.write", requiredLevel: "ACT", status: "COMPLETED" as const, error: null, durationMs: 90, retryCount: 0 },
+      ],
+      providerCalls: [
+        { id: "preview-call-1", capability: "IMAGE_GENERATION", provider: "gemini", model: "nano-banana-2", status: "SUCCEEDED" as const, error: null, durationMs: 8420, costUsd: 0.0042, startedAt: "2026-01-01T12:00:00.000Z" },
+        { id: "preview-call-2", capability: "VISUAL_QA", provider: "anthropic", model: "claude-opus-5", status: "SUCCEEDED" as const, error: null, durationMs: 3100, costUsd: null, startedAt: "2026-01-01T12:00:09.000Z" },
+      ],
+      costUsd: 0.0042,
+      live: false,
+    };
+  }
+
+  return {
+    ...base,
+    status: "RUNNING" as const,
+    steps: [
+      { order: 0, description: "Recall what was decided about the mask", toolName: "memory.search", capability: "memory.search", requiredLevel: "OBSERVE", status: "COMPLETED" as const, error: null, durationMs: 240, retryCount: 0 },
+      { order: 1, description: "Generate three variations", toolName: "media.image.generate", capability: "media.image.generate", requiredLevel: "ACT", status: "RUNNING" as const, error: null, durationMs: null, retryCount: 0 },
+      { order: 2, description: "Check the result against what was asked for", toolName: "qa.visual_review", capability: "qa.visual_review", requiredLevel: "RECOMMEND", status: "PENDING" as const, error: null, durationMs: null, retryCount: 0 },
+      { order: 3, description: "Apply the chosen lens profile to the Suit Bay build", toolName: "workspace.patch", capability: "workspace.write", requiredLevel: "ACT", status: "PENDING" as const, error: null, durationMs: null, retryCount: 0 },
+    ],
+    providerCalls: [
+      { id: "preview-call-1", capability: "IMAGE_GENERATION", provider: "gemini", model: "nano-banana-2", status: "RUNNING" as const, error: null, durationMs: null, costUsd: null, startedAt: "2026-01-01T12:00:00.000Z" },
+    ],
+    costUsd: null,
+    unpricedCalls: 1,
+    live: true,
+  };
+}
