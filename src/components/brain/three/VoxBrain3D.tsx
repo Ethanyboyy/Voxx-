@@ -19,6 +19,7 @@ import { ActivityPulse } from "@/components/brain/three/ActivityPulse";
 import { activeSignalKinds, signalWeights, SIGNAL_HEX, SIGNAL_LABEL, type SignalKind } from "@/lib/3d/signals";
 import { buildNeuralWeb } from "@/components/brain/three/brainGeometry";
 import { useQualityTier } from "@/lib/3d/useQualityTier";
+import { usePrefersReducedMotion } from "@/lib/3d/useReducedMotion";
 import { RegionMarker } from "@/components/brain/three/RegionMarker";
 import { EntitySatellite } from "@/components/brain/three/EntitySatellite";
 import { computeSatelliteOffsets, SATELLITE_REVEAL_CAP } from "@/components/brain/three/regionLayout";
@@ -50,20 +51,6 @@ function ToolbarIconButton({ label, onClick, active, children }: { label: string
       {children}
       <span className="lab-mono text-[8.5px] uppercase tracking-wide">{label}</span>
     </button>
-  );
-}
-
-function subscribeReducedMotion(callback: () => void) {
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  mq.addEventListener("change", callback);
-  return () => mq.removeEventListener("change", callback);
-}
-
-function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeReducedMotion,
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    () => false
   );
 }
 
