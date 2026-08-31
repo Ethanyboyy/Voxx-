@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea, Label } from "@/components/ui/Field";
 import { InstrumentPanel, PanelHeader, Seam } from "@/components/ui/Instrument";
 import { Badge } from "@/components/ui/Badge";
-import { RequestProgress } from "@/components/capabilities/RequestProgress";
+import { RunWorkspace } from "@/components/capabilities/RunWorkspace";
 
 /**
  * Ask VOX for something and watch it decide how to do it.
@@ -155,8 +155,17 @@ export function DriveConsole() {
         </InstrumentPanel>
       ) : null}
 
-      {result && (result.runId || result.plan.steps.length > 0) ? (
-        <RequestProgress traceId={result.traceId} runId={result.runId} />
+      {/* The same workspace component the dedicated page mounts — one surface
+          for a run's state, not a second summary of it that can disagree. */}
+      {result?.runId ? (
+        <>
+          <RunWorkspace runId={result.runId} />
+          <p className="text-xs text-muted">
+            <a href={`/workspace/${result.runId}`} className="underline underline-offset-2 hover:text-foreground">
+              Open this run in its own workspace
+            </a>
+          </p>
+        </>
       ) : null}
     </section>
   );

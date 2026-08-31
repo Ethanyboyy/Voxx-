@@ -957,11 +957,27 @@ model AgentRun {
   result      String?
   /// Failure reason once FAILED.
   error       String?
+  /// Correlation to the capability trace, matching CapabilityRun.traceId.
+  ///
+  /// Without this a restarted process can find the run but not the provider
+  /// calls it made: traceId only ever travelled through step INPUT, so the
+  /// link existed in memory and in tool arguments but nowhere queryable.
+  /// Nullable because runs started directly from the Agents form are not
+  /// capability-routed and legitimately have no trace.
+  traceId     String?
+  /// The routed CapabilityPlan this run was built from, as JSON.
+  ///
+  /// A snapshot, not a source of truth for execution — the AgentSteps are
+  /// that. It is kept so the workspace can still show WHY each stage exists
+  /// after a restart, which the steps alone do not record.
+  plan        String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   completedAt DateTime?
 
   steps AgentStep[]
+
+  @@index([userId, traceId])
 }
 
 /// One planned unit of work within an AgentRun. `toolName` references a

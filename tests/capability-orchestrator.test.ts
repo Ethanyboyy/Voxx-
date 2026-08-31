@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { db } from "@/lib/db";
 import { createTestUser } from "./helpers";
-import { driveRequest } from "@/lib/capabilities/driver";
+import { driveRequest } from "@/lib/capabilities/orchestrator";
 import { offsetStepReferences } from "@/lib/agents/references";
 
 let userId: string;

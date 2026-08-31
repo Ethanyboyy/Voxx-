@@ -7,7 +7,7 @@ import type { BrainPayload } from "@/components/brain/BrainWorkspace";
 import { AssemblyInspector } from "@/components/three/AssemblyInspector";
 import { WRIST_ASSEMBLY } from "@/lib/experience/assembly";
 import { SCENARIO_SUITS, scenarioEvents, scenarioProgress, type ScenarioDefinition } from "@/lib/experience/scenarios";
-import { RequestProgress, type RequestProgressPayload } from "@/components/capabilities/RequestProgress";
+import { RunWorkspace, type RunTracePayload } from "@/components/capabilities/RunWorkspace";
 
 /**
  * Renders one visual QA scenario using the real production components.
@@ -119,15 +119,19 @@ export function PreviewClient({ scenario }: { scenario: ScenarioDefinition }) {
       ) : null}
 
       {scenario.surface === "progress" ? (
-        // poll={false}: this route has no session and must reach nothing, so
-        // the panel renders the frame it is given and never fetches.
+        // connected={false}: this route has no session and must reach
+        // nothing, so the workspace renders the frame it is given and never
+        // fetches or opens an event stream.
         <div className="h-full overflow-y-auto px-4 py-10 sm:px-8">
           <div className="mx-auto max-w-3xl">
-            <RequestProgress
-              traceId={`preview-${scenario.id}`}
+            <RunWorkspace
               runId="preview-run"
-              initial={scenarioProgress(scenario) as RequestProgressPayload}
-              poll={false}
+              initial={scenarioProgress(scenario) as unknown as RunTracePayload}
+              providers={[
+                { capability: "IMAGE_GENERATION", providerId: "gemini", displayName: "Nano Banana 2", configured: true, reason: null },
+                { capability: "VIDEO_GENERATION", providerId: "higgsfield", displayName: "Higgsfield", configured: false, reason: "HIGGSFIELD_API_KEY is not set." },
+              ]}
+              connected={false}
             />
           </div>
         </div>

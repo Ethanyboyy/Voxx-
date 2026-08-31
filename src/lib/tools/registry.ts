@@ -20,6 +20,8 @@ import {
 } from "@/lib/workspace/fs";
 import { gitStatus, runValidation, VALIDATION_NAMES, type ValidationName } from "@/lib/workspace/validate";
 import { generateImage, submitVideo, reviewArtifact } from "@/lib/capabilities/execute";
+import { selectBestVersion, attachArtifactToSubject } from "@/lib/capabilities/select";
+import { LAB_SUBJECT_TYPES } from "@/lib/lab/artifacts";
 import type { ToolDefinition } from "@/lib/tools/types";
 
 /**
@@ -394,6 +396,66 @@ register({
       // Only the verdict shape — never the reviewer's prose.
       output: { status: result.status, score: result.score, issues: result.issues, recommendations: result.recommendations },
       summary: `Review ${result.status} (${result.score}/100) with ${result.issues.length} issue(s).`,
+    };
+  },
+});
+
+// Selection and attachment both APPROVE a version, and approval is what the
+// Lab reads to decide what the Suit Bay renders. That makes them changes to
+// what the user sees, not analyses of it — hence ACT, the level VOX already
+// reserves for actions that change something. They are `external` because
+// selection calls the vision provider to compare candidates.
+
+register({
+  name: "artifact.select_best",
+  description:
+    "Compare every version of an artifact against the requirements and approve the strongest. Returns each candidate's score, not just the winner.",
+  category: "external",
+  capability: "artifact.select",
+  requiredLevel: "ACT",
+  isExternal: true,
+  inputSchema: z.object({
+    artifactId: z.string().min(1).max(64),
+    requirements: z.string().min(1).max(4000),
+    versionIds: z.array(z.string().max(64)).max(8).optional(),
+    referenceVersionIds: z.array(z.string().max(64)).max(8).optional(),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await selectBestVersion({ userId, ...input });
+    return {
+      output: {
+        artifactId: result.artifactId,
+        selectedVersionId: result.selected?.versionId ?? null,
+        selectedVersion: result.selected?.version ?? null,
+        candidates: result.candidates,
+      },
+      summary: result.reason,
+    };
+  },
+});
+
+register({
+  name: "lab.attach_artifact",
+  description:
+    "Attach an artifact to a Lab subject (suit, gadget, project, experiment) and approve its current version, so the Lab surfaces it.",
+  category: "project",
+  capability: "lab.write",
+  requiredLevel: "ACT",
+  inputSchema: z.object({
+    artifactId: z.string().min(1).max(64),
+    // A closed set, not a free string: the subject type decides which Lab
+    // surface renders the artifact, and an arbitrary value would attach it
+    // to nothing while reporting success.
+    subjectType: z.enum(LAB_SUBJECT_TYPES),
+    subjectId: z.string().min(1).max(64),
+    traceId: z.string().max(64).optional(),
+  }),
+  execute: async (userId, input) => {
+    const result = await attachArtifactToSubject({ userId, ...input });
+    return {
+      output: result,
+      summary: `Attached to ${input.subjectType} and approved as version ${result.version}.`,
     };
   },
 });

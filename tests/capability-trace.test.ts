@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { createTestUser } from "./helpers";
-import { getRequestProgress } from "@/lib/capabilities/progress";
+import { getRequestProgress } from "@/lib/capabilities/trace";
 
 let userId: string;
 let otherUserId: string;
@@ -117,6 +117,9 @@ describe("request progress", () => {
       capability: "media.image.generate",
       requiredLevel: "ACT",
       toolName: "media.image.generate",
+      // The user is approving an ACTION, not a capability string, so the
+      // step's own description travels with the request.
+      description: "Generate the concept",
     });
   });
 

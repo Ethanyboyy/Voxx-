@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser, apiErrorResponse, jsonOk } from "@/lib/api/helpers";
-import { driveRequest } from "@/lib/capabilities/driver";
+import { driveRequest } from "@/lib/capabilities/orchestrator";
 
 /**
  * Route one request and run the plan it produces.

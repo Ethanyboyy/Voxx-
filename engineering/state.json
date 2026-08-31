@@ -1,0 +1,73 @@
+{
+  "$comment": "Durable engineering state. See engineering/README.md. Update at each meaningful checkpoint; a stale entry is worse than none because it gets acted on.",
+  "updatedAt": "2026-08-31T17:50:00Z",
+  "verifiedAtCommit": "2b6e597",
+  "phase": "Orchestration — Brain to executor connective tissue",
+
+  "architecture": {
+    "stack": "Next.js 16.3 App Router, TypeScript, Prisma 7.9 on SQLite, Vitest, Tailwind, three.js + React Three Fiber",
+    "commands": {
+      "typecheck": "npm run typecheck",
+      "lint": "npm run lint",
+      "test": "npm test",
+      "build": "npm run build",
+      "migrate": "npm run db:migrate"
+    },
+    "requestFlow": [
+      "user request (chat, /agents DriveConsole, or API)",
+      "capabilities/router.ts — deterministic pass, then model-assisted fallback; produces a CapabilityPlan",
+      "capabilities/orchestrator.ts — sequences the plan, expands capabilities into PlanSteps, wires {{stepN.output}} references, persists traceId + plan",
+      "agents/service.ts startAgentRun — persists AgentRun + AgentStep rows",
+      "agents/executor.ts — THE only execution engine: ordered steps, checkCapability() gate, retries, reference resolution, pause/resume",
+      "tools/registry.ts — the closed tool set; each tool declares capability + requiredLevel",
+      "capabilities/execute.ts — provider calls, each wrapped in a CapabilityRun ledger row",
+      "artifacts/service.ts — append-only ArtifactVersion + ArtifactLink lineage",
+      "observability/events.ts recordEvent — the single event writer",
+      "capabilities/trace.ts getRunTrace — reassembles everything for the UI"
+    ],
+    "singleSourcesOfTruth": {
+      "execution": "src/lib/agents/executor.ts — no second executor exists or should",
+      "authorization": "src/lib/permissions/service.ts checkCapability/enforceCapability — one ladder OBSERVE < ANALYZE < RECOMMEND < ASK < ACT, default grant ANALYZE",
+      "events": "src/lib/observability/events.ts recordEvent — the only writer",
+      "routing": "src/lib/capabilities/router.ts",
+      "tools": "src/lib/tools/registry.ts — closed set; there is deliberately NO arbitrary-command tool",
+      "validation": "src/lib/workspace/validate.ts — closed set of four npm scripts, execFile with an argument array, no shell"
+    },
+    "providerAbstractions": {
+      "ai": "src/lib/ai/ (Anthropic + mock; mock has supportsVision false, deliberately)",
+      "image": "src/lib/image/ (Gemini/Nano Banana + an Unavailable provider — no mock image provider)",
+      "video": "src/lib/video/ (Higgsfield + Unavailable)",
+      "generation3d": "src/lib/generation/",
+      "research": "src/lib/research/",
+      "embeddings": "src/lib/embeddings/",
+      "integrations": "src/lib/integrations/"
+    },
+    "notes": [
+      "src/lib/orchestrator/service.ts is NOT the run driver — it is a cross-domain snapshot for prompt context. The run driver is src/lib/capabilities/orchestrator.ts. Same word, different concerns.",
+      "AgentRun.traceId is what lets a restarted process reconnect a run to its provider spend. Before it existed the link lived only in memory and in tool arguments.",
+      "Sequencing lives in the orchestrator, not the router: the router decides WHICH capabilities are needed, the orchestrator decides what order they can actually run in."
+    ]
+  },
+
+  "verification": {
+    "typecheck": { "status": "pass", "at": "2026-08-31T17:50:00Z" },
+    "lint": { "status": "pass", "errors": 0, "warnings": 14, "note": "warnings are pre-existing intentional unused-parameter names (_request, _input) in provider stubs" },
+    "tests": { "status": "pass", "files": 66, "count": 692, "at": "2026-08-31T17:50:00Z" },
+    "build": { "status": "pass", "at": "2026-08-31T17:45:00Z", "note": "re-run after the orchestrator commit" }
+  },
+
+  "providerReality": {
+    "$comment": "Reported by each provider's own isConfigured. Never claim connectivity that has not been verified.",
+    "image_gemini_nano_banana": "CONFIGURATION REQUIRED — GOOGLE_API_KEY absent",
+    "vision_anthropic": "CONFIGURATION REQUIRED — ANTHROPIC_API_KEY absent; Visual QA refuses to run rather than guessing a verdict",
+    "video_higgsfield": "CONFIGURATION REQUIRED — HIGGSFIELD_API_KEY absent; egress proxy also prevents verification from this environment",
+    "consequence": "End-to-end media workflows are exercised by acceptance tests with injected providers. No live provider call has been verified from this environment."
+  },
+
+  "knownLimitations": [
+    "MODEL_3D is planned by the router but no tool binds it — the orchestrator emits a described, tool-less step rather than failing on an unknown tool.",
+    "Video generation is submit-only: the CapabilityRun stays RUNNING until a later poll closes it. No poller exists yet.",
+    "Bounded iteration (capabilities/iterate.ts) is fully implemented and tested but is NOT yet wired into orchestrated runs — a run generates once and reviews once rather than looping.",
+    "The chat entry point does not yet route through the orchestrator; /agents DriveConsole and the API do."
+  ]
+}

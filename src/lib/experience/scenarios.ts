@@ -268,10 +268,25 @@ export function scenarioProgress(scenario: ScenarioDefinition) {
     traceId: `preview-${scenario.id}`,
     runId: "preview-run",
     objective: "Make three variations of the mask, pick the best, then build it in",
-    awaiting: null as { capability: string; requiredLevel: string; toolName: string | null } | null,
+    plan: {
+      strategy: "deterministic",
+      degraded: false,
+      notes: [] as string[],
+      steps: [
+        { capability: "MEMORY", reason: "The request refers to earlier decisions.", optional: false },
+        { capability: "IMAGE_GENERATION", reason: "The user asked for visual concepts.", optional: false },
+        { capability: "VISUAL_QA", reason: "Several candidates need comparing.", optional: false },
+      ],
+    },
+    awaiting: null as { capability: string; requiredLevel: string; toolName: string | null; description: string } | null,
+    reviews: [] as { artifactId: string; version: number; status: "PASS" | "FAIL"; score: number; issues: string[]; at: string }[],
+    iterations: [] as { artifactId: string; attempts: { attempt: number; of: number; status: "PASS" | "FAIL" | "RUNNING"; score: number | null }[]; limit: number }[],
+    activity: [] as { id: string; type: string; at: string; detail: string | null }[],
     artifacts: [] as {
-      versionId: string; artifactId: string; version: number; url: string;
-      mimeType: string; capability: string; provider: string;
+      versionId: string; artifactId: string; artifactLabel: string; kind: string;
+      version: number; url: string; mimeType: string; capability: string;
+      provider: string; state: "GENERATED" | "QA_FAILED" | "APPROVED" | "ACTIVE" | "SUPERSEDED";
+      score: number | null;
     }[],
     unpricedCalls: 0,
   };
@@ -280,7 +295,12 @@ export function scenarioProgress(scenario: ScenarioDefinition) {
     return {
       ...base,
       status: "WAITING_FOR_PERMISSION" as const,
-      awaiting: { capability: "media.image.generate", requiredLevel: "ACT", toolName: "media.image.generate" },
+      awaiting: {
+        capability: "media.image.generate",
+        requiredLevel: "ACT",
+        toolName: "media.image.generate",
+        description: "Generate three variations.",
+      },
       steps: [
         { order: 0, description: "Recall what was decided about the mask", toolName: "memory.search", capability: "memory.search", requiredLevel: "OBSERVE", status: "COMPLETED" as const, error: null, durationMs: 240, retryCount: 0 },
         { order: 1, description: "Generate three variations", toolName: "media.image.generate", capability: "media.image.generate", requiredLevel: "ACT", status: "WAITING_FOR_PERMISSION" as const, error: null, durationMs: null, retryCount: 0 },
@@ -308,6 +328,30 @@ export function scenarioProgress(scenario: ScenarioDefinition) {
         { id: "preview-call-2", capability: "VISUAL_QA", provider: "anthropic", model: "claude-opus-5", status: "SUCCEEDED" as const, error: null, durationMs: 3100, costUsd: null, startedAt: "2026-01-01T12:00:09.000Z" },
       ],
       costUsd: 0.0042,
+      // Three candidates in the three states a comparison actually produces:
+      // two rejected and kept, one approved and live.
+      artifacts: [
+        { versionId: "pv1", artifactId: "preview-artifact", artifactLabel: "Mask concept", kind: "IMAGE", version: 1, url: "", mimeType: "application/octet-stream", capability: "IMAGE_GENERATION", provider: "gemini", state: "QA_FAILED" as const, score: 71 },
+        { versionId: "pv2", artifactId: "preview-artifact", artifactLabel: "Mask concept", kind: "IMAGE", version: 2, url: "", mimeType: "application/octet-stream", capability: "IMAGE_GENERATION", provider: "gemini", state: "QA_FAILED" as const, score: 78 },
+        { versionId: "pv3", artifactId: "preview-artifact", artifactLabel: "Mask concept", kind: "IMAGE", version: 3, url: "", mimeType: "application/octet-stream", capability: "IMAGE_GENERATION", provider: "gemini", state: "ACTIVE" as const, score: 94 },
+      ],
+      reviews: [
+        { artifactId: "preview-artifact", version: 1, status: "FAIL" as const, score: 71, issues: ["Material still reads as armored"], at: "2026-01-01T12:00:09.000Z" },
+        { artifactId: "preview-artifact", version: 2, status: "FAIL" as const, score: 78, issues: ["Shoulder silhouette too rigid"], at: "2026-01-01T12:00:10.000Z" },
+        { artifactId: "preview-artifact", version: 3, status: "PASS" as const, score: 94, issues: [], at: "2026-01-01T12:00:11.000Z" },
+      ],
+      // Deliberately no iterations here: this scenario is a SELECTION among
+      // three candidates, not a retry loop. The quality-loop panel belongs to
+      // the running scenario, and showing both with the same numbers made two
+      // distinct panels read as duplicates.
+      iterations: [],
+      activity: [
+        { id: "a1", type: "capability.requested", at: "2026-01-01T12:00:00.000Z", detail: null },
+        { id: "a2", type: "capability.routed", at: "2026-01-01T12:00:01.000Z", detail: null },
+        { id: "a3", type: "artifact.version_created", at: "2026-01-01T12:00:08.000Z", detail: null },
+        { id: "a4", type: "artifact.selected", at: "2026-01-01T12:00:11.000Z", detail: "version 3" },
+        { id: "a5", type: "agent.run.completed", at: "2026-01-01T12:00:12.000Z", detail: null },
+      ],
       live: false,
     };
   }

@@ -428,6 +428,146 @@ Suit Bay renders what a human or a QA pass accepted; a newer unreviewed version
 appearing automatically would let an experiment silently replace the shipped
 asset.
 
+## 3.14 The orchestrator — Brain to executor
+
+Routing produced a correct plan and every stage worked, but nothing walked the
+plan. `src/lib/capabilities/orchestrator.ts` is the connective tissue:
+
+```
+USER REQUEST
+  ↓
+CAPABILITY ROUTER          which capabilities are needed
+  ↓
+ORCHESTRATOR               what order, which steps, wired to what
+  ↓
+AgentRun + AgentStep       persisted
+  ↓
+EXISTING EXECUTOR          runs them, gates them, pauses, resumes
+  ↓
+TOOLS / PROVIDERS
+  ↓
+ARTIFACTS + EVENTS
+  ↓
+getRunTrace()              reassembled for the workspace
+```
+
+It is a **coordination layer, not an execution engine**. `agents/executor.ts`
+already does ordered execution, `checkCapability()` gating, retries,
+`{{stepN.output}}` resolution and pause/resume. A second engine for capability
+plans would mean two things to keep correct and two places for a permission
+check to be forgotten. The orchestrator therefore does only what the executor
+does not:
+
+- **Sequencing.** The router decides *which* capabilities a request needs and
+  emits them in the order its own checks happen to run — which is not the order
+  they can execute in. "Create three concepts, pick the strongest, then build it
+  into the Suit Bay" routes to `EXECUTION` *before* `IMAGE_GENERATION`, and
+  building the chosen design before anything has been chosen is not a plan.
+  `sequencePlan()` ranks stages *gather → produce → judge → apply → film*. A
+  second `VISUAL_QA` ranks after execution rather than beside the first, because
+  an implementation cannot be checked before it exists.
+- **Expansion.** Each capability becomes concrete `PlanStep`s. `EXECUTION`
+  delegates to the real planner rather than a second, worse one.
+- **Wiring.** Later steps reference earlier output with the executor's own
+  syntax. Planner output is renumbered on splice: the planner counts from its
+  own zero, so without `offsetStepReferences()` a plan that recalls memory
+  before building has every `{{step0.output}}` in the engineering half pointing
+  at the memory lookup — a reference that *resolves*, to the wrong value, with
+  nothing failing.
+- **Persistence of the link.** See below.
+
+### Ordering is the dependency model
+
+A step that needs an earlier step's output references it; the executor fails any
+step whose reference cannot resolve; a failed step stops the run before its
+dependents are reached. That is a complete dependency graph for linear plans,
+which routed plans are. A separate DAG scheduler would be a second scheduler
+with nothing extra to schedule.
+
+### `AgentRun.traceId` — why the schema changed
+
+`traceId` used to travel only through step *input*. The link between a run and
+the provider calls it made therefore existed in memory and in tool arguments,
+and **nowhere queryable** — so a restarted process could find the run and never
+find what it spent. `AgentRun.traceId` (migration
+`20260831135903_orchestrator_run_trace`) closes that, and `AgentRun.plan` keeps
+the routed plan so the workspace can still explain *why* each stage exists after
+a restart. The plan is a snapshot, never read back to drive execution; the steps
+are what execute.
+
+### Lifecycle
+
+| State | Meaning |
+| --- | --- |
+| `PLANNING` | Row created, steps being written |
+| `RUNNING` | Executor working through steps in order |
+| `WAITING_FOR_PERMISSION` | Parked on a capability the user has not granted |
+| `COMPLETED` / `FAILED` / `CANCELLED` | Terminal |
+
+**Pause and resume.** The executor rebuilds step outputs from the persisted
+rows, skips anything `COMPLETED`, and re-runs the real `checkCapability()`.
+Resuming without the grant parks the run again — there is deliberately no force
+path. Idempotency comes from the same place: a completed step is never
+re-executed, so recovery cannot double-charge a provider.
+
+**Cancellation** marks unreached steps `SKIPPED` and the run `CANCELLED`, and
+deletes nothing. Every artifact, version and lineage row written before the
+cancellation survives, because the expensive half of a cancelled run is usually
+the half that already succeeded.
+
+### Selection is a real comparison
+
+"Make three variations and pick the best" is two acts, and the second is where a
+system usually starts lying. `capabilities/select.ts` reviews **every**
+candidate against the same requirements and approves the highest score,
+returning the per-candidate scores rather than only the winner — 88 vs 87 is a
+materially different situation from 88 vs 41. With no vision provider there is
+**no fallback to "pick the first"**: selection reports it could not choose,
+because a confident arbitrary pick is worse than an honest refusal.
+
+Approval is what makes the choice real — the Lab reads `approved`, so this is
+what promotes a concept into what the Suit Bay shows.
+
+### Tools added
+
+| Tool | Capability | Level |
+| --- | --- | --- |
+| `artifact.select_best` | `artifact.select` | **ACT** |
+| `lab.attach_artifact` | `lab.write` | **ACT** |
+
+Both **approve** a version, and approval changes what the user sees — hence ACT,
+not an analysis level.
+
+### API
+
+| Route | Does |
+| --- | --- |
+| `POST /api/capabilities/drive` | Route a request and start a run |
+| `GET /api/capabilities/runs/[id]` | The full trace — one id, since the run carries its own traceId |
+| `POST /api/capabilities/runs/[id]/resume` | Ask the executor to try again; never grants anything |
+| `POST /api/capabilities/runs/[id]/cancel` | Stop without destroying completed work |
+
+`/resume` is **not** an approval endpoint. The user grants the capability
+through the existing Permissions surface; this only asks the executor to
+re-check.
+
+### The workspace
+
+`/workspace/[id]` renders `RunWorkspace`, driven by the **existing event
+stream** rather than a poll — it refetches when an event that could change this
+run arrives, with a slow heartbeat as a safety net for the one thing the stream
+cannot report (an external video job closed by a later poll). It shows the
+checklist, the current step, the permission request phrased as the *action*
+being approved, artifacts with derived state
+(`GENERATED`/`QA_FAILED`/`APPROVED`/`ACTIVE`/`SUPERSEDED`), per-candidate review
+scores, bounded-iteration attempts as "n of limit", the activity feed, and
+provider status.
+
+`getRunTrace()` deliberately excludes step inputs, step outputs and generation
+prompts. Those can hold recalled memories and reviewer prose, and this payload
+reaches a client component; the trace needs status, timing, cost and verdicts,
+not content.
+
 ## 4. Delivery order
 
 Phases follow the brief, resequenced only where a dependency forces it —

@@ -120,8 +120,15 @@ const EXECUTION_PATTERNS: RegExp[] = [
   /\bapply (this|that|it)\b[^.?!]{0,30}\bto the\b/,
 ];
 
-/** Asking for more than one option is an image-generation tell. */
-const VARIATION = /\b(\d+|two|three|four|five|six|ten|several|multiple)\s+(variation|version|option|concept|design|alternative)s?\b/i;
+/**
+ * Asking for more than one option is an image-generation tell.
+ *
+ * The intervening `(?:\w+\s+){0,2}` is load-bearing: real requests describe
+ * what they want variations OF between the count and the noun — "three SUIT
+ * concepts", "four MASK LENS designs" — and requiring adjacency made the
+ * commonest phrasing of the whole feature invisible to the router.
+ */
+const VARIATION = /\b(\d+|two|three|four|five|six|ten|several|multiple)\s+(?:\w+\s+){0,2}(variation|version|option|concept|design|alternative)s?\b/i;
 
 /** Something VOX would have to look up rather than recall. */
 const RESEARCH = ["look up", "research", "find out", "what's the latest", "current best practice"];

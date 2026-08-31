@@ -19,6 +19,12 @@ export interface StartAgentRunInput {
    * Supervisor already plans once itself and passes the result here so the
    * planner (still the one real planner) is only invoked a single time. */
   steps?: PlanStep[];
+  /** Correlates this run with the CapabilityRun rows its steps produce.
+   * Persisted so the link survives a restart — see AgentRun.traceId. */
+  traceId?: string;
+  /** JSON snapshot of the routed CapabilityPlan, for the workspace to show
+   * why each stage exists. Never read back to drive execution. */
+  plan?: string;
 }
 
 /** Plans the objective (unless a pre-built plan is given), persists the run + steps, then executes as far as it can go before hitting a permission wait, failure, or completion. */
@@ -36,6 +42,8 @@ export async function startAgentRun(input: StartAgentRunInput) {
       projectId: input.projectId,
       agentId: input.agentId,
       supervisorRunId: input.supervisorRunId,
+      traceId: input.traceId,
+      plan: input.plan,
       status: "PLANNING",
     },
   });

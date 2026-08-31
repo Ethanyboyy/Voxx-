@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser, apiErrorResponse, jsonOk, ApiError } from "@/lib/api/helpers";
-import { getRequestProgress } from "@/lib/capabilities/progress";
+import { getRequestProgress } from "@/lib/capabilities/trace";
 
 /**
  * Live state of one driven request.

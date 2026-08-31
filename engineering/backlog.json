@@ -1,0 +1,134 @@
+{
+  "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
+  "updatedAt": "2026-08-31T17:50:00Z",
+  "items": [
+    {
+      "id": "ORCH-010",
+      "category": "orchestration",
+      "priority": "P1",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Wire bounded iteration into orchestrated runs, so a failed review drives a second generation attempt inside the run rather than only when iterateWithReview is called directly.",
+      "whyItMatters": "Today an orchestrated run generates once and reviews once. The retry loop exists, is tested, and is unreachable from a real request — which means the autonomous-improvement behaviour the workspace UI can display cannot actually occur.",
+      "complexity": "medium",
+      "dependencies": ["capabilities/iterate.ts", "capabilities/orchestrator.ts", "agents/executor.ts"],
+      "acceptanceCriteria": [
+        "A run whose review fails produces a second attempt without a new user request",
+        "The attempt ceiling is enforced inside the run, not only inside iterateWithReview",
+        "Every attempt persists as an ArtifactVersion with lineage, including rejected ones"
+      ],
+      "verificationCriteria": "An acceptance test where the first review fails and the second passes, asserting exactly two provider calls and two persisted versions.",
+      "designNote": "The executor runs a flat ordered step list; it has no loop construct. Either the orchestrator appends a retry step when a review fails (needs the executor to support dynamic step insertion), or a single step owns the whole loop internally. The second is smaller and keeps the executor unchanged — decide deliberately."
+    },
+    {
+      "id": "ORCH-011",
+      "category": "orchestration",
+      "priority": "P2",
+      "status": "todo",
+      "needsOpus": false,
+      "description": "Poll submitted video jobs and close their CapabilityRun rows.",
+      "whyItMatters": "submitVideo returns a job and leaves the CapabilityRun RUNNING forever. The trace therefore reports a run as permanently live, and no cost is ever recorded for video.",
+      "complexity": "low",
+      "dependencies": ["capabilities/execute.ts", "lib/video/"],
+      "acceptanceCriteria": [
+        "A completed provider job closes its CapabilityRun with status, duration and cost",
+        "A failed job records the failure reason",
+        "The trace stops reporting live once the job settles"
+      ],
+      "verificationCriteria": "Unit test with an injected video provider returning a terminal job status."
+    },
+    {
+      "id": "BRAIN-020",
+      "category": "brain",
+      "priority": "P2",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Route the chat entry point through the capability orchestrator so a conversational request can start a real run.",
+      "whyItMatters": "The directive's target flow is USER -> BRAIN -> ROUTER -> ORCHESTRATOR -> EXECUTOR. Chat currently ends at a text response; only /agents and the API can start orchestrated work, so the main entry point cannot do the main thing.",
+      "complexity": "medium",
+      "dependencies": ["lib/chat/service.ts", "capabilities/orchestrator.ts"],
+      "acceptanceCriteria": [
+        "A chat message that routes to a non-empty plan starts a run and returns its id",
+        "A message that routes to an empty plan still answers normally, with no AgentRun created",
+        "The response links to the workspace for the run"
+      ],
+      "verificationCriteria": "Integration test covering both branches; assert no AgentRun row for an ordinary question."
+    },
+    {
+      "id": "LAB-030",
+      "category": "lab-3d",
+      "priority": "P2",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Suit asset lifecycle: catalog -> preview -> selected -> hero, so 60+ suits do not each hold hero-resolution resources.",
+      "whyItMatters": "Directive section 22. Without a promotion/demotion lifecycle, scaling the catalogue degrades memory and frame rate on exactly the devices that matter most.",
+      "complexity": "high",
+      "dependencies": ["components/lab/SuitBaySpatial.tsx", "public/models/suits/"],
+      "acceptanceCriteria": [
+        "Only the active suit holds hero-fidelity resources",
+        "Deselecting a suit disposes its GPU resources",
+        "Switching suits does not grow memory monotonically"
+      ],
+      "verificationCriteria": "Measured before/after: resident GPU memory and suit-switch time across ten switches. Numbers recorded, not asserted from intuition."
+    },
+    {
+      "id": "SUIT-040",
+      "category": "3d-pipeline",
+      "priority": "P4",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Hands: five-finger definition, thumb opposition, fingernail plates.",
+      "whyItMatters": "Hands are the second thing a viewer looks at after the mask, and currently read as mittens at close camera distances.",
+      "complexity": "high",
+      "dependencies": ["tools/3d-pipeline/anatomy.py", "tools/3d-pipeline/sculpt.py"],
+      "acceptanceCriteria": ["Five separated digits", "Thumb opposes rather than sitting in the finger plane", "Nail plates read at hero camera distance"],
+      "verificationCriteria": "Render at hero distance and inspect the image. Blender (bpy 5.0.1) must be reinstalled in a fresh container: pip install bpy==5.0.1.",
+      "note": "Recorded lesson from earlier passes: a feature only reads by CONTRAST with its surroundings — scaling every sculpt field up together produces pouches, not detail."
+    },
+    {
+      "id": "SUIT-041",
+      "category": "3d-pipeline",
+      "priority": "P4",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Garment and fabric micro-detail: seam pressure, panel transitions, roughness variation that reads as technical textile rather than armour.",
+      "whyItMatters": "Directive section 16 — the design language is ADVANCED TECHNICAL FABRIC, not armoured sci-fi. This is the difference.",
+      "complexity": "high",
+      "dependencies": ["tools/3d-pipeline/texturing.py", "tools/3d-pipeline/garment.py"],
+      "acceptanceCriteria": ["Fabric reads as woven at hero distance", "No moiré at any supported camera distance"],
+      "verificationCriteria": "Render and inspect. Respect the Nyquist clamp already in texturing.py — weave period must stay above ~5 texels or it aliases.",
+      "note": "Recorded lesson: never derive a texture feature from a texture-space gradient. Adjacent texels are metres apart across UV seams; derive in world space."
+    },
+    {
+      "id": "FREE-050",
+      "category": "continuous-engineering",
+      "priority": "P3",
+      "status": "todo",
+      "needsOpus": false,
+      "description": "Deterministic repository scanner that reports findings into this backlog without calling any model.",
+      "whyItMatters": "Directive sections 34-38 want a free engineering shift that uses zero inference. The value is in what it detects deterministically: oversized assets, missing responsive variants, undisposed 3D resources, bundle regressions.",
+      "complexity": "medium",
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Runs offline with no API key and no model call",
+        "Appends deduplicated items to backlog.json rather than rewriting it",
+        "Only auto-fixes changes that are deterministic, reversible and test-verified; everything else becomes a needsOpus item"
+      ],
+      "verificationCriteria": "Run twice in succession — the second run must add nothing new. A scanner that regenerates its own findings is noise.",
+      "constraint": "MUST NOT circumvent Anthropic usage limits, impersonate Claude, or substitute another paid model. Deterministic tooling and genuinely local tools only."
+    },
+    {
+      "id": "PERF-060",
+      "category": "performance",
+      "priority": "P3",
+      "status": "todo",
+      "needsOpus": false,
+      "description": "Establish measured baselines: JS bundle, 3D payload, initial load, suit-switch time.",
+      "whyItMatters": "Directive section 32 — improvements cannot be claimed without measurement, and there is currently no baseline to compare against.",
+      "complexity": "low",
+      "dependencies": [],
+      "acceptanceCriteria": ["Baseline numbers recorded in engineering/state.json", "Reproducible command documented"],
+      "verificationCriteria": "Two consecutive measurements agree within a stated tolerance."
+    }
+  ]
+}
