@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { cn } from "@/lib/utils/cn";
 import { ContextPanel, type ContextTrace } from "@/components/chat/ContextPanel";
 import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
 import { VoxErrorPanel } from "@/components/vox/VoxErrorPanel";
+import { InlineRunProgress } from "@/components/chat/InlineRunProgress";
 import { useVoice } from "@/lib/voice/useVoice";
 
 function SpeakerIcon() {
@@ -71,28 +72,69 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
   const [listOpen, setListOpen] = useState(false);
   const [voiceReplies, setVoiceReplies] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  /** Distance from the bottom as of the last scroll the reader performed. */
+  const fromBottomRef = useRef(0);
 
   const voice = useVoice((finalText) => {
     if (finalText) handleSend(finalText);
   });
 
-  useEffect(() => {
+  /**
+   * Reloads the conversation from the server.
+   *
+   * The server is authoritative for an orchestrated turn: its assistant
+   * message is written when the run starts and REWRITTEN when the run settles,
+   * so the finished wording is fetched back rather than reconstructed on the
+   * client. This is also what makes a reload mid-run recover — the message and
+   * its runId are durable, and the live panel picks up from there.
+   */
+  const refreshMessages = useCallback(async () => {
     if (!activeId) return;
-    let cancelled = false;
-    fetch(`/api/conversations/${activeId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const raw: RawMessage[] = data.conversation?.messages ?? [];
-        if (!cancelled) setMessages(raw.map(fromRawMessage));
-      });
-    return () => {
-      cancelled = true;
-    };
+    const res = await fetch(`/api/conversations/${activeId}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const raw: RawMessage[] = data.conversation?.messages ?? [];
+    setMessages(raw.map(fromRawMessage));
   }, [activeId]);
+
+  useEffect(() => {
+    // Scheduled rather than called: refreshMessages sets state, and doing that
+    // synchronously inside an effect triggers a cascading render.
+    const timer = setTimeout(() => void refreshMessages(), 0);
+    return () => clearTimeout(timer);
+  }, [refreshMessages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  /**
+   * Keeps the newest turn in view while late-arriving content grows the list.
+   *
+   * Scrolling on `messages` alone is no longer enough: an inline run panel
+   * mounts empty and fills in after its first read, so the list gets taller
+   * once the effect above has already run. On a conversation carrying several
+   * runs that leaves the view stranded whole screens above the bottom after a
+   * reload — the finished turn is on screen only if you scroll for it.
+   *
+   * Re-pins only when the reader was already at the bottom, measured BEFORE
+   * the growth (a resize moves no scrollbar, so the last scroll the reader
+   * performed is still the honest reading). Scrolling up to read history is
+   * therefore never fought.
+   */
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (fromBottomRef.current > 64) return;
+      viewport.scrollTo({ top: viewport.scrollHeight });
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hasMessages]);
 
   async function ensureConversation(): Promise<string> {
     if (activeId) return activeId;
@@ -292,7 +334,14 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4">
+        <div
+          ref={scrollRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            fromBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight;
+          }}
+          className="flex-1 overflow-y-auto scrollbar-thin px-6 py-4"
+        >
           {messages.length === 0 ? (
             <div className="mt-16 flex flex-col items-center gap-4 text-center">
               {voice.sttSupported ? (
@@ -333,7 +382,7 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
               </div>
             </div>
           ) : (
-            <div className="mx-auto flex max-w-2xl flex-col gap-4">
+            <div ref={contentRef} className="mx-auto flex max-w-2xl flex-col gap-4">
               {messages.map((m) => {
                 if (m.role === "SYSTEM") {
                   return (
@@ -372,12 +421,13 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                         ) : null}
                       </div>
                       {m.runId ? (
-                        <a
-                          href={`/workspace/${m.runId}`}
-                          className="vox-unit mt-1 inline-block underline underline-offset-2 hover:text-foreground"
-                        >
-                          Open the workspace →
-                        </a>
+                        <InlineRunProgress
+                          runId={m.runId}
+                          // The message is rewritten server-side when the run
+                          // settles, so the finished text is fetched back
+                          // rather than guessed at here.
+                          onSettled={() => void refreshMessages()}
+                        />
                       ) : null}
                       {m.role === "ASSISTANT" && m.context ? <ContextPanel trace={m.context} /> : null}
                     </div>

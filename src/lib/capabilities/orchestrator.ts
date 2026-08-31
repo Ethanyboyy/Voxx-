@@ -31,7 +31,9 @@
 
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
-import { startAgentRun, resumeAgentRun, cancelAgentRun } from "@/lib/agents/service";
+import { startAgentRun, createAgentRun, resumeAgentRun, cancelAgentRun } from "@/lib/agents/service";
+import { executeRun } from "@/lib/agents/executor";
+import { logger } from "@/lib/observability/logger";
 import { planObjective, type PlanStep } from "@/lib/agents/planner";
 import { offsetStepReferences } from "@/lib/agents/references";
 import { routeRequest, type RoutingContext } from "@/lib/capabilities/router";
@@ -52,6 +54,20 @@ export interface DriveOptions {
   projectId?: string;
   /** Groups every provider call in this task. Generated when absent. */
   traceId?: string;
+  /**
+   * Return as soon as the run is persisted, and execute in the background.
+   *
+   * For a caller that must answer immediately — chat, where a three-attempt
+   * image loop would otherwise hold an HTTP response open for minutes and be
+   * killed by any proxy in between. The work is identical either way: the same
+   * `executeRun`, the same permission gate, the same events. Only the awaiting
+   * differs.
+   *
+   * `onSettled` runs after execution reaches a terminal state, so the caller
+   * can record the outcome it could not wait for.
+   */
+  background?: boolean;
+  onSettled?: (runId: string) => Promise<void>;
 }
 
 export interface DriveResult {
@@ -514,7 +530,11 @@ export async function driveRequest(options: DriveOptions): Promise<DriveResult> 
     return { plan, traceId, runId: null, steps: [] };
   }
 
-  const run = await startAgentRun({
+  // Creation and execution are separate calls so the background path can hand
+  // the run back before the work happens. Both paths run the SAME executor —
+  // there is no second engine, only a different moment to return.
+  const start = options.background ? createAgentRun : startAgentRun;
+  const run = await start({
     userId: options.userId,
     objective: options.request,
     projectId: options.projectId,
@@ -539,6 +559,35 @@ export async function driveRequest(options: DriveOptions): Promise<DriveResult> 
     // is what lets the activity feed join a run to its provider spend.
     payload: { traceId, steps: steps.length, status: run.status },
   });
+
+  if (options.background) {
+    // Deliberately not awaited. The run is already durable — status,
+    // currentStep, traceId and every step row are persisted — so losing this
+    // process loses only the in-flight step, and the run resumes from its rows
+    // exactly as it would after a permission pause. Progress reaches the client
+    // over the existing event stream, not over this promise.
+    void (async () => {
+      try {
+        await executeRun(options.userId, run.id);
+      } catch (error) {
+        // The executor records its own failure on the run; this is the last
+        // resort for something thrown outside that, which would otherwise be
+        // an unhandled rejection taking the process down.
+        logger.error("orchestrator.background_run_failed", {
+          runId: run.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      try {
+        await options.onSettled?.(run.id);
+      } catch (error) {
+        logger.error("orchestrator.on_settled_failed", {
+          runId: run.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }
 
   return { plan, traceId, runId: run.id, steps };
 }

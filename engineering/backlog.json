@@ -1,6 +1,6 @@
 {
-  "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest \u2014 a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T19:45:00Z",
+  "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
+  "updatedAt": "2026-08-31T20:30:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -9,7 +9,7 @@
       "status": "done",
       "needsOpus": true,
       "description": "Bounded autonomous iteration, reachable from a real request: generate, review, decide, revise, generate again.",
-      "whyItMatters": "RESOLVED. The loop was previously tested but unreachable \u2014 an orchestrated run generated once and reviewed once, so the autonomous-improvement behaviour the workspace could display could not actually occur.",
+      "whyItMatters": "RESOLVED. The loop was previously tested but unreachable — an orchestrated run generated once and reviewed once, so the autonomous-improvement behaviour the workspace could display could not actually occur.",
       "complexity": "medium",
       "dependencies": [
         "capabilities/iterate.ts",
@@ -22,11 +22,11 @@
         "Every attempt persists as an ArtifactVersion with lineage, including rejected ones"
       ],
       "verificationCriteria": "An acceptance test where the first review fails and the second passes, asserting exactly two provider calls and two persisted versions.",
-      "designNote": "The executor runs a flat ordered step list; it has no loop construct. Either the orchestrator appends a retry step when a review fails (needs the executor to support dynamic step insertion), or a single step owns the whole loop internally. The second is smaller and keeps the executor unchanged \u2014 decide deliberately.",
+      "designNote": "The executor runs a flat ordered step list; it has no loop construct. Either the orchestrator appends a retry step when a review fails (needs the executor to support dynamic step insertion), or a single step owns the whole loop internally. The second is smaller and keeps the executor unchanged — decide deliberately.",
       "implementation": "One step owns the loop (capabilities/refine.ts), registered as media.image.refine at ACT. Rejected dynamic step insertion because step references are keyed by step ORDER and insertion silently repoints them. Loop position recovers from append-only ArtifactVersions carrying parameters.attempt, so an interrupted run does not re-pay for generation. Revision directives (capabilities/revision.ts) carry CHANGE plus a derived PRESERVE list; the decision engine (capabilities/decide.ts) is pure and covers approve, iterate, ceiling, stalling, not-fixable-by-generation, provider-unavailable and execution-failure.",
       "verification": "20 tests in tests/iteration-acceptance.test.ts, all starting at driveRequest with an English sentence. Tests A-H plus the brief's full sentence (three variations, compare, improve the winner, attach to the Suit Bay) and its negative case (a one-shot request stays one shot, one provider call). Provider-call counts asserted throughout, so the cost claims are measured rather than asserted. Full suite 712/712, typecheck clean, lint 0 errors. Workspace inspected as rendered at 1100px and 390px.",
       "remainingLimitations": [
-        "IMAGE only \u2014 no video equivalent, which would need frame sampling that does not exist.",
+        "IMAGE only — no video equivalent, which would need frame sampling that does not exist.",
         "Resume re-reviews an attempt that was generated but not yet reviewed (one extra review call). Generation is never repeated."
       ]
     },
@@ -69,7 +69,7 @@
         "The response links to the workspace for the run"
       ],
       "verificationCriteria": "Integration test covering both branches; assert no AgentRun row for an ordinary question.",
-      "implementation": "One branch in POST /api/chat before the model call. decideChatAction() (src/lib/chat/action.ts) runs the existing deterministic router pass with no classifier \u2014 zero model calls to classify. An executable plan goes to driveRequest(); the reply is composed from the resulting trace, so the orchestrated path spends nothing on prose either. Streams on the SAME NDJSON protocol with one additive run_started frame, so an un-updated client still renders correctly.",
+      "implementation": "One branch in POST /api/chat before the model call. decideChatAction() (src/lib/chat/action.ts) runs the existing deterministic router pass with no classifier — zero model calls to classify. An executable plan goes to driveRequest(); the reply is composed from the resulting trace, so the orchestrated path spends nothing on prose either. Streams on the SAME NDJSON protocol with one additive run_started frame, so an un-updated client still renders correctly.",
       "verification": "17 tests in tests/chat-orchestration.test.ts calling the real route handler with a real Request. Tests A-H including permission denial, provider failure, resume, and asserted provider-call counts. Full suite 729/729. Real chat UI driven in a browser at 1100px and 390px."
     },
     {
@@ -111,7 +111,7 @@
         "Nail plates read at hero camera distance"
       ],
       "verificationCriteria": "Render at hero distance and inspect the image. Blender (bpy 5.0.1) must be reinstalled in a fresh container: pip install bpy==5.0.1.",
-      "note": "Recorded lesson from earlier passes: a feature only reads by CONTRAST with its surroundings \u2014 scaling every sculpt field up together produces pouches, not detail."
+      "note": "Recorded lesson from earlier passes: a feature only reads by CONTRAST with its surroundings — scaling every sculpt field up together produces pouches, not detail."
     },
     {
       "id": "SUIT-041",
@@ -120,7 +120,7 @@
       "status": "todo",
       "needsOpus": true,
       "description": "Garment and fabric micro-detail: seam pressure, panel transitions, roughness variation that reads as technical textile rather than armour.",
-      "whyItMatters": "Directive section 16 \u2014 the design language is ADVANCED TECHNICAL FABRIC, not armoured sci-fi. This is the difference.",
+      "whyItMatters": "Directive section 16 — the design language is ADVANCED TECHNICAL FABRIC, not armoured sci-fi. This is the difference.",
       "complexity": "high",
       "dependencies": [
         "tools/3d-pipeline/texturing.py",
@@ -128,9 +128,9 @@
       ],
       "acceptanceCriteria": [
         "Fabric reads as woven at hero distance",
-        "No moir\u00e9 at any supported camera distance"
+        "No moiré at any supported camera distance"
       ],
-      "verificationCriteria": "Render and inspect. Respect the Nyquist clamp already in texturing.py \u2014 weave period must stay above ~5 texels or it aliases.",
+      "verificationCriteria": "Render and inspect. Respect the Nyquist clamp already in texturing.py — weave period must stay above ~5 texels or it aliases.",
       "note": "Recorded lesson: never derive a texture feature from a texture-space gradient. Adjacent texels are metres apart across UV seams; derive in world space."
     },
     {
@@ -148,7 +148,7 @@
         "Appends deduplicated items to backlog.json rather than rewriting it",
         "Only auto-fixes changes that are deterministic, reversible and test-verified; everything else becomes a needsOpus item"
       ],
-      "verificationCriteria": "Run twice in succession \u2014 the second run must add nothing new. A scanner that regenerates its own findings is noise.",
+      "verificationCriteria": "Run twice in succession — the second run must add nothing new. A scanner that regenerates its own findings is noise.",
       "constraint": "MUST NOT circumvent Anthropic usage limits, impersonate Claude, or substitute another paid model. Deterministic tooling and genuinely local tools only."
     },
     {
@@ -158,7 +158,7 @@
       "status": "todo",
       "needsOpus": false,
       "description": "Establish measured baselines: JS bundle, 3D payload, initial load, suit-switch time.",
-      "whyItMatters": "Directive section 32 \u2014 improvements cannot be claimed without measurement, and there is currently no baseline to compare against.",
+      "whyItMatters": "Directive section 32 — improvements cannot be claimed without measurement, and there is currently no baseline to compare against.",
       "complexity": "low",
       "dependencies": [],
       "acceptanceCriteria": [
@@ -188,10 +188,10 @@
       "id": "BRAIN-021",
       "category": "brain",
       "priority": "P2",
-      "status": "todo",
+      "status": "done",
       "needsOpus": true,
       "description": "Make a chat-started run asynchronous: return immediately and stream progress from the event bus instead of holding the HTTP response open until the run finishes.",
-      "whyItMatters": "driveRequest executes the run to completion inside the chat request. A three-attempt image loop can take minutes, during which the browser sees the plan summary and then nothing, and any proxy timeout kills the response even though the run itself survives in the database. This is the largest remaining gap between chat and a genuinely live experience.",
+      "whyItMatters": "RESOLVED. Chat held the HTTP response open for the whole run, so a multi-step workflow looked frozen and any proxy in between could kill the response while the run carried on unseen.",
       "complexity": "medium",
       "dependencies": [
         "src/app/api/chat/route.ts",
@@ -203,7 +203,14 @@
         "Progress reaches the client over the existing event stream, not a second protocol",
         "A dropped connection does not affect the run, and reopening the conversation shows current state"
       ],
-      "verificationCriteria": "A test asserting the response closes before the run completes, and that the persisted message is later reconciled with the final outcome."
+      "verificationCriteria": "A test asserting the response closes before the run completes, and that the persisted message is later reconciled with the final outcome.",
+      "implementation": "agents/service.ts split into createAgentRun (persist) and startAgentRun (persist + execute), so driveRequest({ background: true }) can return once the run is DURABLE and run executeRun off the response. No second orchestrator, no duplicated executor, no second event bus. The chat route persists its assistant message BEFORE the work with the runId in its meta — that message is the reconnection anchor — and rewrites it in place via chat/service.ts#updateAssistantMessage when the onSettled callback fires. components/chat/InlineRunProgress.tsx renders live state from the EXISTING SSE bus, refetching the trace only on agent./capability./artifact./iteration. events; there is no polling loop and no fabricated progress. The panel reports a terminal run on its first non-live read rather than on a live->settled transition, because a short run can settle before it mounts.",
+      "verification": "24 tests in tests/chat-orchestration.test.ts including a timing test that asserts the POST has returned while the run is still RUNNING. Full suite 736/736, typecheck clean, lint 0 errors. Browser-verified against a real logged-in session in a FRESH conversation (so no earlier panel could satisfy the wait): panel live at ~270-320ms, message rewritten to the real outcome at ~1.5s with no reload, exactly one panel and the outcome text recovered after a full reload, 0px overflow at 1100px and 390px. Cost: 0 additional model calls, 0 additional image-generation calls, 0 additional QA calls — the plan summary and the outcome text are both composed from persisted state.",
+      "remainingLimitations": [
+        "The WAITING_FOR_PERMISSION rendering is covered by tests but was not photographed in a browser: in this environment every chat-reachable capability is either already granted to the QA user or has no configured provider, so no chat message could be made to park on permission.",
+        "Nothing pushes a notification when a background run finishes with the tab closed; the rewritten message is waiting on the next visit.",
+        "A run interrupted by a process restart is recoverable via resumeRun but nothing resumes it automatically."
+      ]
     }
   ]
 }

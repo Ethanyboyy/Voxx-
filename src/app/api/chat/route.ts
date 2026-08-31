@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getAIProvider } from "@/lib/ai";
-import { addMessage, buildSystemPrompt, getConversation, toProviderMessages } from "@/lib/chat/service";
+import { addMessage, updateAssistantMessage, buildSystemPrompt, getConversation, toProviderMessages } from "@/lib/chat/service";
 import { decideChatAction, describePlan, describeRunOutcome } from "@/lib/chat/action";
 import { driveRequest } from "@/lib/capabilities/orchestrator";
 import { getRunTrace } from "@/lib/capabilities/trace";
@@ -49,7 +49,35 @@ async function orchestratedResponse(options: {
         // while a multi-step run executes.
         if (options.planSummary) send({ type: "text_delta", text: `${options.planSummary}\n\n` });
 
-        const result = await driveRequest({ userId: options.userId, request: options.message });
+        // The assistant message is persisted BEFORE the work, holding the plan
+        // summary and the run id. That is what makes a reload mid-run find an
+        // intact conversation: the message is the durable anchor the client
+        // reconnects through. It is rewritten with the real outcome when the
+        // run settles.
+        const placeholder = await addMessage(options.conversationId, "ASSISTANT", options.planSummary, {
+          meta: { orchestrated: true, pending: true },
+        });
+
+        const result = await driveRequest({
+          userId: options.userId,
+          request: options.message,
+          // Return as soon as the run is durable. A three-attempt image loop
+          // would otherwise hold this response open for minutes and be killed
+          // by any proxy in between, while the run itself carried on unseen.
+          background: true,
+          onSettled: async (runId) => {
+            // Runs after execution reaches a terminal state, in the background
+            // task — this is where the message stops saying "working on it"
+            // and starts saying what happened.
+            const settled = await getRunTrace(options.userId, { runId });
+            await updateAssistantMessage(options.conversationId, placeholder.id, describeRunOutcome(settled), {
+              orchestrated: true,
+              runId,
+              traceId: settled.traceId,
+              status: settled.status,
+            });
+          },
+        });
 
         if (!result.runId) {
           // The router named capabilities but every one of them expanded to
@@ -57,29 +85,32 @@ async function orchestratedResponse(options: {
           // a claim of success would be the exact dishonesty this path exists
           // to avoid.
           const text = "I couldn't turn that into anything I can actually run right now — the capabilities it needs aren't available.";
-          const saved = await addMessage(options.conversationId, "ASSISTANT", text, {
-            meta: { orchestrated: true, traceId: result.traceId, ranNothing: true },
+          await updateAssistantMessage(options.conversationId, placeholder.id, text, {
+            orchestrated: true,
+            traceId: result.traceId,
+            ranNothing: true,
           });
           send({ type: "text_delta", text });
-          send({ type: "message_stop", messageId: saved.id, usage: { inputTokens: 0, outputTokens: 0 }, model: null });
+          send({ type: "message_stop", messageId: placeholder.id, usage: { inputTokens: 0, outputTokens: 0 }, model: null });
           return;
         }
 
-        send({ type: "run_started", runId: result.runId, traceId: result.traceId });
-
-        // driveRequest returns once the run has completed, failed, or parked on
-        // a permission — so by here the outcome is known and can be reported
-        // rather than predicted.
-        const trace = await getRunTrace(options.userId, { runId: result.runId });
-        const text = describeRunOutcome(trace);
-
-        const saved = await addMessage(options.conversationId, "ASSISTANT", text, {
-          meta: { orchestrated: true, runId: result.runId, traceId: result.traceId, status: trace.status },
+        // Link the persisted message to the run before returning, so a reload
+        // one second later can find its way back to work still in flight.
+        await updateAssistantMessage(options.conversationId, placeholder.id, options.planSummary, {
+          orchestrated: true,
+          pending: true,
+          runId: result.runId,
+          traceId: result.traceId,
         });
-        send({ type: "text_delta", text });
+
+        send({ type: "run_started", runId: result.runId, traceId: result.traceId });
+        // The response ends HERE, with the run still going. Progress reaches
+        // the client over the existing event stream; there is no second
+        // transport and nothing is fabricated in between.
         send({
           type: "message_stop",
-          messageId: saved.id,
+          messageId: placeholder.id,
           usage: { inputTokens: 0, outputTokens: 0 },
           model: null,
           runId: result.runId,

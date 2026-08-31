@@ -91,6 +91,35 @@ export async function addMessage(
   return toMessageDTO(row);
 }
 
+/**
+ * Rewrites one assistant message in place.
+ *
+ * The one legitimate mutation of a message, and it exists for a specific
+ * shape: an orchestrated turn persists its message the moment the run starts,
+ * so a reload mid-run finds the conversation intact, and then rewrites it with
+ * the real outcome once the run settles. The alternative — appending a second
+ * assistant message — would leave the conversation permanently showing a
+ * "working on it" that never resolved.
+ *
+ * Scoped by conversation as well as id so a message can only be rewritten
+ * within the conversation the caller already proved it owns.
+ */
+export async function updateAssistantMessage(
+  conversationId: string,
+  messageId: string,
+  content: string,
+  meta?: Record<string, unknown>,
+) {
+  const existing = await db.message.findFirst({ where: { id: messageId, conversationId, role: "ASSISTANT" } });
+  if (!existing) return null;
+
+  const row = await db.message.update({
+    where: { id: existing.id },
+    data: { content: encryptField(content), ...(meta ? { meta: JSON.stringify(meta) } : {}) },
+  });
+  return toMessageDTO(row);
+}
+
 const SYSTEM_PROMPT_HEADER = `You are VOX, the user's personal, private cognitive operating system — not a generic assistant persona.
 
 Ground rules:

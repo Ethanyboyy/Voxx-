@@ -27,8 +27,16 @@ export interface StartAgentRunInput {
   plan?: string;
 }
 
-/** Plans the objective (unless a pre-built plan is given), persists the run + steps, then executes as far as it can go before hitting a permission wait, failure, or completion. */
-export async function startAgentRun(input: StartAgentRunInput) {
+/**
+ * Persists the run and its steps WITHOUT executing them.
+ *
+ * Split out from `startAgentRun` so a caller can hand the run back to the user
+ * before the work happens — a chat turn returns a run id immediately and lets
+ * execution proceed in the background. The two halves were one function while
+ * every caller wanted to block; separating them adds no second engine, because
+ * execution is still `executeRun` and nothing else.
+ */
+export async function createAgentRun(input: StartAgentRunInput) {
   if (input.agentId) {
     const agent = await db.agent.findFirst({ where: { id: input.agentId, userId: input.userId } });
     if (!agent) throw new Error("Agent not found.");
@@ -65,6 +73,12 @@ export async function startAgentRun(input: StartAgentRunInput) {
     }),
   });
 
+  return run;
+}
+
+/** Persists the run, then executes as far as it can go before hitting a permission wait, failure, or completion. */
+export async function startAgentRun(input: StartAgentRunInput) {
+  const run = await createAgentRun(input);
   return executeRun(input.userId, run.id);
 }
 
