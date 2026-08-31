@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest — a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T23:05:00Z",
+  "updatedAt": "2026-08-31T23:40:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -254,7 +254,10 @@
         "Rim-glow shell now renders only in X-ray: at 1.008 scale on the same geometry it erupted through the newly carved grooves, and it was a second full-geometry draw call per part.",
         "Whole-brain camera distance 2.55 -> 3.35; the brain was cropped at both edges.",
         "Empty region markers (count 0) dimmed to 0.16 opacity and 0.55 scale — eight full-strength haloes announcing a count of zero were a large part of the 'floating blobs' read."
-      ]
+      ],
+      "proceduralVerdict": "REJECTED after the one allocated focused iteration. Domain-warped, anisotropic, 2-octave ridge carving with Laplacian smoothing removed the needle speckle and produced rounded folds, but the surface still reads as a lumpy mass rather than cortex. The reason is structural, not tuning: gyri are RIBBONS with coherent global topology, and noise on a sphere produces BUMPS with none. Going from bumps to ribbons is a different kind of data, not a parameter change. Do not spend further budget on noise parameters.",
+      "meshStrategy": "The repository ALREADY supports this with no new infrastructure: AssetKind includes 'brain', src/lib/3d/assetRegistry.ts validates asset.json manifests with per-tier LODs, assetLoader reads public/models/index.json, and GltfSuitModel proves the drei useGLTF path end to end. components/brain/three/AnatomicalBrainAsset.tsx is now the slot: it renders a registered 'brain' GLB with the same clipping planes, state emissive and opacity contract BrainMesh already uses, and reports absence so the procedural mesh stays as fallback. BLOCKED ON ASSET ONLY.",
+      "assetBlocker": "No anatomical brain mesh is bundled and none can be responsibly sourced from this environment: the egress proxy reaches raw.githubusercontent.com but blocks 3d.nih.gov and upload.wikimedia.org, and bundling a third-party licensed binary into the product is the owner's decision, not the agent's. NEXT SESSION needs the user to supply or approve a specific licensed mesh (public-domain options: NIH 3D Print Exchange brain models, FreeSurfer fsaverage pial surfaces). Once a .glb is at public/models/brain/<id>/ with an asset.json and listed in index.json, it renders with no further code change."
     }
   ]
 }

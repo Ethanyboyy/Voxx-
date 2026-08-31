@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ridgedNoise3D } from "@/components/brain/three/noise";
+import { plainNoise3D, ridgedNoise3D } from "@/components/brain/three/noise";
 
 /**
  * Procedural anatomical brain geometry. There is no bundled/licensed
@@ -81,9 +81,97 @@ function cerebrumShapeFactor(nx: number, ny: number, nz: number): number {
   return frontalBulge + occipitalTaper + temporalBulge + parietalLift + fissure;
 }
 
+/**
+ * Laplacian smoothing over an INDEXED geometry.
+ *
+ * Displacement evaluated per vertex always leaves single-vertex spikes where
+ * the noise happens to peak between neighbours — the "needle speckle" that
+ * made the cortex read as coral. Averaging each vertex toward the centroid of
+ * its topological neighbours removes that band without touching the broad
+ * folds, because the folds span dozens of vertices and a two-pass blur cannot
+ * reach them.
+ */
+function laplacianSmooth(geometry: THREE.BufferGeometry, iterations: number, strength: number) {
+  const index = geometry.getIndex();
+  if (!index) return;
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const count = position.count;
+
+  // Neighbour lists, built once from real topology.
+  const neighbours: number[][] = Array.from({ length: count }, () => []);
+  const seen = new Set<number>();
+  for (let i = 0; i < index.count; i += 3) {
+    const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
+    for (const [u, v] of [[a, b], [b, c], [c, a]] as const) {
+      const key = u < v ? u * count + v : v * count + u;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      neighbours[u].push(v);
+      neighbours[v].push(u);
+    }
+  }
+
+  const src = new Float32Array(position.array as Float32Array);
+  const dst = new Float32Array(src.length);
+  for (let pass = 0; pass < iterations; pass++) {
+    for (let i = 0; i < count; i++) {
+      const list = neighbours[i];
+      if (list.length === 0) {
+        dst[i * 3] = src[i * 3];
+        dst[i * 3 + 1] = src[i * 3 + 1];
+        dst[i * 3 + 2] = src[i * 3 + 2];
+        continue;
+      }
+      let ax = 0, ay = 0, az = 0;
+      for (const n of list) {
+        ax += src[n * 3];
+        ay += src[n * 3 + 1];
+        az += src[n * 3 + 2];
+      }
+      ax /= list.length; ay /= list.length; az /= list.length;
+      dst[i * 3] = src[i * 3] + (ax - src[i * 3]) * strength;
+      dst[i * 3 + 1] = src[i * 3 + 1] + (ay - src[i * 3 + 1]) * strength;
+      dst[i * 3 + 2] = src[i * 3 + 2] + (az - src[i * 3 + 2]) * strength;
+    }
+    src.set(dst);
+  }
+  (position.array as Float32Array).set(src);
+  position.needsUpdate = true;
+}
+
+/**
+ * Cortical folding.
+ *
+ * WHY THIS IS NOT PLAIN NOISE. Isotropic 3D noise on a sphere produces BLOBS —
+ * roughly round bumps scattered evenly. Gyri are not blobs; they are ribbons:
+ * elongated, meandering, and coherently oriented. No amount of extra octaves
+ * turns a field of dots into a field of ribbons, which is why successive
+ * attempts at higher frequency read first as rock, then as coral, then as
+ * needles. Two things fix that, and both are about WHERE the noise is sampled
+ * rather than how much of it there is:
+ *
+ *   1. DOMAIN WARP — the sample point is displaced by a second, lower-frequency
+ *      noise field before the ridge function sees it. Straight ridges become
+ *      meandering ones, which is most of what makes a fold pattern look grown
+ *      rather than generated.
+ *   2. ANISOTROPY — the sample domain is compressed along Y, so features are
+ *      stretched horizontally. Ridges become ribbons running roughly
+ *      antero-posteriorly, the direction real gyri mostly run.
+ *
+ * A Laplacian pass afterwards removes the per-vertex spikes the ridge function
+ * leaves behind, and normals are recomputed after that so the lighting
+ * describes the smoothed surface rather than the pre-smoothed one.
+ */
 function displaceCortex(geometry: THREE.BufferGeometry, scale: [number, number, number], shapeFactor: (nx: number, ny: number, nz: number) => number, foldFreq: number, foldAmplitude: number) {
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   const [sx, sy, sz] = scale;
+
+  const WARP_FREQ = 1.7;
+  const WARP_AMP = 0.42;
+  /** Y compression: >1 stretches features horizontally into ribbons. */
+  const ANISOTROPY = 2.4;
+  const RIDGE_FLOOR = 0.55;
+  const RIDGE_SPAN = 1 - RIDGE_FLOOR;
 
   for (let i = 0; i < position.count; i++) {
     const nx = position.getX(i);
@@ -96,37 +184,28 @@ function displaceCortex(geometry: THREE.BufferGeometry, scale: [number, number, 
     const dz = nz / len;
 
     const shape = shapeFactor(dx, dy, dz);
-    // Two noise octave BANDS rather than one: a coarse, low-frequency pass
-    // for large rolling folds (the shapes an eye reads as "lobes"), and a
-    // finer, higher-frequency pass layered on top at low amplitude for the
-    // smaller gyri/sulci texture — a single mid-frequency band at this mesh
-    // resolution reads as faceted "rock," not organic brain surface.
-    const coarse = ridgedNoise3D(dx * foldFreq, dy * foldFreq, dz * foldFreq, 3, 1.9, 0.5);
-    const fine = ridgedNoise3D(dx * foldFreq * 1.6, dy * foldFreq * 1.6, dz * foldFreq * 1.6, 2, 1.7, 0.45);
-    // Ridged noise is already peaked; keeping it UNSIGNED and subtracting it
-    // carves sulci INTO the surface rather than rippling the radius evenly
-    // above and below it. That asymmetry is what real cortex looks like —
-    // broad gyral crowns separated by narrow deep grooves — and it is the
-    // difference between a folded brain and a lumpy potato. The previous
-    // centred `(n - 0.5) * 2` form spent half its amplitude pushing outward,
-    // so at any amplitude subtle enough to keep the silhouette it produced no
-    // readable grooves at all.
-    // ridgedNoise3D accumulates (1 - |simplex|)^2, and simplex output clusters
-    // near zero, so its practical range is roughly [0.55, 1.0] — NOT [0, 1].
-    // Using `1 - value` raw therefore spends only a tenth of the requested
-    // amplitude and produces a surface that measures as displaced but reads as
-    // smooth. Remapping that real range to full [0, 1] first is what turns the
-    // ridges into gyral crowns and the gaps into sulci deep enough to shade.
-    const RIDGE_FLOOR = 0.55;
-    const RIDGE_SPAN = 1 - RIDGE_FLOOR;
-    // Smoothstep rather than a linear clamp: a hard clamp leaves the valley
-    // floors flat-bottomed and their walls sharp, which at this resolution
-    // renders as spikes rather than folds. Real gyri are rounded crowns with
-    // rounded troughs.
-    const crown = smoothstep(0, 1, Math.min(1, Math.max(0, (coarse - RIDGE_FLOOR) / RIDGE_SPAN)));
-    const crownFine = smoothstep(0, 1, Math.min(1, Math.max(0, (fine - RIDGE_FLOOR) / RIDGE_SPAN)));
-    const sulcal = (1 - crown) * 0.9 + (1 - crownFine) * 0.1;
-    const foldSigned = -sulcal * foldAmplitude;
+
+    // Offsets keep the three warp channels decorrelated; they are arbitrary
+    // constants, only their distinctness matters.
+    const wx = plainNoise3D(dx * WARP_FREQ, dy * WARP_FREQ, dz * WARP_FREQ);
+    const wy = plainNoise3D(dx * WARP_FREQ + 37.2, dy * WARP_FREQ + 12.1, dz * WARP_FREQ + 5.4);
+    const wz = plainNoise3D(dx * WARP_FREQ + 91.7, dy * WARP_FREQ + 63.8, dz * WARP_FREQ + 22.9);
+
+    const px = (dx + wx * WARP_AMP) * foldFreq;
+    const py = (dy + wy * WARP_AMP) * foldFreq * ANISOTROPY;
+    const pz = (dz + wz * WARP_AMP) * foldFreq;
+
+    // TWO octaves at low lacunarity. The tertiary band that used to sit on top
+    // of this is gone: it contributed nothing the eye reads as anatomy and
+    // everything the eye reads as grit.
+    const ridge = ridgedNoise3D(px, py, pz, 2, 1.5, 0.5);
+
+    // ridgedNoise3D accumulates (1 - |simplex|)^2, so its practical range is
+    // about [0.55, 1.0], NOT [0, 1]. Remap that real range before using it or
+    // the carve spends a tenth of the requested amplitude.
+    const crown = smoothstep(0, 1, Math.min(1, Math.max(0, (ridge - RIDGE_FLOOR) / RIDGE_SPAN)));
+    // Carve DOWN from the crowns: broad gyral crowns, narrower sulcal grooves.
+    const foldSigned = -(1 - crown) * foldAmplitude;
 
     // A small lateral push away from the midline near the fissure — turns
     // the radius dip into an actual visible GAP between hemispheres, not
@@ -139,6 +218,9 @@ function displaceCortex(geometry: THREE.BufferGeometry, scale: [number, number, 
     position.setXYZ(i, dx * radius * sx + lateralPush, dy * radius * sy, dz * radius * sz);
   }
   position.needsUpdate = true;
+
+  // Order matters: smooth the positions, THEN describe them with normals.
+  laplacianSmooth(geometry, 2, 0.5);
   geometry.computeVertexNormals();
 }
 
@@ -320,14 +402,14 @@ export function buildBrainParts(): BrainParts {
   const cerebrumRaw = new THREE.IcosahedronGeometry(1, CEREBRUM_DETAIL);
   const cerebrumBase = weldGeometry(cerebrumRaw);
   cerebrumRaw.dispose();
-  displaceCortex(cerebrumBase, CEREBRUM_SCALE, cerebrumShapeFactor, 5.4, 0.05);
+  displaceCortex(cerebrumBase, CEREBRUM_SCALE, cerebrumShapeFactor, 4.2, 0.075);
   const { positiveX: right, negativeX: left } = splitByX(cerebrumBase);
   cerebrumBase.dispose();
 
   const cerebellumRaw = new THREE.IcosahedronGeometry(1, CEREBELLUM_DETAIL);
   const cerebellumGeo = weldGeometry(cerebellumRaw);
   cerebellumRaw.dispose();
-  displaceCortex(cerebellumGeo, CEREBELLUM_SCALE, () => 0, 12.0, 0.035);
+  displaceCortex(cerebellumGeo, CEREBELLUM_SCALE, () => 0, 10.0, 0.04);
 
   const brainstem = new THREE.CylinderGeometry(0.15, 0.21, 0.5, 14, 3);
   brainstem.computeVertexNormals();

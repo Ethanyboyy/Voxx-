@@ -77,9 +77,9 @@ export function RegionMarker({
       {/* A thin, tight glow halo — big enough to read as "lit from within,"
           small enough not to look like a separate floating orb hovering in
           front of the surface. */}
-      <mesh scale={baseSize * 1.6}>
+      <mesh scale={baseSize * (hovered || focused ? 1.6 : 1.15)}>
         <sphereGeometry args={[1, 12, 12]} />
-        <meshBasicMaterial color={color} transparent opacity={hovered || focused ? 0.22 : 0.09} toneMapped={false} depthWrite={false} />
+        <meshBasicMaterial color={color} transparent opacity={hovered || focused ? 0.22 : 0.035} toneMapped={false} depthWrite={false} />
       </mesh>
       {hovered || focused ? (
         // No distanceFactor: this is a fixed-screen-size HUD pin, not a 3D

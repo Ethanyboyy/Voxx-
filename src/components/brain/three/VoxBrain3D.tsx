@@ -247,7 +247,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
     if (explodeAmount > 0.4) return withZoom([0, 0, 0], 4);
     // The brain is the hero. Portrait framing is handled once, in CameraRig —
     // see the framing note above.
-    return withZoom([0, 0.02, 0], 3.35);
+    return withZoom([0, 0.02, 0], 2.85);
   }, [selectedNode, focusedSystem, explodeAmount, entityPositions, manualZoom]);
 
   function resetToWholeBrain() {
