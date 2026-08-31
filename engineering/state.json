@@ -1,7 +1,7 @@
 {
   "$comment": "Durable engineering state. See engineering/README.md. Update at each meaningful checkpoint; a stale entry is worse than none because it gets acted on.",
   "updatedAt": "2026-08-31T18:55:00Z",
-  "verifiedAtCommit": "pending-orch-010",
+  "verifiedAtCommit": "78df2bd",
   "phase": "Orchestration \u2014 bounded autonomous iteration reachable from a real request",
   "architecture": {
     "stack": "Next.js 16.3 App Router, TypeScript, Prisma 7.9 on SQLite, Vitest, Tailwind, three.js + React Three Fiber",
@@ -72,8 +72,8 @@
       "at": "2026-08-31T18:50:00Z"
     },
     "build": {
-      "status": "pending-rerun",
-      "note": "re-run after the ORCH-010 commit"
+      "status": "pass",
+      "at": "2026-08-31T18:56:00Z"
     },
     "visual": {
       "status": "pass",
