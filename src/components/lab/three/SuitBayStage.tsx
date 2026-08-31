@@ -94,18 +94,97 @@ export function layoutBays(
   });
 }
 
+/**
+ * The display case around a bay.
+ *
+ * The single element that most separates "figures standing on discs" from "a
+ * laboratory": a suit under glass reads as an ARTEFACT — stored, catalogued,
+ * maintained — rather than as a character standing in a room. It also gives the
+ * scene the vertical structure it was missing, and the glass picks up the
+ * platform light as a rim that outlines each bay even when its suit is dark.
+ *
+ * Built as a thin open cylinder with a cap ring rather than a solid tube, so it
+ * costs two draw calls, never encloses the subject when the camera moves in,
+ * and cannot trap the subject behind a specular highlight.
+ */
+function DisplayCase({
+  radius,
+  active,
+  accent,
+  tier,
+}: {
+  radius: number;
+  active: boolean;
+  accent: string;
+  tier: QualityTier;
+}) {
+  // Glass reads by its EDGES, not its surface.
+  //
+  // The first version was a low-opacity dielectric shell, which in a dark room
+  // lit by falloff is simply invisible — the capture showed no case at all,
+  // only the hardware around it. A BackSide additive shell instead brightens
+  // exactly where the cylinder turns away from the camera, which is where a
+  // real tube catches light, and costs one unlit draw call.
+  const glass = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: accent,
+        transparent: true,
+        opacity: active ? 0.085 : 0.04,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [accent, active],
+  );
+  const trim = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#191b21", roughness: 0.38, metalness: 0.85 }),
+    [],
+  );
+  const glow = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: active ? 0.5 : 0.16, toneMapped: false }),
+    [accent, active],
+  );
+
+  const height = 2.32;
+
+  return (
+    <group>
+      {/* The glazing. Open-ended so the camera can pass through it. */}
+      <mesh position={[0, height / 2 + PLATFORM_HEIGHT, 0]} material={glass}>
+        <cylinderGeometry args={[radius * 0.94, radius * 0.94, height, tier === "MOBILE" ? 24 : 48, 1, true]} />
+      </mesh>
+
+      {/* Head and foot trim rings — the bit of hardware that makes the glass
+          read as installed rather than as a floating cylinder. */}
+      <mesh position={[0, height + PLATFORM_HEIGHT, 0]} rotation={[Math.PI / 2, 0, 0]} material={trim}>
+        <torusGeometry args={[radius * 0.94, 0.026, 8, tier === "MOBILE" ? 24 : 48]} />
+      </mesh>
+      <mesh position={[0, height + PLATFORM_HEIGHT, 0]} rotation={[Math.PI / 2, 0, 0]} material={glow}>
+        <ringGeometry args={[radius * 0.9, radius * 0.945, tier === "MOBILE" ? 24 : 48]} />
+      </mesh>
+      <mesh position={[0, PLATFORM_HEIGHT + 0.004, 0]} rotation={[Math.PI / 2, 0, 0]} material={glow}>
+        <ringGeometry args={[radius * 0.9, radius * 0.945, tier === "MOBILE" ? 24 : 48]} />
+      </mesh>
+    </group>
+  );
+}
+
 /** A single display platform with its recessed accent line. */
 function Platform({
   slot,
   active,
   dimmed,
   reducedMotion,
+  tier,
   onSelect,
 }: {
   slot: BaySlot;
   active: boolean;
   dimmed: boolean;
   reducedMotion: boolean;
+  tier: QualityTier;
   onSelect?: (id: string) => void;
 }) {
   const ring = useRef<THREE.Mesh>(null);
@@ -143,6 +222,8 @@ function Platform({
         <ringGeometry args={[PLATFORM_RADIUS * 0.9, PLATFORM_RADIUS * 0.945, 64]} />
         <meshBasicMaterial color={active ? slot.accent : "#6f7482"} transparent opacity={0.14} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
+
+      <DisplayCase radius={PLATFORM_RADIUS} active={active} accent={slot.accent} tier={tier} />
 
       {/* Overhead pool of light, per bay. The falloff between bays is what
           makes the room feel like a room. */}
@@ -419,6 +500,7 @@ export function SuitBayStage({
           active={slot.id === selectedId}
           dimmed={focused && slot.id !== selectedId}
           reducedMotion={reducedMotion}
+          tier={tier}
           onSelect={onSelect}
         />
       ))}

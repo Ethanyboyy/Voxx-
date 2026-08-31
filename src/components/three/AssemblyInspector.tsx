@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type RootState } from "@react-three/fiber";
-import { OrbitControls, Environment, Lightformer, ContactShadows } from "@react-three/drei";
+import { OrbitControls, Environment, Lightformer, ContactShadows, Html, Line } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
 import { approach } from "@/lib/3d/animation";
@@ -13,6 +13,7 @@ import { MOTION } from "@/lib/experience/motion";
 import { LIGHTING } from "@/lib/experience/world";
 import { GestureRecognizer, MIN_TOUCH_TARGET_PX } from "@/lib/experience/gestures";
 import { partOffset, type Assembly, type AssemblyPart } from "@/lib/experience/assembly";
+import { PROVENANCE_LABEL, engineeringFor, formatMeasurement, specRows } from "@/lib/lab/engineering";
 import { createChamferedSlab } from "@/components/lab/three/panelGeometry";
 import { cn } from "@/lib/utils/cn";
 
@@ -193,6 +194,94 @@ function PartMesh({
 }
 
 /**
+ * Leader-line callouts on a separated assembly.
+ *
+ * An exploded view without labels is a pile of parts. The line is what turns it
+ * into an engineering drawing: it says "this floating object is that named
+ * thing", which is the entire reason to take something apart in front of
+ * somebody.
+ *
+ * Labels only appear once the assembly is genuinely open (past `MIN_SEPARATION`)
+ * because a leader line pointing into a solid object is noise, and they fade
+ * with the same value that drives the separation so the two read as one motion.
+ * Values come from the engineering record and carry their provenance — a target
+ * is labelled as a target.
+ */
+const MIN_SEPARATION = 0.45;
+
+function Callout({
+  part,
+  amount,
+  count,
+  accent,
+  side,
+  selected,
+}: {
+  part: AssemblyPart;
+  amount: number;
+  count: number;
+  accent: string;
+  side: 1 | -1;
+  selected: boolean;
+}) {
+  const shape = SHAPES[part.id];
+  const record = engineeringFor(part.id);
+
+  const { origin, elbow, end } = useMemo(() => {
+    const [ox, oy, oz] = partOffset(part, 1, count);
+    const base = shape?.position ?? [0, 0, 0];
+    const o = new THREE.Vector3(base[0] + ox, base[1] + oy, base[2] + oz);
+    // Out to a common vertical rail, so the labels line up as a column instead
+    // of scattering around the object the way per-part offsets would.
+    const rail = side * 0.185;
+    const e = new THREE.Vector3(rail, o.y, o.z);
+    const f = new THREE.Vector3(rail + side * 0.008, o.y, o.z);
+    return { origin: o, elbow: e, end: f };
+  }, [part, count, shape, side]);
+
+  const visible = amount >= MIN_SEPARATION;
+  if (!visible) return null;
+
+  const fade = Math.min(1, (amount - MIN_SEPARATION) / (1 - MIN_SEPARATION));
+
+  return (
+    <group>
+      <Line
+        points={[origin, elbow, end]}
+        color={selected ? accent : "#8f97a8"}
+        lineWidth={selected ? 1.6 : 1}
+        transparent
+        opacity={fade * (selected ? 0.9 : 0.45)}
+      />
+      <Html
+        position={end}
+        center={false}
+        zIndexRange={[10, 0]}
+        style={{ pointerEvents: "none", opacity: fade, transform: side === 1 ? "translateY(-50%)" : "translate(-100%, -50%)" }}
+      >
+        <div style={{ width: 168, textAlign: side === 1 ? "left" : "right", whiteSpace: "nowrap" }}>
+          <div
+            className="lab-mono text-[11px] uppercase tracking-[0.16em]"
+            style={{ color: selected ? accent : "rgba(255,255,255,0.72)" }}
+          >
+            {part.label}
+          </div>
+          {record?.material ? (
+            <div className="lab-mono mt-0.5 text-[9px] uppercase tracking-[0.12em] text-white/35">{record.material}</div>
+          ) : null}
+          {record?.mass ? (
+            <div className="lab-mono mt-0.5 text-[9px] uppercase tracking-[0.12em] text-white/45">
+              {formatMeasurement(record.mass)}{" "}
+              <span className="text-white/25">{PROVENANCE_LABEL[record.mass.provenance]}</span>
+            </div>
+          ) : null}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+/**
  * Pulls the camera back as the assembly separates.
  *
  * The assembled device is ~90mm and deserves a tight frame; separated it spans
@@ -206,7 +295,7 @@ function ExplodeDolly({ amount, reducedMotion }: { amount: number; reducedMotion
   const controls = useThree((s: RootState) => s.controls) as OrbitControlsImpl | null;
 
   useFrame((_, delta) => {
-    const target = 0.155 + amount * 0.12;
+    const target = 0.165 + amount * 0.2;
     const k = reducedMotion ? 1 : approach(2.2, delta);
     const centre = controls?.target ?? new THREE.Vector3();
     const offset = camera.position.clone().sub(centre);
@@ -317,6 +406,21 @@ export function AssemblyInspector({
           ))}
         </group>
 
+        {/* One column of callouts down the left, the way a drawing sheet
+            annotates: alternating sides pushed half of them off-frame,
+            because the camera views the assembly from an angle. */}
+        {assembly.parts.map((part) => (
+          <Callout
+            key={`callout-${part.id}`}
+            part={part}
+            amount={explode}
+            count={assembly.parts.length}
+            accent={accent}
+            side={-1}
+            selected={part.id === selectedId}
+          />
+        ))}
+
         <ExplodeDolly amount={explode} reducedMotion={reducedMotion} />
 
         {budget.shadows ? <ContactShadows position={[0, -0.028, 0]} opacity={0.5} scale={0.35} blur={2.2} far={0.12} /> : null}
@@ -349,15 +453,38 @@ export function AssemblyInspector({
             {selected.label}
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-white/70">{selected.function}</p>
-          {selected.specs ? (
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-              {Object.entries(selected.specs).map(([key, value]) => (
-                <span key={key} className="lab-mono text-[9px] uppercase tracking-[0.14em] text-white/30">
-                  {key} <span className="text-white/55">{value}</span>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          {/* Engineering record, when one exists. Every value states its
+              provenance: a design target is not a measurement, and an
+              interface that renders both identically is lying by omission. */}
+          {(() => {
+            const record = engineeringFor(selected.id);
+            const rows = record ? specRows(record) : [];
+            if (rows.length === 0) return null;
+            return (
+              <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                {rows.map((row) => (
+                  <Fragment key={row.label}>
+                    <dt className="lab-mono text-[9px] uppercase tracking-[0.14em] text-white/30">{row.label}</dt>
+                    <dd className="lab-mono text-[10px] text-white/65">
+                      {row.value}
+                      {row.provenance ? (
+                        <span
+                          className="ml-2 rounded-full border px-1.5 py-px text-[8px] uppercase tracking-[0.12em]"
+                          style={{
+                            borderColor: row.provenance === "REAL" ? "rgba(34,211,238,0.4)" : "rgba(255,255,255,0.14)",
+                            color: row.provenance === "REAL" ? "rgba(34,211,238,0.85)" : "rgba(255,255,255,0.35)",
+                          }}
+                          title={row.note}
+                        >
+                          {PROVENANCE_LABEL[row.provenance]}
+                        </span>
+                      ) : null}
+                    </dd>
+                  </Fragment>
+                ))}
+              </dl>
+            );
+          })()}
         </div>
       ) : null}
 
