@@ -31,6 +31,8 @@ interface ChatMessage {
   model?: string | null;
   pending?: boolean;
   context?: ContextTrace;
+  /** Set when this turn started a real orchestrated run. */
+  runId?: string | null;
 }
 
 interface RawMessage {
@@ -43,15 +45,20 @@ interface RawMessage {
 
 function fromRawMessage(raw: RawMessage): ChatMessage {
   let context: ContextTrace | undefined;
+  let runId: string | undefined;
   if (raw.meta) {
     try {
       const parsed = JSON.parse(raw.meta);
       if (parsed?.context) context = parsed.context;
+      // The run outlives the streaming turn, so the link has to come back on
+      // reload. Without this a finished run is unreachable from the very
+      // conversation that started it.
+      if (typeof parsed?.runId === "string") runId = parsed.runId;
     } catch {
       // ignore malformed meta — context panel just won't show for this message
     }
   }
-  return { id: raw.id, role: raw.role, content: raw.content, model: raw.model, context };
+  return { id: raw.id, role: raw.role, content: raw.content, model: raw.model, context, runId };
 }
 
 export function ChatClient({ initialConversations }: { initialConversations: ConversationSummary[] }) {
@@ -152,11 +159,18 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantMessage.id ? { ...m, content: m.content + event.text } : m))
             );
+          } else if (event.type === "run_started") {
+            // The run exists from here on. Attaching the link now rather than
+            // at message_stop means a long run is inspectable while it runs,
+            // which is the case where the workspace is most useful.
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMessage.id ? { ...m, runId: event.runId } : m))
+            );
           } else if (event.type === "message_stop") {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantMessage.id
-                  ? { ...m, id: event.messageId, model: event.model, context: event.context, pending: false }
+                  ? { ...m, id: event.messageId, model: event.model, context: event.context, runId: event.runId ?? m.runId, pending: false }
                   : m
               )
             );
@@ -357,6 +371,14 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
                           </button>
                         ) : null}
                       </div>
+                      {m.runId ? (
+                        <a
+                          href={`/workspace/${m.runId}`}
+                          className="vox-unit mt-1 inline-block underline underline-offset-2 hover:text-foreground"
+                        >
+                          Open the workspace →
+                        </a>
+                      ) : null}
                       {m.role === "ASSISTANT" && m.context ? <ContextPanel trace={m.context} /> : null}
                     </div>
                   </div>

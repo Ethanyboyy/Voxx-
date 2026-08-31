@@ -99,6 +99,16 @@ export interface TraceIteration {
   attempts: { attempt: number; of: number; status: "PASS" | "FAIL" | "RUNNING"; score: number | null }[];
   /** The ceiling the loop was given, so the UI can say "2 / 3". */
   limit: number;
+  /**
+   * The loop's OWN verdict — `APPROVE`, `STOP_MAX_ITERATIONS`,
+   * `STOP_EXECUTION_FAILURE` and so on. Null while still running.
+   *
+   * Load-bearing, not decorative. The loop returns a result rather than
+   * throwing when a provider fails, so its step completes and the RUN reads as
+   * COMPLETED even though nothing was produced. Without the loop's verdict, a
+   * caller summarising the run reports "done" for a run that failed.
+   */
+  stoppedBecause: string | null;
 }
 
 /** A line in the activity feed. */
@@ -374,11 +384,21 @@ export async function getRunTrace(userId: string, lookup: TraceLookup): Promise<
     if (!event.type.startsWith("iteration.")) continue;
     const payload = parseJson(event.payload);
     const artifactId = event.subjectId ?? "";
+
+    // The terminal events carry no attempt number — they describe the loop,
+    // not one pass of it.
+    if (event.type === "iteration.approved" || event.type === "iteration.stopped") {
+      const entry = iterationsByArtifact.get(artifactId) ?? { artifactId, attempts: [], limit: 0, stoppedBecause: null };
+      entry.stoppedBecause = typeof payload.decision === "string" ? payload.decision : null;
+      iterationsByArtifact.set(artifactId, entry);
+      continue;
+    }
+
     const attempt = typeof payload.attempt === "number" ? payload.attempt : null;
     if (attempt === null) continue;
 
     const limit = typeof payload.of === "number" ? payload.of : (iterationsByArtifact.get(artifactId)?.limit ?? attempt);
-    const entry = iterationsByArtifact.get(artifactId) ?? { artifactId, attempts: [], limit };
+    const entry = iterationsByArtifact.get(artifactId) ?? { artifactId, attempts: [], limit, stoppedBecause: null };
     entry.limit = Math.max(entry.limit, limit);
 
     const existing = entry.attempts.find((a) => a.attempt === attempt);

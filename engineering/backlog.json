@@ -1,6 +1,6 @@
 {
   "$comment": "Prioritised work. See engineering/README.md for priority and status conventions. Keep this deduplicated and honest \u2014 a backlog of a thousand generated items is a backlog nobody reads.",
-  "updatedAt": "2026-08-31T18:55:00Z",
+  "updatedAt": "2026-08-31T19:45:00Z",
   "items": [
     {
       "id": "ORCH-010",
@@ -54,10 +54,10 @@
       "id": "BRAIN-020",
       "category": "brain",
       "priority": "P2",
-      "status": "todo",
+      "status": "done",
       "needsOpus": true,
       "description": "Route the chat entry point through the capability orchestrator so a conversational request can start a real run.",
-      "whyItMatters": "The directive's target flow is USER -> BRAIN -> ROUTER -> ORCHESTRATOR -> EXECUTOR. Chat currently ends at a text response; only /agents and the API can start orchestrated work, so the main entry point cannot do the main thing.",
+      "whyItMatters": "RESOLVED. Chat terminated at a text response, so the main entry point could not do the main thing.",
       "complexity": "medium",
       "dependencies": [
         "lib/chat/service.ts",
@@ -68,7 +68,9 @@
         "A message that routes to an empty plan still answers normally, with no AgentRun created",
         "The response links to the workspace for the run"
       ],
-      "verificationCriteria": "Integration test covering both branches; assert no AgentRun row for an ordinary question."
+      "verificationCriteria": "Integration test covering both branches; assert no AgentRun row for an ordinary question.",
+      "implementation": "One branch in POST /api/chat before the model call. decideChatAction() (src/lib/chat/action.ts) runs the existing deterministic router pass with no classifier \u2014 zero model calls to classify. An executable plan goes to driveRequest(); the reply is composed from the resulting trace, so the orchestrated path spends nothing on prose either. Streams on the SAME NDJSON protocol with one additive run_started frame, so an un-updated client still renders correctly.",
+      "verification": "17 tests in tests/chat-orchestration.test.ts calling the real route handler with a real Request. Tests A-H including permission denial, provider failure, resume, and asserted provider-call counts. Full suite 729/729. Real chat UI driven in a browser at 1100px and 390px."
     },
     {
       "id": "LAB-030",
@@ -181,6 +183,27 @@
         "A resumed loop re-reviews nothing that was already reviewed"
       ],
       "verificationCriteria": "Interrupt between generation and review; assert the review call count on resume."
+    },
+    {
+      "id": "BRAIN-021",
+      "category": "brain",
+      "priority": "P2",
+      "status": "todo",
+      "needsOpus": true,
+      "description": "Make a chat-started run asynchronous: return immediately and stream progress from the event bus instead of holding the HTTP response open until the run finishes.",
+      "whyItMatters": "driveRequest executes the run to completion inside the chat request. A three-attempt image loop can take minutes, during which the browser sees the plan summary and then nothing, and any proxy timeout kills the response even though the run itself survives in the database. This is the largest remaining gap between chat and a genuinely live experience.",
+      "complexity": "medium",
+      "dependencies": [
+        "src/app/api/chat/route.ts",
+        "src/lib/events/bus.ts",
+        "capabilities/orchestrator.ts"
+      ],
+      "acceptanceCriteria": [
+        "The chat response returns as soon as the run is created",
+        "Progress reaches the client over the existing event stream, not a second protocol",
+        "A dropped connection does not affect the run, and reopening the conversation shows current state"
+      ],
+      "verificationCriteria": "A test asserting the response closes before the run completes, and that the persisted message is later reconciled with the final outcome."
     }
   ]
 }
