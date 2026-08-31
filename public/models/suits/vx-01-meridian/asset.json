@@ -6,14 +6,14 @@
     {
       "url": "/models/suits/vx-01-meridian/suit.hero.glb",
       "tier": "HIGH",
-      "bytes": 13278496,
-      "triangles": 86716
+      "bytes": 10353440,
+      "triangles": 89404
     },
     {
       "url": "/models/suits/vx-01-meridian/suit.mobile.glb",
       "tier": "MOBILE",
-      "bytes": 3428324,
-      "triangles": 23968
+      "bytes": 3035192,
+      "triangles": 26416
     }
   ],
   "components": [
@@ -67,6 +67,60 @@
       ],
       "metadata": {
         "Type": "Recessed optical assembly"
+      }
+    },
+    {
+      "id": "lens-bezel-l",
+      "label": "Left lens bezel",
+      "parentId": "mask",
+      "kind": "component",
+      "meshNames": [
+        "lensBezelL"
+      ],
+      "metadata": {
+        "Construction": "Bonded surround, moulded",
+        "Function": "Retains and seals the optical assembly"
+      }
+    },
+    {
+      "id": "lens-bezel-r",
+      "label": "Right lens bezel",
+      "parentId": "mask",
+      "kind": "component",
+      "meshNames": [
+        "lensBezelR"
+      ],
+      "metadata": {
+        "Construction": "Bonded surround, moulded",
+        "Function": "Retains and seals the optical assembly"
+      }
+    },
+    {
+      "id": "sole-l",
+      "label": "Left sole",
+      "parentId": null,
+      "kind": "component",
+      "meshNames": [
+        "soleL"
+      ],
+      "detachable": true,
+      "metadata": {
+        "Construction": "Moulded rubber, cemented",
+        "Profile": "Flat forefoot and heel, lifted arch, sprung toe"
+      }
+    },
+    {
+      "id": "sole-r",
+      "label": "Right sole",
+      "parentId": null,
+      "kind": "component",
+      "meshNames": [
+        "soleR"
+      ],
+      "detachable": true,
+      "metadata": {
+        "Construction": "Moulded rubber, cemented",
+        "Profile": "Flat forefoot and heel, lifted arch, sprung toe"
       }
     },
     {

@@ -85,6 +85,10 @@ VIEWS = {
     "rear":           ((0.00,  3.55, 0.88), (0.0, 0.0, 0.88), 60),
     "three_quarter":  ((2.45, -2.55, 1.02), (0.0, 0.0, 0.88), 60),
     "head":           ((0.42, -0.95, 1.62), (0.0, -0.02, 1.60), 110),
+    # Dead-on, because symmetry cannot be judged from a three-quarter: one lens
+    # is foreshortened there and a genuine left/right mismatch is impossible to
+    # tell apart from perspective.
+    "face":           ((0.00, -0.86, 1.62), (0.0, -0.02, 1.61), 110),
     "mask_lens":      ((0.26, -0.62, 1.60), (0.0, -0.05, 1.60), 135),
     "web_shooter":    ((0.60, -0.55, 0.93), (0.252, 0.0, 0.90), 135),
     "hand":           ((0.62, -0.52, 0.78), (0.262, 0.0, 0.77), 135),

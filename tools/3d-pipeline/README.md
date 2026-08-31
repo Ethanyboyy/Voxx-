@@ -90,6 +90,50 @@ delivered asset.
 - **Feature size is bounded from both ends by texel density and camera
   distance.** Too large reads as crazed glaze up close; too small goes
   sub-pixel and vanishes at hero framing.
+- **`transform_apply(location=True)` moves the origin to (0, 0, 0).** Anything
+  scaled afterwards therefore scales about the WORLD origin, not about itself.
+  A 1.045 cutter scale on a part sitting at z = 1.62 displaced it 73 mm upward,
+  where it intersected nothing — so the boolean was a silent no-op that still
+  passed its own validation, and the lenses were never recessed at all.
+- **EXACT-solver DIFFERENCE against the mask shell is unreliable in BOTH
+  directions.** It deleted all 1840 faces for one cutter and changed nothing at
+  all for a plain test cube, on a mesh with zero non-manifold edges and zero
+  self-intersecting face pairs. Prefer interpenetrating opaque solids: two
+  opaque objects already render as one set into the other, with no solver.
+- **`recalc_face_normals` makes winding CONSISTENT, not outward.** On a shallow
+  dished solid it settled on inside-out. `bm.calc_volume(signed=True) < 0` is
+  the unambiguous test; flip on that rather than trusting the operator.
+- **Deriving anything from a texture-space gradient is wrong.** Adjacent texels
+  are usually metres apart on the body, because a UV island boundary lies
+  between them. A seam taken as `np.gradient` of the zone masks drew a groove
+  along the outline of every island — and since uncovered texels carry position
+  (0, 0, 0), which the boot curve classifies as accent, each island was
+  outlined against a solid accent field. Derive features analytically in WORLD
+  space instead: a seam is the band around a zone weight's 50% line.
+- **Mask uncovered texels before using them for anything.** See above.
+- **Nyquist applies to baked detail.** The weave repeats every `2*pi/scale`
+  metres; under about five texels it beats against the texel grid and renders
+  as coarse diagonal corduroy. Measure the real texel size —
+  `sqrt(mesh_area / covered_texels)` — and clamp the frequency to it. Detail
+  finer than that belongs in ROUGHNESS, which degrades gracefully, not in the
+  normal map, which does not.
+- **Skin-modifier chain TERMINALS shrink far more than mid-chain nodes.** The
+  heel's nominal underside was 6 mm and it built at 37 mm, so the figure stood
+  on tiptoe in a permanent 3 cm heel rise. Nothing in the joint table shows
+  this. Cast rays at the BUILT mesh and sweep the value until the measurement
+  is right; nominal values below ground are fine and expected.
+- **Never size a part from the joint table.** Same reason. The sole was written
+  from the foot's widest section twice and came out 15-20 mm proud all round,
+  because the foot has already narrowed by the time it reaches sole height.
+  Measure the built surface, at several heights, and take the widest hit.
+- **A loop projected onto a subdivided surface inherits its tessellation.** The
+  lens rim rendered visibly dented; the sole outline had a step where the
+  extrapolated toe met the measured stations. Low-pass the closed loop
+  (`garment._smooth_ring`) — a few tenths of a millimetre of fit for a clean
+  designed curve.
+- **A feature only reads by CONTRAST with its surroundings.** Scaling every
+  facial field up together produced swollen cheeks and no more nose than
+  before. Hold the neighbours back and raise the one feature.
 - Blender is Z-up and exports Z-up → Y-up, mapping Blender `-Y` to glTF `+Z`.
   The figure is therefore built facing `-Y` so it faces `+Z` in the export,
   which is what the runtime armour rig assumes when it derives

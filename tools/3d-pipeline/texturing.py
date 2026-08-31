@@ -274,13 +274,29 @@ def zone_weights(position):
     return panel, accent
 
 
-def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_scale=52.0, weave_scale=1750.0):
+def build_texture_set(ob, size, *, primary, panel_colour, accent_colour,
+                      web_scale=52.0, weave_scale=1750.0, web_strength=1.0):
     """Base colour, roughness and tangent-space normal for one mesh."""
     position, normal, coverage = rasterize_attributes(ob, size)
     if not coverage.any():
         raise meshops.MeshOperationError(f"{ob.name}: UV rasterisation covered no texels")
 
+    # How big one texel is ON THE MODEL. Everything below that has a real size
+    # in millimetres has to be checked against this, because a feature finer
+    # than a couple of texels does not get smaller as intended — it aliases,
+    # and the aliasing pattern is coarser and far more visible than the detail
+    # it replaced. The hand close-up rendered as diagonal corduroy for exactly
+    # this reason: a 3.6 mm weave sampled at 1.4 mm texels.
+    texel_m = math.sqrt(sum(p.area for p in ob.data.polygons) / max(int(coverage.sum()), 1))
+
     panel_w, accent_w = zone_weights(position)
+    # Texels no UV island covers carry position (0, 0, 0), which is a real
+    # point on the zone curves — the boot band happens to claim it — so left
+    # alone they read as a solid accent field behind every island. Nothing may
+    # be derived from a texel that has no surface under it.
+    covered = coverage.astype(np.float32)
+    panel_w = panel_w * covered
+    accent_w = accent_w * covered
 
     base = np.empty((size, size, 3), dtype=np.float32)
     base[:] = np.array(primary, dtype=np.float32)
@@ -304,15 +320,20 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     # was invisible in every full-body frame no matter how much contrast it was
     # given. Converting to metres first is what makes the width mean something.
     strand_m = 0.0026                       # 2.6 mm — a real woven cord
-    strand = sstep(strand_m * web_scale, strand_m * web_scale * 0.28, edge)
+    strand = sstep(strand_m * web_scale, strand_m * web_scale * 0.28, edge) * web_strength
     # 0.34 was too dark: at full-body distance a third of the base colour
     # removed along every cell edge reads as crazed leather, not as a net laid
     # into a textile. The strand still exists in the normal and roughness maps
     # below, which is where construction should live — colour is the weakest
     # and least physical channel to express it in.
-    base *= (1.0 - 0.11 * strand[..., None])
+    base *= (1.0 - 0.045 * strand[..., None])
 
-    weave = triplanar_weave(position, normal, scale=weave_scale)
+    # `scale` is radians per metre, so the weave repeats every 2*pi/scale. Hold
+    # that to at least five texels: below that the crossed sines beat against
+    # the texel grid instead of resolving, and no amount of amplitude tuning
+    # helps because the artefact is in the sampling, not the signal.
+    safe_weave_scale = min(weave_scale, (2.0 * math.pi) / (5.0 * texel_m))
+    weave = triplanar_weave(position, normal, scale=safe_weave_scale)
 
     # --- seams ---------------------------------------------------------------
     # A stitched seam wherever a panel boundary falls.
@@ -320,14 +341,25 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     # This is the single detail that separates "a body painted two shades of
     # grey" from "cut and sewn panels": real apparel is assembled from flat
     # pieces, and the join is always visible as a line of thread with a slight
-    # ridge either side of it. Deriving it from the GRADIENT of the zone masks
-    # means the seam is exactly where the panel edge is, automatically, for any
-    # zone shape — including ones added later.
-    def _edge(mask):
-        gy, gx = np.gradient(mask.astype(np.float32))
-        return np.sqrt(gx * gx + gy * gy)
+    # ridge either side of it. A seam is exactly the zone's own 50% line, so
+    # taking a band around that weight puts it on every panel edge
+    # automatically, for any zone shape — including ones added later.
+    #
+    # It is derived IN WORLD SPACE for a reason. The first version took
+    # np.gradient of the zone masks, which is a difference between ADJACENT
+    # TEXELS — and two texels that neighbour each other in the atlas are
+    # usually metres apart on the body, because a UV island boundary lies
+    # between them. So it drew a bright groove along the outline of every
+    # island: the mask came out covered in a staircase of cracks following its
+    # unwrap, on a head that has no panel boundary anywhere on it. The band
+    # below cannot do that, because it never looks at a neighbouring texel.
+    # It also fixes the aliasing: a gradient seam was one to two texels wide
+    # regardless of resolution, where this one has a real width in millimetres.
+    def _band(w, sharpness=2.5):
+        """A ridge centred on a zone's 50% line, ~6 mm wide at blend = 6 mm."""
+        return np.clip(1.0 - np.abs(w * 2.0 - 1.0), 0.0, 1.0) ** sharpness
 
-    seam = np.clip((_edge(panel_w) + _edge(accent_w)) * 95.0, 0.0, 1.0)
+    seam = np.clip(_band(panel_w) + _band(accent_w), 0.0, 1.0)
     base *= (1.0 - 0.55 * seam[..., None])
 
     # --- ripstop grid --------------------------------------------------------
@@ -345,10 +377,10 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     rough = np.full((size, size), 0.66, dtype=np.float32)
     rough = rough * (1.0 - panel_w) + 0.58 * panel_w
     rough = rough * (1.0 - accent_w) + 0.47 * accent_w
-    rough += weave * 0.045                      # highlight breakup along the threads
+    rough += weave * 0.075                      # highlight breakup along the threads
     rough -= ripstop * 0.05                      # the reinforcing thread is denser and glossier
     rough -= seam * 0.14                         # stitched thread is compressed and glossier
-    rough -= strand * 0.075                      # strands sit denser, so a touch glossier
+    rough -= strand * 0.040                      # strands sit denser, so a touch glossier
     rough = np.clip(rough, 0.05, 0.98)
 
     # --- height → tangent-space normal --------------------------------------
@@ -356,7 +388,21 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     # are needed and the result is correct for any unwrap.
     # The strand is RAISED, not cut. A groove reads as a crack in the surface;
     # a ridge reads as a net laid into the weave, which is what it is.
-    height = weave * 0.16 + strand * 0.34 + ripstop * 0.22 + seam * 0.85
+    # Weave amplitude cut from 0.16. Even resolved, a thread is a few hundred
+    # microns of relief; at 0.16 the finite difference tilted the normal by
+    # more than twenty degrees per texel and the garment read as ribbed
+    # corduroy over the whole body. Thread-scale detail belongs mostly in
+    # roughness, which degrades gracefully when it cannot be resolved, rather
+    # than in the normal map, which does not. The ripstop grid at 6.5 mm is
+    # comfortably above texel size and is what now carries visible relief.
+    # Strand relief cut from 0.34. At that height the cell edges rendered as a
+    # network of deep cracks over the whole garment — the shin close-up read as
+    # snakeskin, not as a net laid into a textile, and no colour tuning helps
+    # because the artefact is in the normal map. Cells are 10-15 mm across, so
+    # anything but a whisper of relief on their edges reads as reptile scale.
+    # The ripstop grid is the motif that carries "technical" here; the web is
+    # meant to be noticed second, on inspection.
+    height = weave * 0.05 + strand * 0.09 + ripstop * 0.22 + seam * 0.85
     dy, dx = np.gradient(height.astype(np.float32))
     # Gradient strength was 2.2 and turned the weave into chunky square beads:
     # the finite difference is per-texel, so a strong multiplier amplifies texel
@@ -377,6 +423,10 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
         "roughness": rough_rgb,
         "normal": normal_map,
         "coverage": float(coverage.mean()),
+        # Reported so the build log says what detail this texture can actually
+        # hold, instead of leaving it to be discovered in a render.
+        "texel_mm": texel_m * 1000.0,
+        "weave_mm": (2.0 * math.pi / safe_weave_scale) * 1000.0,
     }
 
 

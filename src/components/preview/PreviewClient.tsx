@@ -111,6 +111,9 @@ export function PreviewClient({ scenario }: { scenario: ScenarioDefinition }) {
           brainState={scenario.brainState}
           initialSelectedId={SCENARIO_SUITS[0].id}
           initialFocused={scenario.focused ?? false}
+          // These suits are synthetic and have no database row, and the whole
+          // point of this route is that it touches nothing real.
+          recordInteractions={false}
         />
       ) : null}
 

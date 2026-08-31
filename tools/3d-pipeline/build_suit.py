@@ -13,9 +13,9 @@ Pipeline, in the order the quality brief requires:
     form         sculpt.py     muscle displacement fields
     garment      garment.py    seams, material zones
     head/mask    garment.py    fitted mask from the head's own surface
-    lenses       garment.py    shaped solids, recessed into the mask
+    lenses       garment.py    solids projected onto the mask's own surface
     technology   webshooter.py five addressable mechanical parts
-    materials    materials.py  seven distinct materials
+    materials    materials.py  nine distinct materials
     render       rendering.py  diagnostic rig first, cinematic last
 
 Every stage validates its own output — see meshops.py for why nothing here
@@ -92,17 +92,32 @@ def build(args):
     # garment.assign_zones() is no longer called from this recipe — it cannot
     # produce a boundary finer than a polygon — but it is kept as the reference
     # implementation of the zone curves that texturing.zone_weights() evaluates.
-    mats = materials.build_materials()
+    # Pass the CLI palette through: the body and mask meshes have these
+    # replaced by baked materials, but the bezels keep theirs, so a material
+    # set built from stale defaults would show up on the frames.
+    mats = materials.build_materials(
+        primary=srgb_hex_to_linear(args.primary),
+        panel=srgb_hex_to_linear(args.panel),
+        accent=srgb_hex_to_linear(args.accent),
+        mask=srgb_hex_to_linear(args.mask),
+    )
     meshops.shade_smooth(suit, 60)
 
     # --- 6-8: head, mask, lenses --------------------------------------------
     mask = garment.build_mask(suit)
-    lenses = [garment.build_lens("L"), garment.build_lens("R")]
-    garment.recess_lenses(mask, lenses)
+    lenses, bezels = garment.build_lenses(mask)
     mask.data.materials.append(mats["MASK"])
     for lens in lenses:
         lens.data.materials.append(mats["LENS"])
+    for bezel in bezels:
+        bezel.data.materials.append(mats["BEZEL"])
     log["mask"] = meshops.describe(mask)
+
+    # --- boot soles ----------------------------------------------------------
+    soles = [garment.build_sole(suit, side) for side in ("L", "R")]
+    for sole in soles:
+        sole.data.materials.append(mats["SOLE"])
+    log["soles"] = [meshops.describe(s) for s in soles]
 
     # --- 13: web-shooter -----------------------------------------------------
     mechanical = []
@@ -113,7 +128,7 @@ def build(args):
             mechanical.append(part)
     log["mechanical"] = [p.name for p in mechanical]
 
-    objects = [suit, mask] + lenses + mechanical
+    objects = [suit, mask] + lenses + bezels + soles + mechanical
 
     for ob in objects:
         meshops.unwrap(ob, context=f"uv {ob.name}")
@@ -132,19 +147,32 @@ def build(args):
     )
     _mat, imgs = texturing.apply_baked_material(suit, body_maps, "vox_garment", texture_dir=args.texture_dir)
     images += imgs
-    log["body_texture"] = f"{args.texture_size}px, {body_maps['coverage'] * 100:.1f}% UV coverage"
+    log["body_texture"] = (
+        f"{args.texture_size}px, {body_maps['coverage'] * 100:.1f}% UV coverage, "
+        f"{body_maps['texel_mm']:.2f}mm texel, {body_maps['weave_mm']:.2f}mm weave"
+    )
 
     mask_maps = texturing.build_texture_set(
         mask, max(args.texture_size // 2, 512),
         primary=srgb_hex_to_linear(args.mask),
         panel_colour=srgb_hex_to_linear(args.mask),
         accent_colour=srgb_hex_to_linear(args.mask),
-        web_scale=130.0,
+        # No web on the mask. Two reasons, and either alone is sufficient.
+        # Visually, a cellular pattern at head scale renders as crazing: the
+        # mask came out looking like crumpled paper, which is the opposite of a
+        # smooth fitted shell. And by design, a web pattern over a full-head
+        # mask is the most recognisable element of a copyrighted costume — the
+        # palette was already moved off it for that reason, and leaving the web
+        # on the one part where it reads most clearly undid that.
+        web_strength=0.0,
         weave_scale=2600.0,
     )
     _mmat, mimgs = texturing.apply_baked_material(mask, mask_maps, "vox_mask", texture_dir=args.texture_dir)
     images += mimgs
-    log["mask_texture"] = f"{max(args.texture_size // 2, 512)}px, {mask_maps['coverage'] * 100:.1f}% UV coverage"
+    log["mask_texture"] = (
+        f"{max(args.texture_size // 2, 512)}px, {mask_maps['coverage'] * 100:.1f}% UV coverage, "
+        f"{mask_maps['texel_mm']:.2f}mm texel, {mask_maps['weave_mm']:.2f}mm weave"
+    )
     log["images"] = [i.name for i in images]
 
     return suit, objects, log
@@ -167,7 +195,14 @@ def main():
     # but as engineered apparel rather than as a superhero suit. Per-suit
     # colour belongs in these arguments, not in the pipeline.
     ap.add_argument("--primary", default="#3a4052", help="Garment base colour (hex).")
-    ap.add_argument("--panel", default="#59637d", help="Structural panel colour (hex).")
+    # Held CLOSE to the primary on purpose. At #59637d the panel was three
+    # stops lighter than the body, and at full-figure distance every zone read
+    # as a block of a different colour rather than a different weave: the chest
+    # yoke came out as a pale bib ending in a hard curve across the abdomen,
+    # the deltoid caps as patches stuck on the arms, the knee guards as ovals.
+    # The zones still read at this contrast — they carry their own roughness
+    # and a stitched seam along every boundary — but as panels of one garment.
+    ap.add_argument("--panel", default="#464e63", help="Structural panel colour (hex).")
     ap.add_argument("--accent", default="#22262f", help="Gloves/boots/belt colour (hex).")
     ap.add_argument("--mask", default="#333a4a", help="Mask shell colour (hex).")
     ap.add_argument("--texture-dir", default=None)

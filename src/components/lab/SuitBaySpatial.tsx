@@ -20,6 +20,7 @@ import { lightingFor } from "@/lib/experience/world";
 import { deriveExperienceState, type BrainStateName } from "@/lib/experience/state";
 import { GestureRecognizer, MIN_TOUCH_TARGET_PX } from "@/lib/experience/gestures";
 import { parseCommand, describeIntent } from "@/lib/experience/intents";
+import { reportSuitInteraction, type InteractionReport } from "@/lib/lab/reportInteraction";
 import type {
   ArmorLevel,
   MaskLensStyle,
@@ -105,6 +106,15 @@ export function SuitBaySpatial({
   /** Deterministic override used by the visual QA scenarios. */
   initialSelectedId,
   initialFocused = false,
+  /**
+   * Whether interactions are written to the event timeline.
+   *
+   * Off for the visual QA scenarios: their suits are synthetic and have no
+   * database row, so every selection would post an id that resolves to
+   * nothing. A preview that writes to the real audit trail is also just a bad
+   * idea — the whole point of that route is that it touches nothing real.
+   */
+  recordInteractions = true,
 }: {
   suits: BaySuitItem[];
   brainState?: BrainStateName;
@@ -112,6 +122,7 @@ export function SuitBaySpatial({
   onOpenDetail?: (id: string) => void;
   initialSelectedId?: string;
   initialFocused?: boolean;
+  recordInteractions?: boolean;
 }) {
   const tier = useQualityTier();
   const budget = QUALITY_BUDGETS[tier];
@@ -171,9 +182,27 @@ export function SuitBaySpatial({
     [activeComponent, hoveredComponent],
   );
 
-  const selectComponent = useCallback((id: string) => {
-    setSelectedComponent((current) => (current === id ? null : id));
-  }, []);
+  // One place that decides whether an interaction is recorded, so no call site
+  // has to remember the preview case.
+  const record = useCallback(
+    (report: InteractionReport) => {
+      if (recordInteractions) reportSuitInteraction(report);
+    },
+    [recordInteractions],
+  );
+
+  const selectComponent = useCallback(
+    (id: string) => {
+      setSelectedComponent((current) => {
+        const next = current === id ? null : id;
+        // Only a selection is worth a row; deselecting by tapping the same
+        // component again is the user closing something, not opening it.
+        if (next) record({ type: "lab.component.selected", suitId: selectedId ?? undefined, componentId: next });
+        return next;
+      });
+    },
+    [record, selectedId],
+  );
 
   // The room's lighting is a function of the place and what VOX is doing —
   // the same derivation the Brain uses, so both surfaces agree.
@@ -182,10 +211,14 @@ export function SuitBaySpatial({
 
   const reducedMotion = usePrefersReducedMotion();
 
-  const select = useCallback((id: string) => {
-    setSelectedId(id);
-    setFocused(true);
-  }, []);
+  const select = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      setFocused(true);
+      record({ type: "lab.suit.selected", suitId: id });
+    },
+    [record],
+  );
 
   // Gestures on the canvas surface. OrbitControls already owns drag and pinch
   // for the camera, so this recognizer is only here for the semantic gestures

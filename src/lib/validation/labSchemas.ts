@@ -3,6 +3,8 @@
 // this is a large, self-contained domain — see CLAUDE.md project layout.
 import { z } from "zod";
 
+import { SUIT_INTERACTIONS } from "@/lib/lab/interactions";
+
 export const labConfidenceSchema = z.enum(["VERIFIED", "ESTIMATED", "HYPOTHETICAL", "UNKNOWN"]);
 export const labDesignStatusSchema = z.enum(["ACTIVE", "EXPERIMENTAL", "PREFERRED", "ARCHIVED"]);
 export const labProjectStatusSchema = z.enum(["ACTIVE", "PAUSED", "COMPLETED", "ARCHIVED"]);
@@ -477,4 +479,16 @@ export const addSuitImageSchema = z.object({
   kind: labSuitImageKindSchema,
   url: z.string().url().max(2000),
   label: z.string().max(200).optional(),
+});
+
+/**
+ * Suit Bay interaction. The `type` enum is generated from the interaction
+ * registry rather than restated, so a type can never be accepted at the edge
+ * that the service does not know how to record.
+ */
+export const suitInteractionSchema = z.object({
+  type: z.enum(SUIT_INTERACTIONS),
+  suitId: z.string().min(1).max(120).optional(),
+  componentId: z.string().min(1).max(120).optional(),
+  amount: z.number().min(0).max(1).optional(),
 });

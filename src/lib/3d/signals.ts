@@ -54,6 +54,28 @@ const EXACT: Record<string, SignalKind> = {
   "proposal.created": "reasoning",
 };
 
+/**
+ * Real, recorded events that are explicitly NOT cognition.
+ *
+ * Checked before the prefix table, because these all live under `lab.` and
+ * would otherwise be classified as execution. Selecting a suit, opening a
+ * component or exploding an assembly are things the USER did to look at
+ * something. They belong in the activity timeline — they are genuine, audited
+ * interactions — but making the Brain pulse with execution activity because
+ * somebody tapped a model would be inventing cognition out of a camera move,
+ * which is the same failure as a decorative loading animation.
+ *
+ * `lab.suit.equipped` is deliberately absent: equipping changes which suit is
+ * active, so it is a real state change and does classify.
+ */
+const VIEW_ONLY: ReadonlySet<string> = new Set([
+  "lab.suit.selected",
+  "lab.suit.deselected",
+  "lab.component.selected",
+  "lab.assembly.exploded",
+  "lab.assembly.reassembled",
+]);
+
 /** Prefix rules, longest-first so the more specific rule wins. */
 const PREFIXES: ReadonlyArray<readonly [string, SignalKind]> = [
   ["memory.", "memory"],
@@ -84,6 +106,7 @@ const PREFIXES: ReadonlyArray<readonly [string, SignalKind]> = [
 /** Classifies one real event type. Returns null for anything unmapped —
  * auth, settings and view events are not cognition and must not fake it. */
 export function signalKindForEvent(type: string): SignalKind | null {
+  if (VIEW_ONLY.has(type)) return null;
   const exact = EXACT[type];
   if (exact) return exact;
   for (const [prefix, kind] of PREFIXES) {

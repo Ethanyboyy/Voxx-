@@ -1,6 +1,6 @@
 """Suit materials.
 
-Seven distinct materials, per the zoning requirement. Each is built from
+Nine distinct materials, per the zoning requirement. Each is built from
 Principled BSDF plus procedural texture nodes — no image files, so the asset
 stays self-contained and the GLB carries baked-free PBR values.
 
@@ -91,8 +91,24 @@ def _textile(name, colour, *, roughness=0.62, sheen=0.30, scale=520.0, strength=
     return mat
 
 
-def build_materials(primary=(0.021, 0.024, 0.041), panel=(0.128, 0.014, 0.026), accent=(0.010, 0.011, 0.015)):
-    """The seven-material set. Returns a dict keyed by role."""
+#: Defaults in LINEAR space, matching the palette build_suit.py ships.
+#:
+#: These used to be a saturated red panel and a red mask over a blue body,
+#: which — with a web pattern and a full-head mask — is a recognisable
+#: copyrighted costume. The suit's design language is tonal graphite and slate
+#: instead. The mask default in particular mattered: the body and mask meshes
+#: have their procedural material replaced by a baked one, so a stale colour
+#: there was invisible, but the bezel keeps its procedural material and would
+#: have rendered as a red frame on a slate mask.
+DEFAULT_PRIMARY = (0.037, 0.041, 0.058)
+DEFAULT_PANEL = (0.093, 0.109, 0.155)
+DEFAULT_ACCENT = (0.014, 0.016, 0.021)
+DEFAULT_MASK = (0.030, 0.037, 0.055)
+
+
+def build_materials(primary=DEFAULT_PRIMARY, panel=DEFAULT_PANEL,
+                    accent=DEFAULT_ACCENT, mask=DEFAULT_MASK):
+    """The material set. Returns a dict keyed by role."""
     mats = {}
 
     # 1-3: the garment textiles.
@@ -101,7 +117,34 @@ def build_materials(primary=(0.021, 0.024, 0.041), panel=(0.128, 0.014, 0.026), 
     mats["ACCENT"] = _textile("vox_textile_accent", accent, roughness=0.48, sheen=0.18, scale=340.0, strength=0.22)
 
     # 4: mask fabric — finer weave, slightly tighter response than the body.
-    mats["MASK"] = _textile("vox_mask_fabric", (0.128, 0.016, 0.028), roughness=0.52, sheen=0.26, scale=380.0, strength=0.16)
+    mats["MASK"] = _textile("vox_mask_fabric", mask, roughness=0.52, sheen=0.26, scale=380.0, strength=0.16)
+
+    # 4b: lens bezel — the same colour as the mask but bonded, not knitted, so
+    # it is darker and appreciably smoother. That contrast is what makes the
+    # frame read as a separate component holding the glass rather than as a
+    # fold in the fabric.
+    bezel = _new("vox_lens_bezel")
+    bsdf = _principled(bezel)
+    bsdf.inputs["Base Color"].default_value = (*(c * 0.62 for c in mask), 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.31
+    bsdf.inputs["Metallic"].default_value = 0.0
+    bsdf.inputs["IOR"].default_value = 1.45
+    if "Coat Weight" in bsdf.inputs:
+        bsdf.inputs["Coat Weight"].default_value = 0.25
+        bsdf.inputs["Coat Roughness"].default_value = 0.18
+    mats["BEZEL"] = bezel
+
+    # 4c: boot sole — moulded rubber. Darker than the garment and noticeably
+    # rougher: a sole is the one surface on a suit that is deliberately matte,
+    # and giving it the textile's sheen would make it read as more fabric,
+    # which is exactly the problem it exists to solve.
+    sole = _new("vox_sole")
+    bsdf = _principled(sole)
+    bsdf.inputs["Base Color"].default_value = (0.011, 0.012, 0.014, 1.0)
+    bsdf.inputs["Roughness"].default_value = 0.74
+    bsdf.inputs["Metallic"].default_value = 0.0
+    bsdf.inputs["IOR"].default_value = 1.48
+    mats["SOLE"] = sole
 
     # 5: lens — dark, sharply reflective, and the one place a mirror finish
     # belongs. Not emissive: a glowing lens reads as a prop, a reflective one

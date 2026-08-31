@@ -128,7 +128,19 @@ SIDE_JOINTS = {
     # The second value was therefore setting foot HEIGHT, and 0.036 made the
     # ball of the foot 72 mm tall. A real foot is ~40 mm there. That is why it
     # read as an inflated slipper no matter how the length was adjusted.
-    "heel":        (0.104,  0.074, 0.036, 0.031, 0.030),
+    # The heel is a chain TERMINAL, and the Skin modifier's end cap plus
+    # Catmull-Clark pull a terminal in hard — far harder than a mid-chain node.
+    # At the previous (z 0.036, height radius 0.030) the nominal underside was
+    # 6 mm but the BUILT surface came out at 37 mm, while the ball sat at 6 mm.
+    # The figure was standing on tiptoe in a permanent 3 cm heel rise, which no
+    # amount of sole work could disguise: the sole lay flat on the floor with
+    # the heel floating a finger's width above it.
+    #
+    # Measured by casting straight down over the foot's length and sweeping
+    # these two numbers until the heel's underside matched the ball's. Nominal
+    # values below ground are correct and intended — the shrink is what brings
+    # them back up.
+    "heel":        (0.104,  0.074, 0.010, 0.031, 0.054),
     "instep":      (0.105,  0.014, 0.052, 0.032, 0.032),
     "arch":        (0.106, -0.020, 0.034, 0.037, 0.026),
     "ball":        (0.107, -0.082, 0.028, 0.048, 0.022),

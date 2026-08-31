@@ -37,9 +37,19 @@ const SCENARIOS = [
   "wrist-reassembled",
 ];
 
-/** Desktop plus the primary target. iPhone first in the list, deliberately. */
+/**
+ * Desktop plus the primary target. iPhone first in the list, deliberately.
+ *
+ * Landscape is a separate entry rather than a rotation of the portrait one,
+ * because it is the case the camera code is most likely to get wrong and the
+ * one nobody looks at: `fov` is VERTICAL, so the pullback that frames a figure
+ * in portrait overshoots badly at 844x390, and the aspect-aware framing that
+ * fixes portrait has to be checked in the other direction too. A phone held
+ * sideways is a real way people hold phones.
+ */
 const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844, dpr: 3, mobile: true },
+  { name: "mobile-landscape", width: 844, height: 390, dpr: 3, mobile: true },
   { name: "desktop", width: 1440, height: 900, dpr: 2, mobile: false },
 ];
 

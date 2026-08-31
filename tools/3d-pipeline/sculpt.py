@@ -106,20 +106,79 @@ MUSCLES = [
     # an already-curved surface amplifies rather than blends.
     #
     # So: fewer fields, roughly twice the radius, and a third of the strength.
-    # After the 2.1 scale these land at 5-9 mm, which is the real relief a
-    # fitted fabric mask shows. Anything the mask would smooth over — lips,
-    # nostrils, eyelids — is deliberately absent; modelling it only fights the
-    # garment sitting on top.
+    #
+    # That correction then overshot in the other direction. Everything landed at
+    # 5-9 mm after the 2.1 scale, and a rendered front view showed the result
+    # honestly: below the lenses the mask was a blank ovoid with no nose, no
+    # jaw and no chin — an egg, which is exactly the mannequin read the whole
+    # asset is trying to escape. A nose projects 20-25 mm on a real face and a
+    # fitted mask does not hide it; 9 mm is not a subtle nose, it is no nose.
+    #
+    # So the fields are now sized by what they represent rather than by a
+    # uniform timidity. The features a mask genuinely smooths over — lips,
+    # nostrils, eyelids — stay absent, because modelling those only fights the
+    # garment sitting on top. The features that carry a face's structure are
+    # given their real projection.
     Muscle("occiput",       (0.000,  0.048, 1.648), (0.070, 0.050, 0.070), 0.0040, mirror=False),
     Muscle("forehead",      (0.000, -0.066, 1.664), (0.072, 0.044, 0.048), 0.0030, mirror=False),
-    Muscle("brow_ridge",    (0.030, -0.072, 1.640), (0.052, 0.038, 0.024), 0.0038),
-    Muscle("eye_socket",    (0.034, -0.066, 1.618), (0.038, 0.034, 0.026), -0.0034),
-    Muscle("nose",          (0.000, -0.082, 1.610), (0.024, 0.034, 0.046), 0.0042, mirror=False),
-    Muscle("cheekbone",     (0.050, -0.056, 1.608), (0.042, 0.046, 0.036), 0.0036),
-    Muscle("cheek_hollow",  (0.046, -0.058, 1.572), (0.038, 0.042, 0.034), -0.0026),
-    Muscle("chin",          (0.000, -0.074, 1.543), (0.034, 0.036, 0.030), 0.0034, mirror=False),
-    Muscle("jaw_angle",     (0.056, -0.016, 1.556), (0.034, 0.050, 0.036), 0.0030),
+    # Third correction, and the one that resolved it. Scaling every field up
+    # together did not produce a face — it produced two swollen cheek pouches
+    # and a chin like a bulb, with the nose no more visible than before, because
+    # a nose only reads by CONTRAST with what surrounds it. Raising its
+    # neighbours by the same proportion cancels exactly the thing being fixed.
+    #
+    # So the mid-face is deliberately held back below where it started, and only
+    # the two features whose absence made the head an egg — the nose ridge and
+    # the chin — are given real projection. The cheekbone in particular is now a
+    # narrow ridge under the eye rather than a 46 mm sphere, which is what it
+    # was when it dominated the whole side of the face.
+    Muscle("brow_ridge",    (0.030, -0.072, 1.640), (0.052, 0.038, 0.024), 0.0044),
+    # Deeper than the brow is proud: the socket is what gives the lens
+    # somewhere to sit, instead of the lens sitting on a flat cheek.
+    Muscle("eye_socket",    (0.034, -0.066, 1.618), (0.038, 0.034, 0.026), -0.0044),
+    # Nose as a RIDGE, in two parts. One ellipsoid gives a rounded lump; a
+    # narrow bridge running down into a stronger tip gives the wedge that
+    # actually reads, and the two summing along the midline is the intended
+    # shape rather than an accident.
+    # NARROW. A 40 mm-wide tip field at 19 mm projection rendered a muzzle: the
+    # nose read as one broad mound running from the lenses to the mouth and
+    # merging into both cheeks. A nose is narrow — about 25 mm across the tip —
+    # and its width is what decides whether it reads as human or as a snout.
+    Muscle("nose_bridge",   (0.000, -0.078, 1.628), (0.013, 0.022, 0.034), 0.0050, mirror=False),
+    Muscle("nose_tip",      (0.000, -0.085, 1.596), (0.0145, 0.024, 0.017), 0.0082, mirror=False),
+    # Negative, and placed hard against the nose: the crease beside the nostril
+    # is what actually separates a nose from a cheek. Adding a positive wing
+    # field here instead just merged the two into one mass.
+    Muscle("nose_crease",   (0.019, -0.074, 1.588), (0.014, 0.018, 0.020), -0.0044),
+    # And a cut underneath it, so the nose ends somewhere instead of flowing
+    # down into the upper lip.
+    Muscle("nose_under",    (0.000, -0.078, 1.577), (0.019, 0.019, 0.011), -0.0034, mirror=False),
+    Muscle("cheekbone",     (0.050, -0.058, 1.612), (0.033, 0.036, 0.023), 0.0028),
+    Muscle("cheek_hollow",  (0.044, -0.062, 1.574), (0.036, 0.040, 0.032), -0.0034),
+    # The mouth is a plane, not a mouth: enough to stop the lower face reading
+    # as flat, with nothing a mask would not show.
+    Muscle("mouth",         (0.000, -0.077, 1.566), (0.029, 0.024, 0.016), 0.0015, mirror=False),
+    Muscle("chin",          (0.000, -0.075, 1.538), (0.026, 0.029, 0.024), 0.0056, mirror=False),
+    Muscle("jaw_angle",     (0.056, -0.016, 1.556), (0.032, 0.046, 0.032), 0.0034),
     Muscle("temple",        (0.064, -0.024, 1.644), (0.034, 0.050, 0.046), -0.0028),
+
+    # --- finger joints -------------------------------------------------------
+    # Small positive bumps on the knuckle and middle joints of each finger.
+    #
+    # The skeleton already tapers each finger from knuckle to tip, so the
+    # fingers separate correctly and read as four plus a thumb. What they do
+    # NOT read as is jointed: a taper alone gives four smooth tubes, and the
+    # rendered close-up showed exactly that. Real fingers are widest AT the
+    # joints, and that alternation of swell and waist is the whole cue. These
+    # land at 2-3 mm after the scale, which is the real thing.
+    Muscle("knuckle_i_j",   (0.262, -0.031, 0.782), (0.011, 0.011, 0.012), 0.0013),
+    Muscle("knuckle_m_j",   (0.263, -0.010, 0.779), (0.011, 0.011, 0.012), 0.0013),
+    Muscle("knuckle_r_j",   (0.263,  0.011, 0.782), (0.011, 0.011, 0.012), 0.0012),
+    Muscle("knuckle_p_j",   (0.262,  0.030, 0.789), (0.010, 0.010, 0.011), 0.0011),
+    Muscle("mid_i_j",       (0.263, -0.033, 0.746), (0.010, 0.010, 0.011), 0.0011),
+    Muscle("mid_m_j",       (0.264, -0.011, 0.740), (0.010, 0.010, 0.011), 0.0011),
+    Muscle("mid_r_j",       (0.264,  0.012, 0.745), (0.010, 0.010, 0.011), 0.0010),
+    Muscle("mid_p_j",       (0.263,  0.032, 0.757), (0.009, 0.009, 0.010), 0.0009),
 ]
 
 
