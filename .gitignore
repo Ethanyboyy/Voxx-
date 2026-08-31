@@ -69,3 +69,8 @@ __pycache__/
 
 # Local QA database, same rule as dev.db/test.db
 prisma/qa.db*
+
+# Generated artifact bytes (images, video, models produced by providers).
+# User content, not source — same class as prisma/dev.db. The ArtifactVersion
+# rows that point at these live in the database, which is also not committed.
+/public/artifacts/

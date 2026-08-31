@@ -1,0 +1,299 @@
+# VOX — Multimodal Agent Fabric
+
+How execution, image generation and cinematic generation become capabilities
+VOX *chooses between*, rather than three integrations bolted to three buttons.
+
+This document is the audit that had to come before the code, plus the design
+that follows from it. Read it with `ARCHITECTURE.md` (the base system) and
+`PHASE_2_ARCHITECTURE.md` (the cognition layer).
+
+---
+
+## 1. Audit — what already exists
+
+The single most important finding is that **VOX already has most of this
+substrate**. The work is extension, not construction, and several things the
+brief describes as new are already built and working.
+
+### 1.1 The provider-abstraction pattern is established
+
+Five subsystems already follow one shape, and it is the shape the brief asks
+for:
+
+| Module | Interface | Real impl | Fallback |
+| --- | --- | --- | --- |
+| `src/lib/ai/` | `AIProvider` | `anthropic.ts` | `mock.ts` |
+| `src/lib/research/` | `ResearchProvider` | `anthropic.ts` | `mock.ts` |
+| `src/lib/embeddings/` | `EmbeddingProvider` | `voyage.ts` | `local.ts` |
+| `src/lib/generation/` | `GenerationProvider` | `blenderLocal.ts` | `unavailable.ts` |
+| `src/lib/integrations/` | `ConnectionProvider` | — | `stub.ts` |
+
+Each is `types.ts` (interface) + implementations + `index.ts` (a cached
+resolver with a `_reset*Cache()` test hook). CLAUDE.md rule 2 forbids calling a
+vendor SDK anywhere outside these directories, and rule 6 requires any provider
+that sends user content to a third party to be **absent by default** and gated
+on an explicit env var.
+
+`src/lib/generation/` is the closest precedent and the one the new media
+providers copy, because it already solved the honesty problem:
+
+```ts
+readonly isConfigured: boolean;
+readonly unavailableReason: string | null;
+```
+
+Its docstring states the rule plainly — a provider "must NEVER return a
+fabricated asset — an invented GLB path would flow straight into
+`LabSuit.modelUrl` and be presented to the user as a real, inspectable
+object." That reasoning transfers directly to images and video.
+
+### 1.2 The execution agent largely exists
+
+`AgentRun` / `AgentStep` + `src/lib/agents/executor.ts` is already a
+persistent, resumable, permission-gated multi-step execution engine:
+
+- ordered steps, each optionally bound to a registry tool
+- **the real `checkCapability()`** before every tool call, never bypassed
+- an agent-level `allowedCapabilities` allowlist *on top of* the user's grants
+- `{{stepN.output}}` references resolved from persisted step outputs, so a run
+  that paused and resumed still resolves correctly
+- `WAITING_FOR_PERMISSION` as a first-class pause state, not a failure
+- retries, per-step error capture, event emission at every transition
+
+What it does **not** have is tools that touch the filesystem, run tests, or
+render — so "fix the Suit Bay" cannot yet be planned into real steps. That is a
+tool-registry gap, not an engine gap. **Do not build a second execution
+engine.**
+
+### 1.3 Event bus — reuse, do not add
+
+`src/lib/events/bus.ts` is an in-process pub/sub fed by exactly one writer:
+`recordEvent()` in `src/lib/observability/events.ts`, right after the durable
+`Event` row is written. The module comment is explicit that "nothing on this
+channel is ever fabricated — nothing that couldn't already be found in the
+Event table."
+
+**Consequence for this work:** new capability events must go through
+`recordEvent()`. Publishing to the bus directly would put something on the live
+channel with no durable row behind it, which is precisely the invariant the bus
+exists to hold.
+
+### 1.4 Permissions
+
+`CapabilityLevel` is `OBSERVE < ANALYZE < RECOMMEND < ASK < ACT`, default grant
+`ANALYZE`, enforced by `checkCapability()` / `enforceCapability()`. The brief
+proposes `READ / WRITE / EXECUTE / NETWORK / DEPLOY / DESTRUCTIVE`. **We do not
+add a second permission vocabulary.** Those concerns map onto the existing
+ladder plus the capability *key*:
+
+| Brief's concept | VOX expression |
+| --- | --- |
+| READ | `OBSERVE`/`ANALYZE` on the relevant capability key |
+| WRITE | `ACT` on a scoped key, e.g. `workspace.write` |
+| EXECUTE | `ACT` on `workspace.exec` |
+| NETWORK | the provider's own key, e.g. `media.image.generate` |
+| DEPLOY | `ACT` on `deploy.*`, plus explicit approval |
+| DESTRUCTIVE | `ACT` + `Proposal` approval — never silent |
+
+A second ladder would be a second source of truth, and the first thing to drift.
+
+### 1.5 Brain signal classification
+
+`src/lib/3d/signals.ts` maps real event types onto cognitive signal kinds, and
+returns `null` for anything that is not cognition. It carries a `VIEW_ONLY` set
+for events that are real and recorded but must not make the Brain pulse.
+
+Every event type added here gets classified **deliberately**, with a test that
+fails if a new one is added without that decision being made.
+
+### 1.6 What is genuinely missing
+
+1. **No unified artifact model.** `LabSuitImage` is suit-scoped and has no
+   lineage; `LabSuitVersion` *does* have real parent/child lineage and is the
+   precedent to copy. There is nowhere to say "this video came from that
+   concept, which came from that reference."
+2. **No image or video provider**, and no interface for one.
+3. **No capability router.** `src/lib/orchestrator/service.ts` is deliberately
+   *not* a router — its comment says so — it is a cross-domain snapshot. That
+   snapshot is an *input* to routing, not routing itself.
+4. **No per-call usage ledger.** `src/lib/ai/cost.ts` converts tokens to
+   dollars, but nothing records "this provider call cost this much and produced
+   that artifact."
+
+---
+
+## 2. Environment reality — measured, not assumed
+
+Two probes, run from this container:
+
+**Google Generative Language API — REACHABLE.**
+```
+$ curl "https://generativelanguage.googleapis.com/v1beta/models?key=NONE"
+{"error":{"code":400,"message":"API key not valid...","status":"INVALID_ARGUMENT"}}
+```
+A real, structured API error means TLS completed and the service answered. The
+image provider can therefore be a genuinely working adapter, blocked only on a
+key.
+
+**Higgsfield — NOT REACHABLE.**
+```
+$ curl -o /dev/null -w "%{http_code}" https://api.higgsfield.ai/
+curl: (56) CONNECT tunnel failed, response 403
+$ curl -o /dev/null -w "%{http_code}" https://higgsfield.ai/
+curl: (56) CONNECT tunnel failed, response 403
+```
+The environment's egress proxy refuses the tunnel. This matches
+`docs/3d-pipeline/MCP_DECISIONS.md`, which recorded the same result for
+`platform.higgsfield.ai` previously.
+
+**What follows from that** is the brief's own instruction: *"If a real API/MCP
+credential is unavailable, implement the provider abstraction and clearly mark
+the provider as configuration-required rather than pretending it works."* The
+Higgsfield adapter is written against the interface, reports
+`isConfigured: false` with the measured reason, and throws on use. It is not
+mocked, not stubbed to return a plausible URL, and not hidden.
+
+---
+
+## 3. Design
+
+### 3.1 Layering
+
+```
+Brain / Chat / Lab / Supervisor          ← callers, unchanged
+        │
+        ▼
+src/lib/capabilities/router.ts           ← NEW: what is needed, in what order
+        │
+        ▼
+src/lib/capabilities/plan.ts             ← NEW: an ordered CapabilityPlan
+        │
+   ┌────┴──────────────┬──────────────┬─────────────────┐
+   ▼                   ▼              ▼                 ▼
+agents/executor     image/          video/          generation/
+(EXISTING)          (NEW)           (NEW)           (EXISTING)
+   │                   │              │                 │
+   └────────┬──────────┴──────────────┴─────────────────┘
+            ▼
+src/lib/artifacts/       ← NEW: normalized output + lineage + versions
+            │
+            ▼
+observability/events.ts → events/bus.ts   ← EXISTING, reused
+```
+
+### 3.2 Capability taxonomy
+
+One closed union, in `src/lib/capabilities/types.ts`:
+
+```
+EXECUTION | IMAGE_GENERATION | IMAGE_EDIT | VIDEO_GENERATION
+| MODEL_3D | RESEARCH | MEMORY | VISUAL_QA
+```
+
+Closed on purpose, for the same reason the proposal action registry is closed:
+a router that can name a capability nothing implements produces plans that fail
+at step three instead of at routing time.
+
+### 3.3 Routing
+
+`routeRequest()` takes the request text, the available assets, permissions,
+provider availability and prior results; it returns a `CapabilityPlan` — an
+ordered list of `CapabilityStep`, each with the capability, a short *operational*
+reason, and whether it is optional.
+
+Two-stage by design:
+
+1. **Deterministic pre-pass.** Strong lexical and structural signals decide the
+   obvious cases without a model call — "make a trailer" is temporal, "give me
+   ten variations" is image, "fix the Suit Bay" is execution. Cheap, testable,
+   and the thing that makes routing behaviour assertable in unit tests.
+2. **Model-assisted fallback**, only when the pre-pass is not confident, via the
+   existing `getAIProvider()`.
+
+Routing metadata stored on the plan is deliberately terse — the capability, the
+provider, a one-line reason. Per the brief: no chain-of-thought is persisted or
+surfaced.
+
+**Not using a capability is a first-class outcome.** An empty plan is valid and
+means "answer directly"; the router must not reach for a provider because one
+exists.
+
+### 3.4 Provider interfaces
+
+`ImageProvider` and `VideoProvider` mirror `GenerationProvider` exactly —
+`id`, `displayName`, `isConfigured`, `unavailableReason`, `capabilities`, and
+one async method that throws when unconfigured.
+
+### 3.5 Artifacts
+
+```
+Artifact ──< ArtifactVersion
+   │              │
+   │              └──< ArtifactLink (derivedFrom)
+   └── kind: IMAGE | VIDEO | MODEL_3D | DOCUMENT | CODE | AUDIO | DATA | OTHER
+```
+
+Every version records provider, model, prompt, parameters, dimensions, MIME
+type, byte size, the `CapabilityRun` that produced it, and its parents. Lineage
+is an explicit link table rather than a single `parentId` because a cinematic
+render legitimately derives from *both* a concept image and a 3D model.
+
+Versions are append-only. "Go back to version two" is a pointer move
+(`Artifact.currentVersionId`), never a destructive overwrite — the same posture
+`LabSuitVersion` already takes.
+
+### 3.6 Usage ledger
+
+Every provider call opens a `CapabilityRun` row: capability, provider, model,
+status, `startedAt`/`completedAt`, duration, estimated cost when the provider
+reports one, and the resulting artifact version. This is what makes
+"what happened?" reconstructible:
+
+```
+Task 8214 → CapabilityRun 91 (IMAGE_GENERATION, gemini) → ArtifactVersion 440
+          → CapabilityRun 52 (VISUAL_QA, anthropic)     → pass
+          → CapabilityRun 17 (VIDEO_GENERATION, higgsfield) → ArtifactVersion 441
+```
+
+Budgets are checked **before** the call, not after, and a refusal is a normal
+outcome that leaves task state intact.
+
+### 3.7 Failure modes
+
+| Failure | Behaviour |
+| --- | --- |
+| Provider unconfigured | Router never selects it; plan degrades or the step is marked optional-skipped |
+| Provider errors mid-call | `CapabilityRun` FAILED with the reason; artifact never created; task state preserved |
+| Budget exceeded | Refused before the call; explicit event; resumable later |
+| QA fails | Iteration, bounded by budget; never an unbounded loop |
+| All image providers down | Video stage that needed a concept is skipped, not faked |
+
+Nothing here writes a partial artifact. A version row is created only after
+bytes exist.
+
+### 3.8 Security
+
+- Keys are read from `process.env` inside the provider module only, server-side.
+- No key, and no artifact *content*, is written to Memory.
+- Generated bytes are untrusted: MIME and size are validated before storage, and
+  a provider-supplied URL is never treated as an execution target.
+- The image provider sends user content to a third party, so per CLAUDE.md rule
+  6 it is absent by default, gated on `GOOGLE_API_KEY`, and documented in both
+  `.env.example` and `SECURITY.md`.
+
+---
+
+## 4. Delivery order
+
+Phases follow the brief, resequenced only where a dependency forces it —
+artifacts must exist before a provider has anywhere to put its output.
+
+1. Capability taxonomy, provider interfaces, router *(this phase)*
+2. Artifact + version + lineage + `CapabilityRun` ledger
+3. Image provider (Gemini / Nano Banana 2)
+4. Video provider (Higgsfield)
+5. Events, signal classification, tests, docs
+
+Execution-agent filesystem tools, Visual QA, the automatic iteration loop, Lab
+wiring and the unified UI follow, and the report at each checkpoint states
+plainly which of those are done and which are not.

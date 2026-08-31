@@ -52,6 +52,24 @@ const EXACT: Record<string, SignalKind> = {
   "supervisor.planning": "reasoning",
   "supervisor.replanning": "reasoning",
   "proposal.created": "reasoning",
+
+  // --- multimodal agent fabric ---------------------------------------------
+  // Routing is VOX deciding what a request requires — inference about the
+  // task, before anything is done about it. That is reasoning, and it is the
+  // one part of this subsystem that genuinely is.
+  "capability.routed": "reasoning",
+  // A provider call is VOX acting on the world: it takes time, costs money and
+  // produces a thing. Execution, not thought.
+  "provider.started": "execution",
+  "provider.completed": "execution",
+  "provider.failed": "execution",
+  // A refusal is the budget working, not work being done — see VIEW_ONLY.
+  // An artifact appearing is VOX having learned a durable fact about what now
+  // exists, which is where memory events sit.
+  "artifact.created": "memory",
+  "artifact.version_created": "memory",
+  // Judging output against intent is inference over evidence.
+  "qa.completed": "reasoning",
 };
 
 /**
@@ -74,6 +92,16 @@ const VIEW_ONLY: ReadonlySet<string> = new Set([
   "lab.component.selected",
   "lab.assembly.exploded",
   "lab.assembly.reassembled",
+
+  // A capability request is the user asking, before VOX has decided anything.
+  // Only `capability.routed` — the decision — is cognition.
+  "capability.requested",
+  // A refused provider call is the budget doing its job. No work happened, and
+  // making the Brain light up for a call that never left the building would
+  // report activity that does not exist.
+  "provider.refused",
+  // Choosing which stored version to point at is a pointer move, not thought.
+  "artifact.version_selected",
 ]);
 
 /** Prefix rules, longest-first so the more specific rule wins. */

@@ -129,6 +129,9 @@ model User {
   labEngineeringQuestions LabEngineeringQuestion[]
   labDecisions        LabDecision[]
   labResearchLinks    LabResearchLink[]
+
+  artifacts           Artifact[]
+  capabilityRuns      CapabilityRun[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -2423,4 +2426,204 @@ model LabResearchLink {
   createdAt      DateTime     @default(now())
 
   @@unique([researchItemId, subjectType, subjectId])
+}
+
+// ---------------------------------------------------------------------------
+// Multimodal agent fabric — artifacts, lineage, and the provider usage ledger
+// ---------------------------------------------------------------------------
+//
+// See MULTIMODAL_FABRIC_ARCHITECTURE.md. These four models exist because VOX
+// gained capabilities that PRODUCE things (images, video, geometry) and had
+// nowhere to put them: LabSuitImage is suit-scoped and carries no lineage, so
+// there was no way to express "this video came from that concept, which came
+// from that reference" — which is exactly what makes "turn yesterday's second
+// suit concept into a video" answerable.
+
+/// What kind of thing an artifact is. Closed set: a router that can name a
+/// kind nothing renders produces artifacts the UI silently drops.
+enum ArtifactKind {
+  IMAGE
+  VIDEO
+  MODEL_3D
+  DOCUMENT
+  CODE
+  AUDIO
+  DATA
+  OTHER
+}
+
+/// Where an artifact came from. GENERATED means a provider made it; DERIVED
+/// means VOX transformed something it already had; UPLOADED means a human
+/// supplied it. Kept explicit because provenance is the one property that
+/// cannot be recovered later by inspection.
+enum ArtifactOrigin {
+  GENERATED
+  DERIVED
+  UPLOADED
+  AUTHORED
+}
+
+/// A durable thing VOX produced or was given, with a version history.
+///
+/// The artifact is the IDENTITY ("the Mark 07 reveal"); versions are the
+/// content. That split is what makes "go back to version two" a pointer move
+/// rather than a destructive restore — the same posture LabSuitVersion already
+/// takes for suit design history.
+model Artifact {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  kind   ArtifactKind
+  origin ArtifactOrigin @default(GENERATED)
+  /// Short human name, e.g. "Mark 07 — cinematic reveal".
+  label  String
+  /// Free-text note about what this is for.
+  note   String?
+
+  /// Which version is current. Nullable during creation, before the first
+  /// version exists — an artifact with no version is a legitimate transient
+  /// state, not a corruption.
+  currentVersion   ArtifactVersion? @relation("ArtifactCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId String?          @unique
+
+  /// Optional subject this artifact belongs to, using the same polymorphic
+  /// convention as LabDesignNote — an artifact may be about a LabSuit, a
+  /// Project, an Objective, or nothing at all.
+  subjectType String?
+  subjectId   String?
+
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions ArtifactVersion[] @relation("ArtifactVersions")
+
+  @@index([userId, kind])
+  @@index([subjectType, subjectId])
+}
+
+/// One concrete revision of an artifact: actual bytes, and how they were made.
+///
+/// Append-only. Nothing here is ever updated in place — a correction is a new
+/// version, because the whole point of recording provider/model/prompt is to be
+/// able to say later what actually produced a given file.
+model ArtifactVersion {
+  id         String   @id @default(uuid())
+  artifact   Artifact @relation("ArtifactVersions", fields: [artifactId], references: [id], onDelete: Cascade)
+  artifactId String
+  /// 1-based, unique per artifact. This is the number the user means when they
+  /// say "go back to version two".
+  version    Int
+
+  /// Public URL the app can render. Bytes live on disk under public/artifacts/.
+  url       String
+  mimeType  String
+  /// Size on disk. Recorded, never estimated.
+  bytes     Int
+  width     Int?
+  height    Int?
+  /// Seconds, for time-based media.
+  durationSeconds Float?
+
+  /// Which provider and model produced this, when one did.
+  provider String?
+  model    String?
+  /// The prompt as actually sent. Stored so a result is reproducible.
+  prompt   String?
+  /// JSON — provider-specific generation parameters, verbatim.
+  parameters String?
+
+  /// The metered call that produced this, when there was one.
+  capabilityRun   CapabilityRun? @relation(fields: [capabilityRunId], references: [id], onDelete: SetNull)
+  capabilityRunId String?
+
+  /// Set when a human or a QA pass accepted this version.
+  approved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  currentOfArtifact Artifact? @relation("ArtifactCurrentVersion")
+
+  /// Lineage, in both directions.
+  derivedFrom ArtifactLink[] @relation("LinkChild")
+  parentOf    ArtifactLink[] @relation("LinkParent")
+
+  @@unique([artifactId, version])
+  @@index([capabilityRunId])
+}
+
+/// One lineage edge: `child` was made from `parent`.
+///
+/// A link TABLE rather than a `parentId` column because derivation is
+/// genuinely many-to-one: a cinematic render legitimately derives from both a
+/// concept image and a 3D model, and collapsing that to a single parent would
+/// silently discard half the provenance.
+model ArtifactLink {
+  id       String          @id @default(uuid())
+  parent   ArtifactVersion @relation("LinkParent", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String
+  child    ArtifactVersion @relation("LinkChild", fields: [childId], references: [id], onDelete: Cascade)
+  childId  String
+  /// How the child used the parent, e.g. "reference", "start_frame", "source".
+  role      String
+  createdAt DateTime @default(now())
+
+  @@unique([parentId, childId, role])
+  @@index([childId])
+}
+
+enum CapabilityRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  REFUSED
+}
+
+/// One provider call, metered.
+///
+/// This is what makes "what happened?" reconstructible, and what the budget
+/// checks read. A row is opened BEFORE the call and closed after, so a crash
+/// mid-call leaves a RUNNING row rather than no evidence that money was spent.
+///
+/// REFUSED is a first-class status, not a failure: a call the budget declined
+/// to make is a correct outcome and must be distinguishable from one that was
+/// attempted and broke.
+model CapabilityRun {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// A member of the Capability union (src/lib/capabilities/types.ts). Stored
+  /// as text rather than an enum so adding a capability does not require a
+  /// migration to record its first run.
+  capability String
+  provider   String
+  model      String?
+
+  status CapabilityRunStatus @default(RUNNING)
+  /// Why, when FAILED or REFUSED. Never a stack trace.
+  error  String?
+
+  /// The provider's own job/run id, when it has one — the join key for
+  /// reconciling against a provider dashboard.
+  providerRunId String?
+
+  /// Correlation. `traceId` groups every run in one user-visible task, so a
+  /// whole chain can be pulled back with a single query.
+  traceId String
+  /// The AgentRun this belongs to, when it was agent-driven.
+  agentRunId String?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+  /// USD, only when the provider actually reported a cost. Null is honest;
+  /// an invented number here would be summed into a budget.
+  costUsd     Float?
+
+  versions ArtifactVersion[]
+
+  @@index([userId, startedAt])
+  @@index([traceId])
+  @@index([userId, capability, startedAt])
 }
