@@ -53,6 +53,25 @@ PART_MATERIAL = {
 }
 
 
+def srgb_hex_to_linear(value):
+    """'#7c5cff' -> linear-space RGB triple.
+
+    Texture base colour is authored in LINEAR space and encoded to sRGB on
+    write, so a hex code from the suit record has to be decoded on the way in.
+    Passing the sRGB values straight through washes every colour out by roughly
+    a factor of two — the mistake that made an earlier build's charcoal read as
+    mid-grey.
+    """
+    text = value.lstrip("#")
+    if len(text) != 6:
+        raise ValueError(f"expected a 6-digit hex colour, got {value!r}")
+    out = []
+    for i in (0, 2, 4):
+        c = int(text[i:i + 2], 16) / 255.0
+        out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
+    return tuple(out)
+
+
 def build(args):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     log = {}
@@ -107,9 +126,9 @@ def build(args):
     images = []
     body_maps = texturing.build_texture_set(
         suit, args.texture_size,
-        primary=(0.052, 0.058, 0.088),
-        panel_colour=(0.215, 0.026, 0.042),
-        accent_colour=(0.022, 0.024, 0.032),
+        primary=srgb_hex_to_linear(args.primary),
+        panel_colour=srgb_hex_to_linear(args.panel),
+        accent_colour=srgb_hex_to_linear(args.accent),
     )
     _mat, imgs = texturing.apply_baked_material(suit, body_maps, "vox_garment", texture_dir=args.texture_dir)
     images += imgs
@@ -117,9 +136,9 @@ def build(args):
 
     mask_maps = texturing.build_texture_set(
         mask, max(args.texture_size // 2, 512),
-        primary=(0.205, 0.025, 0.040),
-        panel_colour=(0.205, 0.025, 0.040),
-        accent_colour=(0.205, 0.025, 0.040),
+        primary=srgb_hex_to_linear(args.mask),
+        panel_colour=srgb_hex_to_linear(args.mask),
+        accent_colour=srgb_hex_to_linear(args.mask),
         web_scale=130.0,
         weave_scale=2600.0,
     )
@@ -138,6 +157,19 @@ def main():
     ap.add_argument("--subdivisions", type=int, default=3)
     ap.add_argument("--sculpt", type=float, default=2.1)
     ap.add_argument("--texture-size", type=int, default=2048)
+    # The VOX garment palette.
+    #
+    # Deliberately TONAL, not chromatic. The previous default was a red panel
+    # over a blue body, which — with a web pattern and a full-head mask — is a
+    # recognisable copyrighted costume, and reads as one no matter how well it
+    # is lit. Construction here comes from a graphite base against a slightly
+    # lighter graphite panel: the seams and zones are still completely legible,
+    # but as engineered apparel rather than as a superhero suit. Per-suit
+    # colour belongs in these arguments, not in the pipeline.
+    ap.add_argument("--primary", default="#3a4052", help="Garment base colour (hex).")
+    ap.add_argument("--panel", default="#59637d", help="Structural panel colour (hex).")
+    ap.add_argument("--accent", default="#22262f", help="Gloves/boots/belt colour (hex).")
+    ap.add_argument("--mask", default="#333a4a", help="Mask shell colour (hex).")
     ap.add_argument("--texture-dir", default=None)
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--resolution", type=int, default=720)

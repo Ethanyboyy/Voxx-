@@ -1,0 +1,61 @@
+{
+  "contractVersion": 1,
+  "suitId": "vx-01-meridian",
+  "provider": "blender-local",
+  "recipe": "suit",
+  "parameters": {
+    "textureSize": 2048,
+    "subdivisions": 3,
+    "sculpt": 2.1,
+    "samples": 64,
+    "resolution": 720
+  },
+  "provenance": {
+    "origin": "AUTHORED",
+    "description": "Authored in Blender (bpy) from a published-anthropometry skeleton for a 1.75 m figure, surfaced with the Skin modifier, subdivided, and sculpted with parametric muscle displacement fields. Mask, lenses and web-shooter modelled as separate solids. No third-party mesh, scan, or generated asset is incorporated.",
+    "license": "Owned by this project."
+  },
+  "upAxis": "Y",
+  "facingAxis": "+Z",
+  "stats": {
+    "triangles": 86716,
+    "vertices": 43678,
+    "meshes": 14,
+    "materials": 6,
+    "heightM": 1.716634,
+    "widthM": 0.604574,
+    "depthM": 0.274194,
+    "skinned": false,
+    "joints": 0,
+    "skinAttributesComplete": true,
+    "uvMeshes": 14,
+    "textures": [
+      {
+        "name": "vox_garment_basecolor",
+        "size": 2048
+      },
+      {
+        "name": "vox_garment_normal",
+        "size": 2048
+      },
+      {
+        "name": "vox_garment_roughness",
+        "size": 2048
+      },
+      {
+        "name": "vox_mask_basecolor",
+        "size": 1024
+      },
+      {
+        "name": "vox_mask_normal",
+        "size": 1024
+      },
+      {
+        "name": "vox_mask_roughness",
+        "size": 1024
+      }
+    ]
+  },
+  "generatedAt": "2026-08-31T02:12:37Z",
+  "buildMs": 41514
+}

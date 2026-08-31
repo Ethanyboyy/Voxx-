@@ -161,6 +161,172 @@ function Platform({
   );
 }
 
+/**
+ * The room's architecture.
+ *
+ * The first captures of this bay showed suits floating in a black void with an
+ * enormous empty frame above and below them: the floor existed, but nothing
+ * else did, so there was no midground, no background and no ceiling to give the
+ * space a size. Black is only negative space when there is something for it to
+ * be negative to.
+ *
+ * Everything here is deliberately architectural rather than decorative — a back
+ * wall with recessed vertical light channels, a structural ceiling grid, and
+ * side returns. It is cheap (a handful of boxes and emissive strips), it never
+ * competes with the suits because it is unlit dark surface with thin light
+ * lines, and it gives the camera something to travel past.
+ */
+function Architecture({ lighting, tier }: { lighting: LightingPreset; tier: QualityTier }) {
+  const dark = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#0b0b0f", roughness: 0.85, metalness: 0.3 }),
+    [],
+  );
+  const strip = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: lighting.accent, transparent: true, opacity: 0.16, toneMapped: false }),
+    [lighting.accent],
+  );
+  const cool = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: "#8ea0c8", transparent: true, opacity: 0.1, toneMapped: false }),
+    [],
+  );
+
+  // Bay pilasters: vertical structure behind the platform line. The light
+  // channel between them is what reads as "engineered room" rather than "wall".
+  const pilasters = useMemo(() => {
+    const count = tier === "MOBILE" ? 7 : 11;
+    return Array.from({ length: count }, (_, i) => (i - (count - 1) / 2) * 2.6);
+  }, [tier]);
+
+  return (
+    <group>
+      {/* Back wall, set well behind the bays so fog can do its work. */}
+      <mesh position={[0, 3.4, -9.5]} material={dark} receiveShadow>
+        <boxGeometry args={[46, 7.6, 0.4]} />
+      </mesh>
+
+      {pilasters.map((x) => (
+        <group key={x} position={[x, 0, -9.1]}>
+          <mesh position={[0, 2.4, 0]} material={dark}>
+            <boxGeometry args={[0.72, 4.8, 0.34]} />
+          </mesh>
+          {/* Recessed vertical light channel. Thin, dim, and never a glow. */}
+          <mesh position={[0, 2.4, 0.19]} material={strip}>
+            <planeGeometry args={[0.075, 4.1]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Side returns: they close the room off laterally so the space reads as
+          a hall rather than an infinite plane. */}
+      {[-14.5, 14.5].map((x) => (
+        <mesh key={x} position={[x, 3.4, -2]} rotation={[0, Math.PI / 2, 0]} material={dark}>
+          <boxGeometry args={[16, 7.6, 0.4]} />
+        </mesh>
+      ))}
+
+      {/* Structural ceiling. Its job is to stop the top half of the frame being
+          empty, and to give the overhead bay lights something to belong to. */}
+      <mesh position={[0, 7.1, -2]} material={dark}>
+        <boxGeometry args={[46, 0.5, 24]} />
+      </mesh>
+      {tier !== "MOBILE"
+        ? [-6, -2, 2, 6].map((z) => (
+            <mesh key={z} position={[0, 6.82, z]} rotation={[Math.PI / 2, 0, 0]} material={cool}>
+              <planeGeometry args={[26, 0.09]} />
+            </mesh>
+          ))
+        : null}
+    </group>
+  );
+}
+
+/**
+ * Cinematic lighting on whatever the camera has moved in on.
+ *
+ * The room's own bay lights are overhead pools aimed at the floor, which is
+ * correct for a wide shot and useless for a subject: by the time that light
+ * reaches a torso it has fallen off by the square of about 2.4m, and the first
+ * capture of the authored suit was a barely-readable silhouette because of it.
+ *
+ * A subject gets its own three-light rig, keyed to chest height rather than the
+ * floor, and it only exists while something IS the subject — so the wide shot
+ * keeps its falloff and its darkness.
+ */
+function SubjectLighting({
+  position,
+  active,
+  accent,
+  reducedMotion,
+}: {
+  position: [number, number, number];
+  active: boolean;
+  accent: string;
+  reducedMotion: boolean;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const level = useRef(0);
+
+  useFrame((_, delta) => {
+    const node = group.current;
+    if (!node) return;
+    const k = reducedMotion ? 1 : approach(2.4, delta);
+    level.current += ((active ? 1 : 0) - level.current) * k;
+    node.traverse((child) => {
+      const light = child as THREE.Light & { userData: { baseIntensity?: number } };
+      if (!light.isLight) return;
+      const base = light.userData.baseIntensity;
+      if (base !== undefined) light.intensity = base * level.current;
+    });
+  });
+
+  const chest = 1.34;
+
+  return (
+    <group ref={group} position={position}>
+      {/* Key: high and off-axis, aimed at the chest. This is what actually
+          models the garment — its falloff across the ribcage and thighs is
+          where fabric reads as fabric. */}
+      <spotLight
+        position={[1.35, 2.5, 2.0]}
+        target-position={[0, chest, 0]}
+        angle={0.62}
+        penumbra={0.75}
+        distance={7}
+        decay={2}
+        color="#fff6ea"
+        userData={{ baseIntensity: 78 }}
+        intensity={0}
+      />
+      {/* Fill: opposite side, cool and much weaker, so the shadow side keeps
+          some detail without flattening the key. */}
+      <spotLight
+        position={[-1.7, 1.5, 1.5]}
+        target-position={[0, chest, 0]}
+        angle={0.7}
+        penumbra={0.9}
+        distance={6}
+        decay={2}
+        color="#b9c6ee"
+        userData={{ baseIntensity: 20 }}
+        intensity={0}
+      />
+      {/* Rim: behind and above, in the suit's own accent. This is the light
+          that separates a dark garment from a dark room. */}
+      <spotLight
+        position={[-0.5, 2.3, -2.1]}
+        target-position={[0, chest * 1.15, 0]}
+        angle={0.6}
+        penumbra={0.6}
+        distance={6}
+        decay={2}
+        color={accent}
+        userData={{ baseIntensity: 44 }}
+        intensity={0}
+      />
+    </group>
+  );
+}
+
 export interface SuitBayStageProps {
   slots: BaySlot[];
   selectedId: string | null;
@@ -196,11 +362,12 @@ export function SuitBayStage({
   const resolution = tier === "HERO" ? 1024 : 512;
 
   const fogColor = useMemo(() => new THREE.Color("#050507"), []);
+  const selectedSlot = slots.find((slot) => slot.id === selectedId) ?? null;
 
   return (
     <group>
       <color attach="background" args={["#050507"]} />
-      <fog attach="fog" args={[fogColor, focused ? 5 : 7, focused ? 15 : 26]} />
+      <fog attach="fog" args={[fogColor, focused ? 4.5 : 6, focused ? 17 : 30]} />
 
       {/* Ambient is kept very low on purpose: the room should be lit BY the
           bay lights, not by a global wash that flattens every surface. */}
@@ -243,6 +410,8 @@ export function SuitBayStage({
         )}
       </mesh>
 
+      <Architecture lighting={lighting} tier={tier} />
+
       {slots.map((slot) => (
         <Platform
           key={slot.id}
@@ -253,6 +422,15 @@ export function SuitBayStage({
           onSelect={onSelect}
         />
       ))}
+
+      {selectedSlot ? (
+        <SubjectLighting
+          position={selectedSlot.position}
+          active={focused}
+          accent={selectedSlot.accent}
+          reducedMotion={reducedMotion}
+        />
+      ) : null}
 
       {children}
     </group>

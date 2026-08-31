@@ -7,11 +7,15 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { canvasDpr, QUALITY_BUDGETS } from "@/lib/3d/quality";
 import { useQualityTier } from "@/lib/3d/useQualityTier";
 import { usePrefersReducedMotion } from "@/lib/3d/useReducedMotion";
-import { SuitBayStage, layoutBays, BODY_LIFT } from "@/components/lab/three/SuitBayStage";
+import { SuitBayStage, layoutBays, BODY_LIFT, PLATFORM_HEIGHT } from "@/components/lab/three/SuitBayStage";
 import { BaySuitForm, StageCamera } from "@/components/lab/three/BaySuit";
 import { GltfSuitModel, GltfErrorBoundary, CANONICAL_BODY_HEIGHT } from "@/components/lab/three/GltfSuitModel";
 import { DEFAULT_BODY_MODEL_URL } from "@/components/lab/three/HolographicSuitCanvas";
 import { Materialize } from "@/components/three/Materialize";
+import { AssetModel } from "@/components/three/AssetModel";
+import { getAsset, componentsToNodes } from "@/lib/3d/assetRegistry";
+import { INITIAL_INTERACTION, type InteractionState } from "@/lib/3d/interaction";
+import { loadAssetIndex } from "@/lib/3d/assetLoader";
 import { lightingFor } from "@/lib/experience/world";
 import { deriveExperienceState, type BrainStateName } from "@/lib/experience/state";
 import { GestureRecognizer, MIN_TOUCH_TARGET_PX } from "@/lib/experience/gestures";
@@ -60,6 +64,14 @@ export interface BaySuitItem {
   armorLevel?: string;
   maskLensStyle?: string;
   stats: { stealth: number; durability: number; mobility: number; weightKg: number; estimatedCostUsd: number } | null;
+  /**
+   * Registered asset id, when this suit has an authored GLB bundle.
+   *
+   * Present means the suit renders through the asset contract — real LODs,
+   * named components, provenance — instead of through the procedural fallback.
+   * Absent is the honest state for a suit nobody has authored yet.
+   */
+  assetId?: string | null;
 }
 
 /** How many suits stand in the room at once. The rest live in the archive. */
@@ -90,6 +102,26 @@ export function SuitBaySpatial({
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? bayed[0]?.id ?? null);
   const [focused, setFocused] = useState(initialFocused);
   const [notice, setNotice] = useState<string | null>(null);
+  // Registered external assets. Loaded once; `assetsReady` flips when the
+  // index resolves so suits that have an authored bundle swap from the
+  // procedural fallback to the real thing.
+  const [assetsReady, setAssetsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadAssetIndex().then((result) => {
+      if (cancelled) return;
+      if (result.failed.length > 0) {
+        console.warn("[suit-bay] asset manifests failed to load", result.failed);
+      }
+      setAssetsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+  const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
   const selected = useMemo(() => bayed.find((s) => s.id === selectedId) ?? null, [bayed, selectedId]);
 
@@ -101,6 +133,27 @@ export function SuitBaySpatial({
     [bayed],
   );
   const selectedSlot = useMemo(() => slots.find((s) => s.id === selectedId) ?? null, [slots, selectedId]);
+
+  // The authored bundle for the current subject, if one is registered.
+  // `assetsReady` is in the deps so the lookup re-runs once the index resolves.
+  const heroAsset = useMemo(
+    () => (assetsReady && selected?.assetId ? getAsset(selected.assetId) : null),
+    [assetsReady, selected],
+  );
+
+  // Component selection only means anything while a suit is the subject, so
+  // it is DERIVED from focus rather than cleared by an effect — an effect that
+  // resets state is a second source of truth and an extra render.
+  const activeComponent = focused ? selectedComponent : null;
+
+  const interaction = useMemo<InteractionState>(
+    () => ({ ...INITIAL_INTERACTION, selectedId: activeComponent, hoverId: hoveredComponent }),
+    [activeComponent, hoveredComponent],
+  );
+
+  const selectComponent = useCallback((id: string) => {
+    setSelectedComponent((current) => (current === id ? null : id));
+  }, []);
 
   // The room's lighting is a function of the place and what VOX is doing —
   // the same derivation the Brain uses, so both surfaces agree.
@@ -215,6 +268,23 @@ export function SuitBaySpatial({
                   {isSubject ? (
                     // The subject gets the real asset. Materialize gives it an
                     // arrival rather than a pop-in.
+                    heroAsset ? (
+                      <group position={[0, PLATFORM_HEIGHT, 0]}>
+                        <GltfErrorBoundary fallback={<BaySuitForm id={slot.id} accent={suit.colorPrimary} dimmed={false} onSelect={select} />}>
+                          <AssetModel
+                            asset={heroAsset}
+                            tier={tier}
+                            targetHeight={CANONICAL_BODY_HEIGHT}
+                            groundY={0}
+                            nodes={componentsToNodes(heroAsset)}
+                            interaction={interaction}
+                            onSelect={selectComponent}
+                            onHover={setHoveredComponent}
+                            reducedMotion={reducedMotion}
+                          />
+                        </GltfErrorBoundary>
+                      </group>
+                    ) : (
                     <Materialize trigger={slot.id} reducedMotion={reducedMotion}>
                       <group position={[0, BODY_LIFT, 0]}>
                       <GltfErrorBoundary fallback={<BaySuitForm id={slot.id} accent={suit.colorPrimary} dimmed={false} onSelect={select} />}>
@@ -233,6 +303,7 @@ export function SuitBaySpatial({
                       </GltfErrorBoundary>
                       </group>
                     </Materialize>
+                    )
                   ) : (
                     <BaySuitForm id={slot.id} accent={suit.colorPrimary} dimmed={focused} onSelect={select} />
                   )}
@@ -245,6 +316,7 @@ export function SuitBaySpatial({
             controls={controls}
             subject={focused && selectedSlot ? selectedSlot.position : null}
             home={{ position: [(selectedSlot?.position[0] ?? 0) * 0.45, 2.0, 8.4], target: [(selectedSlot?.position[0] ?? 0) * 0.7, 0.95, -0.5] }}
+            anchorX={selectedSlot?.position[0] ?? 0}
             distance={2.65}
             aim={CANONICAL_BODY_HEIGHT * 0.55}
             reducedMotion={reducedMotion}
@@ -312,6 +384,30 @@ export function SuitBaySpatial({
               <span className="lab-mono w-16 text-right text-sm text-white/70">{value}</span>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {/* Selected-component readout. Text beside the object, in the same
+          register as the inspector's — a component is a thing you are told
+          about, not a modal you dismiss. */}
+      {activeComponent && heroAsset ? (
+        <div className="pointer-events-none absolute bottom-28 left-4 right-4 sm:bottom-24 sm:max-w-sm">
+          <div className="lab-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: selected?.colorPrimary }}>
+            {heroAsset.components.find((c) => c.id === activeComponent)?.label ?? activeComponent}
+          </div>
+          {(() => {
+            const meta = heroAsset.components.find((c) => c.id === activeComponent)?.metadata;
+            if (!meta) return null;
+            return (
+              <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1">
+                {Object.entries(meta).map(([key, value]) => (
+                  <span key={key} className="lab-mono text-[9px] uppercase tracking-[0.14em] text-white/30">
+                    {key} <span className="text-white/60">{String(value)}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       ) : null}
 

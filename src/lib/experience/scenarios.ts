@@ -162,6 +162,9 @@ export const SCENARIO_SUITS: BaySuitItem[] = [
     status: "ACTIVE",
     realityStatus: "PROTOTYPE",
     modelUrl: null,
+    // The one suit with an authored bundle. Everything else in this list is
+    // deliberately without one, so the scenarios also cover the fallback.
+    assetId: "vx-01-meridian",
     colorPrimary: "#7c5cff",
     colorSecondary: "#131318",
     silhouette: "ATHLETIC",

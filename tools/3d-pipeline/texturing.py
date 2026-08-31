@@ -305,15 +305,49 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     # given. Converting to metres first is what makes the width mean something.
     strand_m = 0.0026                       # 2.6 mm — a real woven cord
     strand = sstep(strand_m * web_scale, strand_m * web_scale * 0.28, edge)
-    base *= (1.0 - 0.34 * strand[..., None])
+    # 0.34 was too dark: at full-body distance a third of the base colour
+    # removed along every cell edge reads as crazed leather, not as a net laid
+    # into a textile. The strand still exists in the normal and roughness maps
+    # below, which is where construction should live — colour is the weakest
+    # and least physical channel to express it in.
+    base *= (1.0 - 0.11 * strand[..., None])
 
     weave = triplanar_weave(position, normal, scale=weave_scale)
+
+    # --- seams ---------------------------------------------------------------
+    # A stitched seam wherever a panel boundary falls.
+    #
+    # This is the single detail that separates "a body painted two shades of
+    # grey" from "cut and sewn panels": real apparel is assembled from flat
+    # pieces, and the join is always visible as a line of thread with a slight
+    # ridge either side of it. Deriving it from the GRADIENT of the zone masks
+    # means the seam is exactly where the panel edge is, automatically, for any
+    # zone shape — including ones added later.
+    def _edge(mask):
+        gy, gx = np.gradient(mask.astype(np.float32))
+        return np.sqrt(gx * gx + gy * gy)
+
+    seam = np.clip((_edge(panel_w) + _edge(accent_w)) * 95.0, 0.0, 1.0)
+    base *= (1.0 - 0.55 * seam[..., None])
+
+    # --- ripstop grid --------------------------------------------------------
+    # A reinforcing thread every few millimetres, which is what actually makes
+    # technical apparel read as technical: it is regular, fine, and visible as
+    # relief rather than as pattern. Without it the surface only has the
+    # irregular web and a uniform weave, and it reads as a wetsuit.
+    ripstop_m = 0.0065                      # 6.5 mm grid — real ripstop pitch
+    gx = np.abs(((position[..., 0] / ripstop_m) % 1.0) - 0.5)
+    gz = np.abs(((position[..., 2] / ripstop_m) % 1.0) - 0.5)
+    ripstop = np.maximum(sstep(0.10, 0.02, gx), sstep(0.10, 0.02, gz))
+    base *= (1.0 - 0.035 * ripstop[..., None])
 
     # --- roughness -----------------------------------------------------------
     rough = np.full((size, size), 0.66, dtype=np.float32)
     rough = rough * (1.0 - panel_w) + 0.58 * panel_w
     rough = rough * (1.0 - accent_w) + 0.47 * accent_w
     rough += weave * 0.045                      # highlight breakup along the threads
+    rough -= ripstop * 0.05                      # the reinforcing thread is denser and glossier
+    rough -= seam * 0.14                         # stitched thread is compressed and glossier
     rough -= strand * 0.075                      # strands sit denser, so a touch glossier
     rough = np.clip(rough, 0.05, 0.98)
 
@@ -322,7 +356,7 @@ def build_texture_set(ob, size, *, primary, panel_colour, accent_colour, web_sca
     # are needed and the result is correct for any unwrap.
     # The strand is RAISED, not cut. A groove reads as a crack in the surface;
     # a ridge reads as a net laid into the weave, which is what it is.
-    height = weave * 0.16 + strand * 0.75
+    height = weave * 0.16 + strand * 0.34 + ripstop * 0.22 + seam * 0.85
     dy, dx = np.gradient(height.astype(np.float32))
     # Gradient strength was 2.2 and turned the weave into chunky square beads:
     # the finite difference is per-texel, so a strong multiplier amplifies texel

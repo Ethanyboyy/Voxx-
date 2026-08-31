@@ -15,7 +15,7 @@ import {
   loadAssetDefinition,
   loadAssetIndex,
 } from "@/lib/3d/assetLoader";
-import { clearRegistry, getAsset } from "@/lib/3d/assetRegistry";
+import { assetDefinitionSchema, clearRegistry, getAsset } from "@/lib/3d/assetRegistry";
 
 describe("signal classification", () => {
   it("maps real VOX event types to cognitive activities", () => {
@@ -194,9 +194,25 @@ describe("external asset discovery", () => {
     expect(assetIndexSchema.parse({}).assets).toEqual([]);
   });
 
-  it("ships an index that is valid and honest about being empty", async () => {
-    const { readFileSync } = await import("node:fs");
-    const raw = JSON.parse(readFileSync("public/models/index.json", "utf8"));
-    expect(assetIndexSchema.parse(raw).assets).toEqual([]);
+  it("ships an index whose every manifest exists and validates", async () => {
+    // Stronger than asserting the index is empty (which it no longer is): each
+    // path it names must resolve to a real file that the registry schema
+    // accepts, and each LOD that manifest promises must exist on disk. An
+    // index entry pointing at a missing or malformed asset is a 404 in the
+    // Suit Bay, and nothing else in the suite would catch it.
+    const { readFileSync, existsSync } = await import("node:fs");
+    const index = assetIndexSchema.parse(JSON.parse(readFileSync("public/models/index.json", "utf8")));
+    expect(index.assets.length).toBeGreaterThan(0);
+
+    for (const path of index.assets) {
+      const file = `public${path}`;
+      expect(existsSync(file), file).toBe(true);
+      const asset = assetDefinitionSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+      for (const lod of asset.lods) {
+        expect(existsSync(`public${lod.url}`), lod.url).toBe(true);
+      }
+      // Provenance is required by the schema; assert it is also meaningful.
+      expect(asset.provenance.description.length).toBeGreaterThan(40);
+    }
   });
 });

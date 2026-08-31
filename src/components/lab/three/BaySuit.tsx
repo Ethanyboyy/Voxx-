@@ -119,6 +119,16 @@ export interface StageCameraProps {
   subject: [number, number, number] | null;
   /** Establishing shot, used when nothing is selected. */
   home: { position: [number, number, number]; target: [number, number, number] };
+  /**
+   * True world x of the bay the shot should hold, unscaled.
+   *
+   * The landscape establishing shot deliberately offsets camera and target
+   * by DIFFERENT fractions of this to get a three-quarter view of the room.
+   * Portrait cannot do that — it has no horizontal room to spare — so it
+   * needs the real value to look straight down the bay instead of at a
+   * point beside it, which is what cropped the hero off the left edge.
+   */
+  anchorX?: number;
   /** How close to stand to the subject, in metres. */
   distance: number;
   /** Height on the subject the camera looks at, in metres above the floor. */
@@ -142,6 +152,7 @@ export function StageCamera({
   home,
   distance,
   aim,
+  anchorX,
   reducedMotion = false,
   rate = 2.6,
 }: StageCameraProps) {
@@ -153,7 +164,14 @@ export function StageCamera({
   const desiredTarget = useRef(new THREE.Vector3(...home.target));
 
   useFrame((_, delta) => {
-    const pullback = portraitPullback(aspect);
+    // Cap the portrait correction.
+    //
+    // The uncapped 1/aspect is right for GUARANTEEING a subject fits, and wrong
+    // as a framing rule for a room: at 390x844 it is 2.16, which pushed the
+    // establishing shot to ~18m and left the suits as a thin band in a mostly
+    // black screen — exactly what the mobile capture showed. 1.45 keeps the
+    // subject inside the frame while letting it stay large enough to read.
+    const pullback = Math.min(portraitPullback(aspect), 1.45);
     const fov = (camera as THREE.PerspectiveCamera).fov ?? 38;
 
     if (subject) {
@@ -167,8 +185,22 @@ export function StageCamera({
         .copy(desiredTarget.current)
         .addScaledVector(offset, distance * pullback);
     } else {
-      desiredPos.current.set(...home.position);
-      desiredTarget.current.set(...home.target);
+      // A phone cannot hold five bays across without making each one tiny, so
+      // portrait moves IN and accepts that the outer bays fall out of frame.
+      //
+      // It must also look STRAIGHT AT the subject bay. The landscape framing
+      // offsets the camera and the target by different fractions of the
+      // subject's x to get a three-quarter view of the room; keeping that
+      // offset while moving in swung the camera off-axis and cropped the hero
+      // against the left edge, which is what the mobile capture showed.
+      if (aspect < 1) {
+        const x = anchorX ?? home.target[0];
+        desiredTarget.current.set(x, home.target[1], home.target[2]);
+        desiredPos.current.set(x, home.position[1] * 0.9, home.position[2] * 0.78);
+      } else {
+        desiredPos.current.set(...home.position);
+        desiredTarget.current.set(...home.target);
+      }
     }
 
     const k = reducedMotion ? 1 : approach(rate, delta);

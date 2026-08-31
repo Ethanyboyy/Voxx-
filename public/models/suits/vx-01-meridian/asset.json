@@ -1,0 +1,185 @@
+{
+  "assetId": "vx-01-meridian",
+  "kind": "suit",
+  "label": "Meridian VX-01",
+  "lods": [
+    {
+      "url": "/models/suits/vx-01-meridian/suit.hero.glb",
+      "tier": "HIGH",
+      "bytes": 13278496,
+      "triangles": 86716
+    },
+    {
+      "url": "/models/suits/vx-01-meridian/suit.mobile.glb",
+      "tier": "MOBILE",
+      "bytes": 3428324,
+      "triangles": 23968
+    }
+  ],
+  "components": [
+    {
+      "id": "body",
+      "label": "Garment",
+      "parentId": null,
+      "kind": "garment",
+      "meshNames": [
+        "body"
+      ],
+      "metadata": {
+        "Construction": "Cut-and-sewn technical knit over compression base",
+        "Panels": "Chest yoke, shoulder cap, forearm cuff, knee reinforcement",
+        "Closure": "Integrated waist band"
+      }
+    },
+    {
+      "id": "mask",
+      "label": "Mask",
+      "parentId": null,
+      "kind": "head",
+      "meshNames": [
+        "mask"
+      ],
+      "detachable": true,
+      "metadata": {
+        "Construction": "Two-piece shell, continuous with the collar",
+        "Fit": "Compression, no rigid frame"
+      }
+    },
+    {
+      "id": "lens-l",
+      "label": "Left lens",
+      "parentId": "mask",
+      "kind": "optic",
+      "meshNames": [
+        "lensL"
+      ],
+      "metadata": {
+        "Type": "Recessed optical assembly"
+      }
+    },
+    {
+      "id": "lens-r",
+      "label": "Right lens",
+      "parentId": "mask",
+      "kind": "optic",
+      "meshNames": [
+        "lensR"
+      ],
+      "metadata": {
+        "Type": "Recessed optical assembly"
+      }
+    },
+    {
+      "id": "wrist-l",
+      "label": "Left wrist system",
+      "parentId": null,
+      "kind": "assembly",
+      "meshNames": [],
+      "detachable": true
+    },
+    {
+      "id": "wristHousingL",
+      "label": "Housing",
+      "parentId": "wrist-l",
+      "kind": "component",
+      "meshNames": [
+        "wristHousingL"
+      ]
+    },
+    {
+      "id": "wristMechanismL",
+      "label": "Actuator",
+      "parentId": "wrist-l",
+      "kind": "component",
+      "meshNames": [
+        "wristMechanismL"
+      ]
+    },
+    {
+      "id": "wristCartridgeL",
+      "label": "Cartridge",
+      "parentId": "wrist-l",
+      "kind": "component",
+      "meshNames": [
+        "wristCartridgeL"
+      ]
+    },
+    {
+      "id": "wristNozzleL",
+      "label": "Nozzle",
+      "parentId": "wrist-l",
+      "kind": "component",
+      "meshNames": [
+        "wristNozzleL"
+      ]
+    },
+    {
+      "id": "wristTriggerL",
+      "label": "Trigger",
+      "parentId": "wrist-l",
+      "kind": "component",
+      "meshNames": [
+        "wristTriggerL"
+      ]
+    },
+    {
+      "id": "wrist-r",
+      "label": "Right wrist system",
+      "parentId": null,
+      "kind": "assembly",
+      "meshNames": [],
+      "detachable": true
+    },
+    {
+      "id": "wristHousingR",
+      "label": "Housing",
+      "parentId": "wrist-r",
+      "kind": "component",
+      "meshNames": [
+        "wristHousingR"
+      ]
+    },
+    {
+      "id": "wristMechanismR",
+      "label": "Actuator",
+      "parentId": "wrist-r",
+      "kind": "component",
+      "meshNames": [
+        "wristMechanismR"
+      ]
+    },
+    {
+      "id": "wristCartridgeR",
+      "label": "Cartridge",
+      "parentId": "wrist-r",
+      "kind": "component",
+      "meshNames": [
+        "wristCartridgeR"
+      ]
+    },
+    {
+      "id": "wristNozzleR",
+      "label": "Nozzle",
+      "parentId": "wrist-r",
+      "kind": "component",
+      "meshNames": [
+        "wristNozzleR"
+      ]
+    },
+    {
+      "id": "wristTriggerR",
+      "label": "Trigger",
+      "parentId": "wrist-r",
+      "kind": "component",
+      "meshNames": [
+        "wristTriggerR"
+      ]
+    }
+  ],
+  "provenance": {
+    "origin": "GENERATED",
+    "description": "Authored in this repository by tools/3d-pipeline/build_suit.py using Blender (bpy 5.0.1) as a Python module: skeleton graph -> Skin modifier -> subdivision -> muscle displacement -> garment construction -> per-texel baked PBR maps. No third-party mesh, no scanned data, no external generation service. Original design; not derived from any existing character costume.",
+    "license": "Owned by this project. Blender's bpy module is GPL and is used only as an offline authoring tool; it ships nothing into this asset or the application."
+  },
+  "animations": []
+}
