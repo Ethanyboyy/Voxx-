@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { Suspense, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Group, Mesh } from "three";
 import type { BrainState } from "@/lib/brain/graph";
 import { buildBrainParts } from "@/components/brain/three/brainGeometry";
 import { AnatomicalBrainAsset, anatomicalBrainUrl } from "@/components/brain/three/AnatomicalBrainAsset";
+import { GltfErrorBoundary } from "@/components/lab/three/GltfSuitModel";
 import { useQualityTier } from "@/lib/3d/useQualityTier";
 
 const DAMP = 0.08;
@@ -214,20 +215,37 @@ export function BrainMesh({
 
   const clipPlanes = clipEnabled ? [clipPlane] : [];
 
+  // The procedural cortex, used three ways: as the render when no anatomical
+  // asset is registered, as what shows WHILE one downloads, and as what shows
+  // if that download fails. There is always a brain on screen.
+  const procedural = parts.map((part) => (
+    <PartMesh key={part.key} part={part} explodeAmount={explodeAmount} xray={xray} clipPlanes={clipPlanes} emissiveColor={emissiveColor} pulseRef={pulseRef} />
+  ));
+
   return (
     <group>
       {assetUrl ? (
-        <AnatomicalBrainAsset
-          url={assetUrl}
-          clipPlanes={clipPlanes}
-          emissiveColor={emissiveColor}
-          pulseRef={pulseRef}
-          opacity={xray ? 0.22 : 1}
-        />
+        // Two distinct failure modes, two distinct guards, and the same answer
+        // to both. Suspense covers "not here yet" — a multi-megabyte anatomical
+        // GLB over a phone hotspot is seconds of nothing, and BrainScene's
+        // outer boundary falls back to null, which would blank the Brain
+        // entirely. GltfErrorBoundary (reused from the Suit Bay, which hit this
+        // first) covers "here but broken" — a 404 or a parse failure throws
+        // during render, which only a class boundary can catch, and without one
+        // a bad asset takes down the whole Brain tree rather than degrading.
+        <GltfErrorBoundary fallback={<>{procedural}</>}>
+          <Suspense fallback={<>{procedural}</>}>
+            <AnatomicalBrainAsset
+              url={assetUrl}
+              clipPlanes={clipPlanes}
+              emissiveColor={emissiveColor}
+              pulseRef={pulseRef}
+              opacity={xray ? 0.22 : 1}
+            />
+          </Suspense>
+        </GltfErrorBoundary>
       ) : (
-        parts.map((part) => (
-          <PartMesh key={part.key} part={part} explodeAmount={explodeAmount} xray={xray} clipPlanes={clipPlanes} emissiveColor={emissiveColor} pulseRef={pulseRef} />
-        ))
+        procedural
       )}
       {/* Deep internal glow — a small, mostly-occluded core light standing in
           for "cognitive activity happening somewhere inside," genuinely
