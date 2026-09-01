@@ -194,3 +194,105 @@ inside the executor's step loop that transitions to a new `LIMIT_REACHED`-style 
 (not yet in the enum) instead of running forever. None of this was built now — it would be
 speculative infrastructure for a request-execution model that hasn't yet needed it, per the
 "do not overbuild" directive.
+
+---
+
+# Phase 2 — the control loop (implemented)
+
+Phase 1 gave the engine a scored pipeline, a ledger, a spend policy and an outcome record. What
+it did not have was a **loop**: nothing measured time-windowed profit, nothing decided whether a
+venture should grow or die, nothing ran on a schedule, and nothing could be stopped. Phase 2 adds
+those four pieces. It again creates no parallel engine — the ledger, the Experiment model, the
+Event log and the permission system are the existing ones.
+
+## 12. P&L rollup — `src/lib/economic/pnl.ts`
+
+`getPnlReport(userId, now)` computes lifetime / today / trailing-7d / trailing-30d revenue,
+expense and net from the existing `EconomicRevenue` and `EconomicExpense` rows, plus distance
+from the $500/day floor and the $100,000/30-day objective.
+
+**Provenance separation is structural, not conventional.** `LedgerProvenance` has three members —
+`REALIZED`, `USER_RECORDED`, `SIMULATED` — and deliberately no `PROJECTED`:
+
+- A forecast cannot be stored as a ledger row at all. Expectations live on the experiment
+  contract (`Experiment.expectedNetProfitUsd`), in a different table, and surface in the report
+  as `outlook`, a field of a **different type** (`ProjectedOutlook`) from every realized total.
+  Summing a projection into profit is therefore a type error, not a bug to be noticed in review.
+- `SIMULATED` rows are reported but never counted as money, never counted toward a goal, and
+  never consume the real autonomous-spend ceiling.
+- `REALIZED` means confirmed against an external system of record. **Nothing in VOX can write it
+  today** — there is no payment or banking integration — so realized profit is currently $0 by
+  construction, and the report says so rather than borrowing the user-recorded number.
+
+**Capital is null, not zero.** `CapitalPosture.availableUsd` is `null` with a stated reason.
+VOX does not synthesize a capital account, and does not present `maxAutonomousSpendUsd` as cash:
+that is a policy ceiling, reported in its own separate fields.
+
+## 13. The economic experiment contract — `Experiment` + `src/lib/economic/experiments.ts`
+
+The existing `Experiment` model was **extended**, not duplicated: `hypothesis` and `method` were
+already the first two terms of a contract. Added: required capital, maximum loss, success and
+failure metrics, deadline, scale and kill criteria (each with a machine-checkable USD threshold
+beside the prose), expected return, expected net profit, required capabilities, an
+`executionStatus` and an `outcome`.
+
+Every gating constraint is a **number or a date**, because an autonomous scheduler must be able
+to compare a constraint, not recall it from prose. `validateContract()` reports missing terms and
+incoherent ones separately (e.g. a kill threshold the loss cap would always beat), and
+`toDecisionContract()` returns `null` rather than defaulting a blank — there is no safe default
+for "how much may this lose".
+
+## 14. The decision layer — `src/lib/economic/decide.ts`
+
+A pure function: no I/O, no database, **no model call**, no override parameter. Rule order, hard
+constraints first and short-circuiting:
+
+1. **Maximum loss** — net loss ≥ `maxLossUsd` → KILL. Checked before everything, including the
+   global halt and including a simultaneously-satisfied scale threshold.
+2. **Kill threshold** — net ≤ `killAtNetUsd` → KILL.
+3. **Global halt** → HOLD. Never SCALE while halted; KILL stays reachable above this line
+   because killing only reduces exposure.
+4. **Deadline** — past `deadlineAt`, scale threshold met → SCALE, otherwise → KILL.
+5. **Capital vs policy** — scaling would exceed the user's ceiling → HOLD.
+6. **Scale threshold** met → SCALE. 7. Otherwise HOLD.
+
+Every result carries the numbers that produced it and marks exactly one binding constraint.
+
+## 15. Scheduler tick and the global halt — `scheduler.ts`, `halt.ts`
+
+`runEconomicTick(userId, now)` walks live contracts, measures each against its own asset's real
+ledger, calls `decide()`, and records the answer. It starts no run, calls no provider, invokes no
+model and spends nothing.
+
+**Idempotency lives in the database.** The tick key is a deterministic hourly bucket and
+`EconomicTick` carries `@@unique([userId, tickKey])`; the bucket is claimed *before* any work, so
+a double-fired cron, a retried request or two racing processes produce one tick.
+
+**The boundary is honest.** VOX has no payment, purchasing or deployment capability — every
+Connections Hub provider throws by design. So a SCALE decision **cannot be executed**: the
+experiment moves to `AWAITING_HUMAN` and an `economic_experiment.scale_blocked` Event records why.
+KILL *is* applied automatically, because stopping needs no capability VOX lacks and a contract
+past its loss cap must not wait on someone reading a notification. That asymmetry is deliberate.
+
+**The halt is enforced in service code**, at four independent points: `evaluateSpendPolicy()`
+denies (checked before the ceiling, so it denies $0.01 as firmly as $10,000),
+`recordOpportunitySpend()` throws `EconomicHaltedError`, `runEconomicTick()` records a `HALTED`
+tick without evaluating anything, and `decide()` cannot return SCALE. Hiding the UI control would
+not re-enable spending.
+
+## 16. Closing the loop — `src/lib/economic/lessons.ts`
+
+A killed contract writes one Memory through the existing memory service: the **measured fact**,
+with its real numbers, as a `FACT` — not the generalization, which one experiment does not
+support. `getRelevantLessons()` ranks only economic lessons by embedding similarity to the
+opportunity's own text and drops anything below a relevance floor, so an unrelated failure never
+shades an unrelated idea. `evaluateOpportunityWithLessons()` attaches them **beside** the score
+and never adjusts it — per rule 3, an inference stays an inference until a human promotes it.
+
+## 17. What is still blocked
+
+The loop is complete up to the point where money would actually move. The first real-money
+experiment needs **one** thing that does not exist: a payment/banking capability behind
+`src/lib/integrations/` that can (a) deploy capital under `ACT` permission and (b) write
+`REALIZED` ledger rows from confirmed external records. Everything upstream of that — contract,
+decision, scheduler, halt, P&L, lesson loop — runs today.

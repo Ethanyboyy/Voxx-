@@ -79,6 +79,13 @@ model User {
   /// autonomous spend at all) — this is a decision layer only; it is never
   /// wired to a real payment method in this milestone.
   maxAutonomousSpendUsd Float @default(0)
+  /// GLOBAL ECONOMIC HALT. When set, no economic execution may begin and no
+  /// autonomous spend may occur, full stop. Enforced in service code —
+  /// evaluateSpendPolicy() denies, recordOpportunitySpend() throws, and
+  /// runEconomicTick() records a HALTED tick without evaluating anything — so
+  /// hiding the UI control would not re-enable spending. Null means running.
+  economicHaltedAt   DateTime?
+  economicHaltReason String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -113,6 +120,7 @@ model User {
   brainViews            BrainView[]
   supervisorRuns        SupervisorRun[]
   outcomes              Outcome[]
+  economicTicks         EconomicTick[]
 
   labProjects         LabProject[]
   labSuits            LabSuit[]
@@ -529,6 +537,38 @@ enum ExperimentStatus {
   ABANDONED
 }
 
+/// Where an experiment sits in the ECONOMIC control loop, as distinct from
+/// `ExperimentStatus` (which describes the experiment as an inquiry). The two
+/// are deliberately separate: an experiment can be RUNNING as an inquiry while
+/// its economic execution is still DRAFT because no contract has been written.
+enum ExperimentExecutionStatus {
+  /// No economic contract, or an incomplete one. Never evaluated, never executed.
+  DRAFT
+  /// Contract complete and machine-checkable. Eligible for the scheduler.
+  READY
+  /// Contract is live and the scheduler evaluates it on every tick.
+  RUNNING
+  /// The deterministic decision layer wants to SCALE (or the contract needs
+  /// capital) but VOX has no way to actually do it. Stopped at the boundary,
+  /// waiting on a human — never silently treated as executed.
+  AWAITING_HUMAN
+  /// A hard constraint fired (max loss, kill threshold, deadline). Terminal.
+  KILLED
+  COMPLETED
+}
+
+/// The economic verdict on a finished experiment. Distinct from
+/// ExperimentResult (free-text learnings) because the scheduler needs one
+/// machine-readable answer it can act on without re-reading prose.
+enum ExperimentOutcome {
+  PENDING
+  WIN
+  LOSS
+  INCONCLUSIVE
+  /// Ended by a hard constraint rather than by reaching its own conclusion.
+  KILLED_BY_CONSTRAINT
+}
+
 model Experiment {
   id         String           @id @default(uuid())
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -547,6 +587,74 @@ model Experiment {
 
   results       ExperimentResult[]
   knowledgeNode KnowledgeNode?
+
+  // --- Economic experiment contract -------------------------------------
+  //
+  // This is the machine-readable half of an economic experiment. It extends
+  // the EXISTING Experiment model rather than introducing a second experiment
+  // subsystem: `hypothesis` and `method` above are already the first two terms
+  // of the contract, so only the economic terms are added here.
+  //
+  // WHY NUMBERS AND NOT PROSE. src/lib/economic/decide.ts is a pure function
+  // with no model call in it. For an autonomous scheduler to honour a
+  // constraint it must be able to COMPARE it, so every constraint that gates a
+  // decision (`maxLossUsd`, `killAtNetUsd`, `scaleAtNetUsd`, `deadlineAt`,
+  // `requiredCapitalUsd`) is a number or a date. The prose fields beside them
+  // (`successMetric`, `killCriteria`, ...) exist so a human can read the same
+  // contract; they are never what the decision layer reads.
+  //
+  // Every field is optional because a contract is written incrementally. An
+  // experiment only becomes eligible for autonomous evaluation once
+  // `validateContract()` says the required terms are all present — a null
+  // means "not yet stated", never zero, and never an assumed default.
+
+  /// The Opportunity this experiment tests. This is the Opportunity ->
+  /// Objective -> Experiment chain, not a new one.
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?
+  /// Where this experiment's real money lands. P&L for an experiment is read
+  /// from this asset's own EconomicRevenue/EconomicExpense rows — there is no
+  /// separate experiment ledger.
+  economicAsset   EconomicAsset? @relation(fields: [economicAssetId], references: [id], onDelete: SetNull)
+  economicAssetId String?
+
+  /// Capital the experiment needs deployed to run at all.
+  requiredCapitalUsd Float?
+  /// HARD CONSTRAINT. Net loss at which the experiment is killed, no
+  /// exceptions and no override — see decide.ts. Must be > 0 to be executable.
+  maxLossUsd         Float?
+  /// Human-readable statement of what success means.
+  successMetric      String?
+  /// Human-readable statement of what failure means.
+  failureMetric      String?
+  /// HARD CONSTRAINT. The date by which the contract must have proven itself.
+  deadlineAt         DateTime?
+  scaleCriteria      String?
+  /// Net profit (USD, this experiment's own ledger) at or above which the
+  /// decision layer returns SCALE.
+  scaleAtNetUsd      Float?
+  killCriteria       String?
+  /// Net (USD) at or below which the decision layer returns KILL. Typically
+  /// negative. Independent of maxLossUsd — either firing is sufficient.
+  killAtNetUsd       Float?
+  /// PROJECTED, never realized. Kept structurally apart from the ledger so it
+  /// can never be summed into profit — see pnl.ts.
+  expectedReturnUsd    Float?
+  /// PROJECTED. Expected return minus expected cost.
+  expectedNetProfitUsd Float?
+  /// JSON string[] of Tool Registry capability keys this experiment would need
+  /// to execute. Informational and required-for-readiness — never auto-granted.
+  requiredCapabilities String?
+
+  executionStatus ExperimentExecutionStatus @default(DRAFT)
+  outcome         ExperimentOutcome         @default(PENDING)
+  /// The last deterministic decision and the single constraint that produced
+  /// it, so the audit trail survives even if the Event log is pruned.
+  lastDecision       String?
+  lastDecisionReason String?
+  lastDecisionAt     DateTime?
+
+  @@index([userId, executionStatus])
 }
 
 model ExperimentResult {
@@ -1184,6 +1292,9 @@ model Opportunity {
   /// see Objective.sourceOpportunityId below. Distinct from `objective`
   /// above (this opportunity's own parent Objective).
   sourcedObjectives Objective[] @relation("OpportunitySourcesObjectives")
+  /// Economic experiments testing this opportunity — see the contract fields
+  /// on Experiment. Extends the existing chain rather than forking it.
+  experiments       Experiment[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1355,30 +1466,102 @@ model EconomicAsset {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
-  revenues EconomicRevenue[]
-  expenses EconomicExpense[]
+  revenues    EconomicRevenue[]
+  expenses    EconomicExpense[]
+  experiments Experiment[]
+}
+
+/// How much a ledger row can be trusted as money.
+///
+/// The one rule this enum exists to enforce: a projection is NOT a ledger row.
+/// There is deliberately no PROJECTED member — an expectation lives on the
+/// experiment contract (`Experiment.expectedNetProfitUsd`), in a different
+/// table, so it is structurally impossible to sum a forecast into profit. See
+/// src/lib/economic/pnl.ts, which reports projections in a separate field of a
+/// different type for the same reason.
+enum LedgerProvenance {
+  /// Confirmed against an external system of record (payment processor, bank
+  /// statement). NOTHING in VOX can write this today: no payment or banking
+  /// integration exists. It is defined so that the day one does, the
+  /// distinction is already in the schema rather than retrofitted onto rows
+  /// whose provenance has been lost.
+  REALIZED
+  /// A human entered it. True as far as VOX knows, unverified by anything.
+  /// The honest default, and what every pre-existing row is.
+  USER_RECORDED
+  /// A dry run. Never money, never counted toward the floor or the objective,
+  /// but recorded rather than discarded so a simulated run is visible instead
+  /// of indistinguishable from no run at all.
+  SIMULATED
 }
 
 model EconomicRevenue {
-  id         String        @id @default(uuid())
-  asset      EconomicAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  id         String           @id @default(uuid())
+  asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   assetId    String
   amountUsd  Float
   source     String?
+  provenance LedgerProvenance @default(USER_RECORDED)
   occurredAt DateTime
   notes      String?
-  createdAt  DateTime      @default(now())
+  createdAt  DateTime         @default(now())
+
+  @@index([assetId, occurredAt])
 }
 
 model EconomicExpense {
-  id         String        @id @default(uuid())
-  asset      EconomicAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  id         String           @id @default(uuid())
+  asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   assetId    String
   amountUsd  Float
   category   String?
+  provenance LedgerProvenance @default(USER_RECORDED)
   occurredAt DateTime
   notes      String?
-  createdAt  DateTime      @default(now())
+  createdAt  DateTime         @default(now())
+
+  @@index([assetId, occurredAt])
+}
+
+// ---------------------------------------------------------------------------
+// Economic scheduler — the control loop's run record.
+//
+// This is NOT a second execution engine. It starts nothing, spends nothing,
+// and calls no provider; it evaluates existing experiment contracts with the
+// pure function in src/lib/economic/decide.ts and records what it decided.
+// Anything that would require real external execution stops at the boundary
+// (executionStatus -> AWAITING_HUMAN) instead of being reported as done.
+// ---------------------------------------------------------------------------
+
+enum EconomicTickStatus {
+  COMPLETED
+  /// The global economic halt was on. Nothing was evaluated or executed.
+  HALTED
+  FAILED
+}
+
+model EconomicTick {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  /// Deterministic time-bucket key. The @@unique below IS the idempotency
+  /// mechanism: a duplicate tick for the same bucket cannot insert, so a
+  /// double-fired cron or a retried request can never evaluate twice.
+  tickKey        String
+  status         EconomicTickStatus @default(COMPLETED)
+  evaluatedCount Int                @default(0)
+  scaleCount     Int                @default(0)
+  holdCount      Int                @default(0)
+  killCount      Int                @default(0)
+  /// JSON array of {experimentId, decision, bindingConstraint} — the audit
+  /// trail, alongside the Event rows each decision also writes.
+  decisions      String?
+  note           String?
+  startedAt      DateTime           @default(now())
+  finishedAt     DateTime?
+
+  @@unique([userId, tickKey])
+  @@index([userId, startedAt])
 }
 
 // ---------------------------------------------------------------------------

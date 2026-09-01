@@ -2,20 +2,24 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listEconomicAssets, getEconomicOverview, getBudgetSummary } from "@/lib/economic/service";
 import { getAutonomyMode } from "@/lib/supervisor/service";
 import { listOpportunities } from "@/lib/objectives/service";
+import { getPnlReport } from "@/lib/economic/pnl";
 import { EconomicCommandClient } from "@/components/economic/EconomicCommandClient";
 import { BudgetAutonomyPanel } from "@/components/economic/BudgetAutonomyPanel";
+import { ProfitLossPanel } from "@/components/economic/ProfitLossPanel";
+import { toPanelData } from "@/lib/economic/panelData";
 import { RoomHeader } from "@/components/ui/Instrument";
 
 export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities, budget, autonomyMode] = await Promise.all([
+  const [assets, overview, opportunities, budget, autonomyMode, pnl] = await Promise.all([
     listEconomicAssets(user.id),
     getEconomicOverview(user.id),
     listOpportunities(user.id),
     getBudgetSummary(user.id),
     getAutonomyMode(user.id),
+    getPnlReport(user.id),
   ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -27,6 +31,8 @@ export default async function FinancePage() {
         title="Economic Command"
         description={<>Real assets, real revenue and expense entries you log yourself — nothing here is a projection, a forecast, or invented income. An asset starts as an Opportunity (see Objectives) and becomes real once you record it here.</>}
       />
+
+      <ProfitLossPanel initial={toPanelData(pnl)} />
 
       <div className="mt-6">
         <BudgetAutonomyPanel initialBudget={budget} initialAutonomyMode={autonomyMode} />

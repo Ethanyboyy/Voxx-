@@ -4,7 +4,8 @@
 // CRUD on their own data, same posture as Objectives/Opportunities/Tasks.
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
-import type { EconomicAssetCategory, EconomicAssetStatus } from "@/generated/prisma/enums";
+import { assertNotHalted } from "@/lib/economic/halt";
+import type { EconomicAssetCategory, EconomicAssetStatus, LedgerProvenance } from "@/generated/prisma/enums";
 import type { EconomicAsset, EconomicExpense, EconomicRevenue } from "@/generated/prisma/client";
 
 export interface EconomicAssetDTO {
@@ -150,6 +151,18 @@ export interface AddEconomicLedgerEntryInput {
   category?: string;
   occurredAt: Date;
   notes?: string;
+  /**
+   * How much this row can be trusted as money. Defaults to USER_RECORDED —
+   * the honest description of a number a human typed in.
+   *
+   * REALIZED is deliberately unreachable from here: it means "confirmed
+   * against an external system of record", and VOX has no payment or banking
+   * integration to confirm anything against. Accepting it from a caller would
+   * let an agent (or a form post) label unverified data as verified, which is
+   * precisely the distinction the enum exists to protect. When a real
+   * integration lands, it writes REALIZED from inside its own provider module.
+   */
+  provenance?: Exclude<LedgerProvenance, "REALIZED">;
 }
 
 export async function addEconomicRevenue(
@@ -165,6 +178,7 @@ export async function addEconomicRevenue(
       assetId,
       amountUsd: input.amountUsd,
       source: input.source,
+      provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,
       notes: input.notes,
     },
@@ -194,6 +208,7 @@ export async function addEconomicExpense(
       assetId,
       amountUsd: input.amountUsd,
       category: input.category,
+      provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,
       notes: input.notes,
     },
@@ -271,6 +286,11 @@ export interface RecordOpportunitySpendInput {
 }
 
 export async function recordOpportunitySpend(userId: string, input: RecordOpportunitySpendInput): Promise<EconomicExpense> {
+  // Third independent gate, and the one that cannot be routed around: the
+  // capability check and evaluateSpendPolicy() both run earlier in the tool
+  // path, but this function is also reachable from service code. A halt must
+  // hold at the point money is actually recorded, not only at the front door.
+  await assertNotHalted(userId);
   const asset = await findOrCreateAssetForOpportunity(userId, input.opportunityId);
   const expense = await addEconomicExpense(userId, asset.id, {
     amountUsd: input.amountUsd,
