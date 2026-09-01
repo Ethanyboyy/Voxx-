@@ -1,8 +1,8 @@
 {
   "$comment": "Durable engineering state. See engineering/README.md. Update at each meaningful checkpoint; a stale entry is worse than none because it gets acted on.",
-  "updatedAt": "2026-08-31T21:45:00Z",
-  "verifiedAtCommit": "a415526",
-  "phase": "Brain Visual Engine — architecture prepared, implementation NOT started",
+  "updatedAt": "2026-09-01T00:30:00Z",
+  "verifiedAtCommit": "02b6e60",
+  "phase": "BRAIN-030 — anatomical asset slot complete, blocked on the NIH GLB bytes",
   "architecture": {
     "stack": "Next.js 16.3 App Router, TypeScript, Prisma 7.9 on SQLite, Vitest, Tailwind, three.js + React Three Fiber",
     "commands": {
@@ -103,5 +103,24 @@
     "getBrainState() does not read CapabilityRun, the iteration loop or provider calls, so a chat-started run reaches the Brain only as a generic 'executing'. BRAIN-030 phase C fixes this.",
     "Brain state is categorical with no intensity scalar, so concurrency and attempt number are discarded before they reach the visualization.",
     "No DOM test tooling (jsdom/testing-library) is installed, so the mount/unmount subscription-duplication guarantee for useBrainVisualState is enforced by code review, not by a test. useEventStream closes its EventSource in the effect cleanup and there is now exactly one call site on the Brain surface."
-  ]
+  ],
+  "sessionHandoff": {
+    "$comment": "Where the last session stopped and what the next one does first.",
+    "resumeFrom": "02b6e60 (pushed to origin/claude/spider-man-lab-foundation-mvjayy)",
+    "blockedOn": "The NIH HRA brain GLB (3DPX-020959 v1.3, CC BY 4.0) is not in the repo. The owner uploaded it to Google Drive as '3d-vh-f-allen-brain.glb', but every Drive MCP call returned 'MCP tool call requires approval' and did not execute — the permission prompt needs approving. 3d.nih.gov itself stays denied by egress policy (403 on CONNECT).",
+    "firstActions": [
+      "Ask the owner to approve the Google Drive MCP prompt, then search_files for '3d-vh-f-allen-brain.glb'.",
+      "VERIFY the retrieved file before touching anything: name, size, and that it parses as a valid GLB.",
+      "Copy to public/models/brain/nih-hra-brain-female/brain.hero.glb.",
+      "Run tools/3d-pipeline/inspect_glb.ts and REPORT the measured numbers before integrating.",
+      "Then: fill asset.json, register in public/models/index.json, map real node names into components[].meshNames.",
+      "Verify whole-brain / X-ray / cutaway / rotated / 390px, and only then judge the anatomical acceptance test."
+    ],
+    "doNot": [
+      "No further procedural anatomy changes — that approach is rejected and the reason is recorded in BRAIN-030.proceduralVerdict.",
+      "No GitHub mirror of the NIH model, no substitute brain mesh, no routing around the egress denial.",
+      "Do not claim the anatomical Brain works until the NIH mesh is visibly rendering."
+    ],
+    "deployment": "NEVER DEPLOYED. fly.toml, Dockerfile and DEPLOYMENT.md are ready but this environment's network policy blocks fly.io outright (api.fly.io returns 000), flyctl is not installed and no FLY_API_TOKEN exists. Deployment must be run by the owner per DEPLOYMENT.md. There is no live URL."
+  }
 }
