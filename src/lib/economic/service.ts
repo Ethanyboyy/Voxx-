@@ -5,6 +5,9 @@
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
 import { assertNotHalted } from "@/lib/economic/halt";
+import { normalizeAmount, sumCents, fromCents } from "@/lib/economic/money";
+import { getPolicySpendPosition } from "@/lib/economic/accounting";
+import { recordPolicySpend } from "@/lib/economic/spend";
 import type { EconomicAssetCategory, EconomicAssetStatus, LedgerProvenance } from "@/generated/prisma/enums";
 import type { EconomicAsset, EconomicExpense, EconomicRevenue } from "@/generated/prisma/client";
 
@@ -83,8 +86,15 @@ export interface EconomicAssetWithLedgerDTO extends EconomicAssetDTO {
   totals: EconomicAssetTotals;
 }
 
-function sumAmount(rows: { amountUsd: number }[]): number {
-  return rows.reduce((total, r) => total + r.amountUsd, 0);
+/**
+ * Sums a ledger in integer cents and returns USD.
+ *
+ * Reads `amountCents`, never `amountUsd`: summing the Float column reintroduces
+ * exactly the drift the cents migration removed, and this total feeds the
+ * asset-level profit figure a person reads.
+ */
+function sumAmount(rows: { amountCents: number }[]): number {
+  return fromCents(sumCents(rows.map((r) => r.amountCents)));
 }
 
 export async function getEconomicAsset(userId: string, id: string): Promise<EconomicAssetWithLedgerDTO | null> {
@@ -165,6 +175,25 @@ export interface AddEconomicLedgerEntryInput {
   provenance?: Exclude<LedgerProvenance, "REALIZED">;
 }
 
+/**
+ * Refuses a REALIZED provenance at runtime (invariant I1).
+ *
+ * The `Exclude<LedgerProvenance, "REALIZED">` on the input type stops honest
+ * TypeScript callers, and nothing else. A cast, a JSON payload widened through
+ * `as never`, or a future JS caller all walk straight past it — and REALIZED is
+ * the one label that asserts an external system confirmed the money. Nothing in
+ * VOX can confirm anything, so nothing in VOX may claim it. When a real payment
+ * integration lands it will write REALIZED from inside its own provider module,
+ * which is a different, reviewable code path.
+ */
+function assertNotRealized(provenance: LedgerProvenance | undefined): void {
+  if (provenance === "REALIZED") {
+    throw new Error(
+      "REALIZED provenance cannot be written through an ordinary ledger API: it means confirmed against an external system of record, and no payment or banking integration is configured."
+    );
+  }
+}
+
 export async function addEconomicRevenue(
   userId: string,
   assetId: string,
@@ -173,10 +202,19 @@ export async function addEconomicRevenue(
   const asset = await db.economicAsset.findFirst({ where: { id: assetId, userId } });
   if (!asset) return null;
 
+  assertNotRealized(input.provenance);
+  // The service boundary validates, not just the API schema. This function is
+  // reachable from route handlers, from tools, and from other service code, and
+  // only one of those three has a zod schema in front of it. NaN, Infinity,
+  // zero, negative and absurd amounts are rejected here (see money.ts), so the
+  // ledger cannot hold a value that breaks every sum computed from it.
+  const amount = normalizeAmount(input.amountUsd, "amountUsd");
+
   const row = await db.economicRevenue.create({
     data: {
       assetId,
-      amountUsd: input.amountUsd,
+      amountUsd: amount.usd,
+      amountCents: amount.cents,
       source: input.source,
       provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,
@@ -203,10 +241,15 @@ export async function addEconomicExpense(
   const asset = await db.economicAsset.findFirst({ where: { id: assetId, userId } });
   if (!asset) return null;
 
+  assertNotRealized(input.provenance);
+  // Validated here for the same reason as revenue above — see money.ts.
+  const amount = normalizeAmount(input.amountUsd, "amountUsd");
+
   const row = await db.economicExpense.create({
     data: {
       assetId,
-      amountUsd: input.amountUsd,
+      amountUsd: amount.usd,
+      amountCents: amount.cents,
       category: input.category,
       provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,
@@ -286,20 +329,24 @@ export interface RecordOpportunitySpendInput {
 }
 
 export async function recordOpportunitySpend(userId: string, input: RecordOpportunitySpendInput): Promise<EconomicExpense> {
-  // Third independent gate, and the one that cannot be routed around: the
-  // capability check and evaluateSpendPolicy() both run earlier in the tool
-  // path, but this function is also reachable from service code. A halt must
-  // hold at the point money is actually recorded, not only at the front door.
+  // Fail fast on an obviously halted engine so no asset is auto-created for a
+  // spend that cannot happen. This is a courtesy check, NOT the enforcement:
+  // the authoritative halt and ceiling checks both live inside the single
+  // atomic statement in recordPolicySpend(), where nothing can slip between
+  // the check and the write.
   await assertNotHalted(userId);
+
   const asset = await findOrCreateAssetForOpportunity(userId, input.opportunityId);
-  const expense = await addEconomicExpense(userId, asset.id, {
+
+  // The one autonomous spend boundary. It enforces the remaining ceiling
+  // itself — see src/lib/economic/spend.ts for why the check and the insert
+  // have to be the same statement.
+  return recordPolicySpend(userId, {
+    assetId: asset.id,
     amountUsd: input.amountUsd,
     category: input.category,
-    occurredAt: new Date(),
     notes: input.notes,
   });
-  if (!expense) throw new Error("Failed to record expense — asset disappeared.");
-  return expense;
 }
 
 export interface BudgetSummary {
@@ -311,17 +358,27 @@ export interface BudgetSummary {
    * still evaluated independently against the ceiling, not against a
    * running "budget balance" that could drift or double-count. */
   remainingAutonomousUsd: number;
+  /**
+   * Simulated spend, reported beside the real figures and never inside them.
+   * A dry run is visible as a dry run rather than silently eating the ceiling.
+   */
+  simulatedSpendUsd: number;
 }
 
+/**
+ * The budget panel's numbers, from the ONE canonical definition.
+ *
+ * This used to sum every EconomicExpense row regardless of provenance, so a
+ * SIMULATED dry run consumed the user's real ceiling — and disagreed with the
+ * P&L capital posture, which filtered provenance, on the same screen. Both now
+ * read getPolicySpendPosition(); there is no second definition left to drift.
+ */
 export async function getBudgetSummary(userId: string): Promise<BudgetSummary> {
-  const [user, expenses] = await Promise.all([
-    db.user.findUniqueOrThrow({ where: { id: userId }, select: { maxAutonomousSpendUsd: true } }),
-    db.economicExpense.findMany({ where: { asset: { userId } }, select: { amountUsd: true } }),
-  ]);
-  const totalSpentUsd = sumAmount(expenses);
+  const position = await getPolicySpendPosition(userId);
   return {
-    maxAutonomousSpendUsd: user.maxAutonomousSpendUsd,
-    totalSpentUsd,
-    remainingAutonomousUsd: Math.max(0, user.maxAutonomousSpendUsd - totalSpentUsd),
+    maxAutonomousSpendUsd: position.ceilingUsd,
+    totalSpentUsd: position.spentUsd,
+    remainingAutonomousUsd: position.remainingUsd,
+    simulatedSpendUsd: position.simulatedUsd,
   };
 }

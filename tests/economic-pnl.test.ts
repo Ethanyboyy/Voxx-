@@ -6,7 +6,7 @@ import {
   DAILY_NET_PROFIT_FLOOR_USD,
   MONTHLY_NET_PROFIT_OBJECTIVE_USD,
 } from "@/lib/economic/pnl";
-import { createTestUser } from "./helpers";
+import { createTestUser, seedLedgerEntry } from "./helpers";
 
 /**
  * The claim these tests defend: a projection can never be reported as profit,
@@ -40,10 +40,8 @@ describe("getPnlReport", () => {
   });
 
   it("separates realized from user-recorded, and never blends them", async () => {
-    await db.economicRevenue.create({
-      data: { assetId, amountUsd: 100, occurredAt: NOW, provenance: "USER_RECORDED" },
-    });
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 40, occurredAt: NOW, provenance: "REALIZED" } });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 100, occurredAt: NOW, provenance: "USER_RECORDED" });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 40, occurredAt: NOW, provenance: "REALIZED" });
 
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.today.realized.revenueUsd).toBe(40);
@@ -53,9 +51,7 @@ describe("getPnlReport", () => {
   });
 
   it("never counts a simulated row as money", async () => {
-    await db.economicRevenue.create({
-      data: { assetId, amountUsd: 10_000, occurredAt: NOW, provenance: "SIMULATED" },
-    });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 10_000, occurredAt: NOW, provenance: "SIMULATED" });
 
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.today.recorded.netUsd).toBe(0);
@@ -89,10 +85,10 @@ describe("getPnlReport", () => {
   });
 
   it("windows by occurredAt — today, 7 days, 30 days and lifetime disagree only where they should", async () => {
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 10, occurredAt: NOW } });
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 20, occurredAt: daysAgo(3) } });
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 40, occurredAt: daysAgo(20) } });
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 80, occurredAt: daysAgo(200) } });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 10, occurredAt: NOW });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 20, occurredAt: daysAgo(3) });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 40, occurredAt: daysAgo(20) });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 80, occurredAt: daysAgo(200) });
 
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.today.recorded.revenueUsd).toBe(10);
@@ -102,8 +98,8 @@ describe("getPnlReport", () => {
   });
 
   it("subtracts expenses in every window", async () => {
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 900, occurredAt: NOW } });
-    await db.economicExpense.create({ data: { assetId, amountUsd: 250, occurredAt: NOW } });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 900, occurredAt: NOW });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 250, occurredAt: NOW });
 
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.today.recorded.netUsd).toBe(650);
@@ -122,9 +118,7 @@ describe("getPnlReport", () => {
   });
 
   it("reports realized distance separately, and it stays the full target while nothing is verified", async () => {
-    await db.economicRevenue.create({
-      data: { assetId, amountUsd: 800, occurredAt: NOW, provenance: "USER_RECORDED" },
-    });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 800, occurredAt: NOW, provenance: "USER_RECORDED" });
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.floor.recorded.met).toBe(true);
     // Nothing has been externally confirmed, so the realized measure is honest
@@ -144,9 +138,7 @@ describe("getPnlReport", () => {
 
   it("does not let a simulated expense consume the real spend ceiling", async () => {
     await db.user.update({ where: { id: userId }, data: { maxAutonomousSpendUsd: 500 } });
-    await db.economicExpense.create({
-      data: { assetId, amountUsd: 400, occurredAt: NOW, provenance: "SIMULATED" },
-    });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 400, occurredAt: NOW, provenance: "SIMULATED" });
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.capital.policyRemainingUsd).toBe(500);
   });
@@ -156,7 +148,7 @@ describe("getPnlReport", () => {
     const otherAsset = await db.economicAsset.create({
       data: { userId: other.id, name: "Theirs", category: "OTHER" },
     });
-    await db.economicRevenue.create({ data: { assetId: otherAsset.id, amountUsd: 9_999, occurredAt: NOW } });
+    await seedLedgerEntry("revenue", { assetId: otherAsset.id, amountUsd: 9_999, occurredAt: NOW });
 
     const pnl = await getPnlReport(userId, NOW);
     expect(pnl.lifetime.recorded.revenueUsd).toBe(0);
@@ -185,9 +177,9 @@ describe("getExperimentLedger", () => {
     const otherAsset = await db.economicAsset.create({
       data: { userId, name: "Unrelated", category: "OTHER" },
     });
-    await db.economicRevenue.create({ data: { assetId: otherAsset.id, amountUsd: 500, occurredAt: NOW } });
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 70, occurredAt: NOW } });
-    await db.economicExpense.create({ data: { assetId, amountUsd: 20, occurredAt: NOW } });
+    await seedLedgerEntry("revenue", { assetId: otherAsset.id, amountUsd: 500, occurredAt: NOW });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 70, occurredAt: NOW });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 20, occurredAt: NOW });
 
     const experiment = await db.experiment.create({
       data: { userId, hypothesis: "scoped", economicAssetId: assetId },

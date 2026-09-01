@@ -29,7 +29,8 @@
 // it — and "the model saw a related failure" is not a corroborating fact. A
 // human reading the lesson can lower the confidence themselves; VOX will not
 // do it silently on their behalf.
-import { createMemory, listMemoriesByProvenance } from "@/lib/memory/service";
+import { db } from "@/lib/db";
+import { createMemory, listMemoriesByIds, listMemoriesByProvenance } from "@/lib/memory/service";
 import { rankBySimilarity } from "@/lib/memory/embeddings";
 import { explainOpportunityScore, listOpportunities, type OpportunityDTO } from "@/lib/objectives/service";
 import type { OpportunityScoreBreakdown } from "@/lib/objectives/service";
@@ -88,8 +89,37 @@ export interface ExperimentLessonInput {
  * through the existing memory service — encryption, embedding and the
  * `memory.created` Event all come along for free, and there is no second way
  * to write a memory.
+ *
+ * IDEMPOTENT, and the scheduler depends on it. The tick writes the lesson
+ * BEFORE marking the experiment terminal, so that a crash between the two loses
+ * neither: the retry re-decides the still-live experiment and arrives here
+ * again. Without this guard that retry would write a second, duplicate lesson,
+ * and duplicates in the lesson store quietly bias every future relevance
+ * ranking toward whichever experiment happened to crash.
+ *
+ * The key is the MemorySource reference `experiment:<id>`, which is a fact
+ * about where the memory came from rather than a hash of its text — so a lesson
+ * stays deduplicated even if its wording later changes.
  */
 export async function recordExperimentLesson(input: ExperimentLessonInput): Promise<MemoryDTO> {
+  const reference = `experiment:${input.experimentId}`;
+  const existing = await db.memory.findFirst({
+    where: {
+      userId: input.userId,
+      provenance: ECONOMIC_LESSON_PROVENANCE,
+      supersededAt: null,
+      source: { reference },
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    // Read it back through the memory service rather than mapping the raw row:
+    // Memory.content is encrypted at rest, so a hand-built DTO would hand the
+    // caller ciphertext. There is one decryption path and this uses it.
+    const [dto] = await listMemoriesByIds(input.userId, [existing.id]);
+    if (dto) return dto;
+  }
+
   const money = (n: number) => `$${n.toFixed(2)}`;
   const subject = input.subject ? ` (${input.subject})` : "";
 
@@ -111,7 +141,7 @@ export async function recordExperimentLesson(input: ExperimentLessonInput): Prom
     // should later read this as a settled truth about a market.
     confidence: "MEDIUM",
     provenance: ECONOMIC_LESSON_PROVENANCE,
-    source: { type: "SYSTEM", reference: `experiment:${input.experimentId}` },
+    source: { type: "SYSTEM", reference },
   });
 }
 

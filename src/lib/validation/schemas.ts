@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_ENTRY_USD } from "@/lib/economic/money";
 
 // Shared enum schemas mirror prisma/schema.prisma — kept here (not imported
 // from the generated client) so this module has no Prisma runtime dependency.
@@ -428,8 +429,24 @@ export const updateEconomicAssetSchema = z.object({
   description: z.string().max(5000).optional(),
 });
 
+/**
+ * A monetary amount at an API boundary.
+ *
+ * `.finite()` is explicit rather than assumed: `z.number()` alone accepts
+ * Infinity, and `.min(0)` accepts it too (Infinity >= 0), so the previous
+ * schema would have let an Infinity through had the coercion produced one.
+ * `.positive()` replaces `.min(0)`, which accepted a zero-value entry — a row
+ * that is not a transaction and only exists to be noise in a ledger. The upper
+ * bound is MAX_ENTRY_USD, so a 1e308 cannot poison every later sum.
+ *
+ * The service layer validates the same constraints independently (money.ts).
+ * This is the outer of two boundaries, not the only one — API schemas do not
+ * cover service-to-service calls, and UI validation covers nothing at all.
+ */
+const economicAmountUsd = z.coerce.number().finite().positive().max(MAX_ENTRY_USD);
+
 export const addEconomicLedgerEntrySchema = z.object({
-  amountUsd: z.coerce.number().min(0),
+  amountUsd: economicAmountUsd,
   source: z.string().max(200).optional(),
   category: z.string().max(80).optional(),
   occurredAt: z.coerce.date(),

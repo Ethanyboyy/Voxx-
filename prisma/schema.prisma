@@ -1499,7 +1499,14 @@ model EconomicRevenue {
   id         String           @id @default(uuid())
   asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   assetId    String
+  /// LEGACY, display-only. Kept in step with amountCents by the single
+  /// validated conversion in src/lib/economic/money.ts. See the migration plan
+  /// in that file's header for how and when this column goes away.
   amountUsd  Float
+  /// CANONICAL. Integer cents. Every sum, ceiling comparison and P&L figure is
+  /// computed from this column, because a Float ledger makes a boundary
+  /// comparison a coin flip exactly where a spend limit has to be exact.
+  amountCents Int             @default(0)
   source     String?
   provenance LedgerProvenance @default(USER_RECORDED)
   occurredAt DateTime
@@ -1513,7 +1520,10 @@ model EconomicExpense {
   id         String           @id @default(uuid())
   asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   assetId    String
+  /// LEGACY, display-only — see EconomicRevenue.amountUsd.
   amountUsd  Float
+  /// CANONICAL. Integer cents; the column the spend ceiling is enforced against.
+  amountCents Int             @default(0)
   category   String?
   provenance LedgerProvenance @default(USER_RECORDED)
   occurredAt DateTime
@@ -1521,6 +1531,10 @@ model EconomicExpense {
   createdAt  DateTime         @default(now())
 
   @@index([assetId, occurredAt])
+  /// The index the atomic spend guard reads. Its WHERE clause sums this
+  /// user's policy-consuming expenses inside the same statement that inserts
+  /// the new row, so this lookup is on the critical path of every spend.
+  @@index([provenance])
 }
 
 // ---------------------------------------------------------------------------
@@ -1534,9 +1548,17 @@ model EconomicExpense {
 // ---------------------------------------------------------------------------
 
 enum EconomicTickStatus {
+  /// Claimed by a worker and being evaluated. A tick is created in this state
+  /// and only becomes COMPLETED once its work has actually finished — the
+  /// previous implementation created it COMPLETED, so a crash mid-tick left a
+  /// permanently "successful" tick with no decisions that the unique
+  /// constraint then blocked from ever being retried.
+  IN_PROGRESS
   COMPLETED
   /// The global economic halt was on. Nothing was evaluated or executed.
   HALTED
+  /// The run threw. Terminal for this attempt but NOT terminal for the tick:
+  /// it is immediately reclaimable, so a failure is retried rather than lost.
   FAILED
 }
 
@@ -1548,7 +1570,18 @@ model EconomicTick {
   /// mechanism: a duplicate tick for the same bucket cannot insert, so a
   /// double-fired cron or a retried request can never evaluate twice.
   tickKey        String
-  status         EconomicTickStatus @default(COMPLETED)
+  status         EconomicTickStatus @default(IN_PROGRESS)
+  /// Lease held by the worker currently evaluating this tick. A claim whose
+  /// lease has expired is reclaimable by any worker — this is what stops a
+  /// crashed process from parking a tick forever, without needing the crashed
+  /// process to come back and release anything.
+  leaseExpiresAt DateTime?
+  /// How many times this tick has been claimed. Bounded by MAX_TICK_ATTEMPTS
+  /// in the scheduler so a deterministically-failing tick cannot spin.
+  attempts       Int                @default(0)
+  /// The error that ended the last failed attempt, kept so a repeatedly
+  /// failing tick can be diagnosed without correlating logs.
+  lastError      String?
   evaluatedCount Int                @default(0)
   scaleCount     Int                @default(0)
   holdCount      Int                @default(0)

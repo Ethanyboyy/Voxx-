@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { POLICY_CONSUMING_PROVENANCES } from "@/lib/economic/accounting";
+import { fromCents } from "@/lib/economic/money";
 import { recordEvent } from "@/lib/observability/events";
 import { getObjective } from "@/lib/objectives/service";
 import { createAgent, updateAgent } from "@/lib/agents/agents";
@@ -77,18 +79,31 @@ async function loadSupervisorRun(userId: string, id: string): Promise<Supervisor
   });
 }
 
-/** Real spend recorded against this run's source opportunity, if any — the
- * sum of every EconomicExpense on that opportunity's asset. Never a
- * projection; 0/null when there's no opportunity or no spend logged. */
+/**
+ * Real spend recorded against this run's source opportunity, if any.
+ *
+ * Uses the SAME provenance rule and the SAME integer-cent arithmetic as every
+ * other economic figure (see src/lib/economic/accounting.ts). It previously
+ * summed `amountUsd` across every provenance, so an Outcome's recorded cost
+ * could include a SIMULATED dry run and disagree with the budget panel and the
+ * P&L about what the very same venture had spent.
+ *
+ * Null when there is no opportunity or no asset; 0 is a real answer meaning
+ * "nothing was spent", and the two are not the same thing.
+ */
 async function realizedCostForObjective(objectiveId: string): Promise<number | null> {
   const objective = await db.objective.findUnique({ where: { id: objectiveId }, select: { sourceOpportunityId: true } });
   if (!objective?.sourceOpportunityId) return null;
   const asset = await db.economicAsset.findUnique({
     where: { opportunityId: objective.sourceOpportunityId },
-    include: { expenses: true },
+    select: { id: true },
   });
   if (!asset) return null;
-  return asset.expenses.reduce((total, e) => total + e.amountUsd, 0);
+  const spend = await db.economicExpense.aggregate({
+    where: { assetId: asset.id, provenance: { in: [...POLICY_CONSUMING_PROVENANCES] } },
+    _sum: { amountCents: true },
+  });
+  return fromCents(spend._sum.amountCents ?? 0);
 }
 
 /**

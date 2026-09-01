@@ -236,14 +236,21 @@ register({
   isExternal: false,
   inputSchema: z.object({
     opportunityId: z.string().min(1),
-    amountUsd: z.number().min(0.01).max(1_000_000),
+    amountUsd: z.number().finite().min(0.01).max(1_000_000),
     category: z.string().max(80).optional(),
     notes: z.string().max(2000).optional(),
   }),
   execute: async (userId, input) => {
-    // Second, independent gate: even with economic.spend granted at ACT,
-    // an amount above the user's configured autonomous ceiling is refused
-    // here rather than executed — see src/lib/economic/policy.ts.
+    // Pre-flight only. It gives the model an accurate refusal before any work
+    // happens, and it now asks the real question — would this spend ADDED TO
+    // everything already spent exceed the ceiling — instead of the old
+    // per-transaction comparison that let $60 through an exhausted $100 limit
+    // indefinitely.
+    //
+    // It is NOT what stops an over-spend. recordOpportunitySpend() routes to
+    // recordPolicySpend(), which re-checks the ceiling and the halt inside the
+    // same atomic statement that writes the row, so two concurrent calls that
+    // both pass here still cannot both land.
     const decision = await evaluateSpendPolicy(userId, input.amountUsd);
     if (!decision.allowed) {
       throw new Error(decision.reason);
@@ -255,8 +262,8 @@ register({
       notes: input.notes,
     });
     return {
-      output: { id: expense.id, amountUsd: expense.amountUsd },
-      summary: `Recorded a $${expense.amountUsd.toFixed(2)} expense (within the $${decision.thresholdUsd.toFixed(2)} autonomous limit).`,
+      output: { id: expense.id, amountUsd: expense.amountUsd, amountCents: expense.amountCents },
+      summary: `Recorded a $${expense.amountUsd.toFixed(2)} expense (autonomous spend now $${((decision.alreadySpentUsd ?? 0) + expense.amountUsd).toFixed(2)} of the $${decision.thresholdUsd.toFixed(2)} ceiling).`,
     };
   },
 });

@@ -208,7 +208,10 @@ describe("Economic Engine: security — economic.record_expense requires BOTH ca
 
     const result = await runSpendStep(50);
     expect(result.status).toBe("FAILED");
-    expect(result.error).toMatch(/exceeds the autonomous spending limit/i);
+    // The refusal now names cumulative spend against the ceiling rather than
+    // comparing one amount to it — see the regression below for why that
+    // distinction is the whole point.
+    expect(result.error).toMatch(/above the ceiling/i);
     const expenseCount = await db.economicExpense.count({ where: { asset: { opportunityId } } });
     expect(expenseCount).toBe(0);
   });
@@ -220,6 +223,29 @@ describe("Economic Engine: security — economic.record_expense requires BOTH ca
     const expense = await db.economicExpense.findFirst({ where: { asset: { opportunityId } } });
     expect(expense).not.toBeNull();
     expect(expense!.amountUsd).toBe(12.34);
+  });
+
+  it("REGRESSION: repeated under-ceiling spends through the tool cannot walk past the ceiling", async () => {
+    // This test did not exist, and its absence is why the defect survived: every
+    // spend here is individually within the $100 ceiling, and the old policy
+    // check compared only the single amount, so all three used to succeed and
+    // the account spent $180 against a $100 limit.
+    // Ordered last, and starts from a clean ledger: this describe block shares
+    // one user via beforeAll, so a test that leaves spend behind changes what
+    // the tests after it measure.
+    await db.economicExpense.deleteMany({ where: { asset: { opportunityId } } });
+    await grantPermission(userId, "economic.spend", "ACT");
+    await db.user.update({ where: { id: userId }, data: { maxAutonomousSpendUsd: 100 } });
+
+    expect((await runSpendStep(60)).status).toBe("COMPLETED");
+    expect((await runSpendStep(60)).status).toBe("FAILED");
+    expect((await runSpendStep(60)).status).toBe("FAILED");
+
+    const spend = await db.economicExpense.aggregate({
+      where: { asset: { opportunityId } },
+      _sum: { amountCents: true },
+    });
+    expect(spend._sum.amountCents).toBe(6000);
   });
 });
 

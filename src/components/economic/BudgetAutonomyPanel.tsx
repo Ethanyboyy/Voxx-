@@ -9,6 +9,8 @@ export interface BudgetSummary {
   maxAutonomousSpendUsd: number;
   totalSpentUsd: number;
   remainingAutonomousUsd: number;
+  /** Dry-run spend, shown beside the real figures and never inside them. */
+  simulatedSpendUsd: number;
 }
 
 function formatUsd(amount: number): string {
@@ -46,7 +48,13 @@ export function BudgetAutonomyPanel({
       });
       if (res.ok) {
         const data = await res.json();
-        setBudget((prev) => ({ ...prev, maxAutonomousSpendUsd: data.maxAutonomousSpendUsd, remainingAutonomousUsd: Math.max(0, data.maxAutonomousSpendUsd - prev.totalSpentUsd) }));
+        // Re-read the canonical figures rather than recomputing "remaining"
+        // here. A client-side subtraction is a fourth definition of policy
+        // spend, and it drifts the moment the server's rule changes — which is
+        // exactly how the budget panel and the P&L came to disagree.
+        setBudget((prev) => ({ ...prev, maxAutonomousSpendUsd: data.maxAutonomousSpendUsd }));
+        const refreshed = await fetch("/api/economic/budget");
+        if (refreshed.ok) setBudget((await refreshed.json()).budget as BudgetSummary);
       }
     } finally {
       setSaving(false);
@@ -82,9 +90,18 @@ export function BudgetAutonomyPanel({
             <p className="vox-eyebrow mt-0.5">Remaining headroom</p>
           </div>
         </div>
+        {budget.simulatedSpendUsd > 0 ? (
+          <p className="text-xs text-muted">
+            <span className="vox-eyebrow text-warning">Simulated</span>{" "}
+            {formatUsd(budget.simulatedSpendUsd)} of dry-run spend is recorded separately and consumes none of the
+            headroom above.
+          </p>
+        ) : null}
         <p className="text-xs text-muted">
-          Any agent action that would spend more than this limit is refused by the economic.record_expense tool and
-          requires human approval — this is a decision layer only, not connected to a real payment method.
+          Spend is measured cumulatively: an agent action is refused once total autonomous spend would pass this
+          limit, not merely when a single amount exceeds it. The check runs inside the same database statement that
+          records the expense, so concurrent requests cannot both slip through. This is a decision layer only, not
+          connected to a real payment method.
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

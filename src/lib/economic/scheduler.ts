@@ -22,17 +22,40 @@
 // waiting for someone to read a notification. Growing is the direction that
 // needs a person.
 //
-// IDEMPOTENCY. The tick key is a deterministic time bucket and
-// EconomicTick has @@unique([userId, tickKey]). A double-fired cron, a retried
-// HTTP request or two racing containers produce ONE tick row; the loser gets a
-// unique-constraint violation and returns the existing tick untouched. The
-// guarantee lives in the database, not in a lock this process holds.
+// IDEMPOTENCY, AND WHY IT NEEDED FIXING. The tick key is a deterministic time
+// bucket and EconomicTick has @@unique([userId, tickKey]), so a double-fired
+// cron, a retried request or two racing containers produce ONE tick row. That
+// part was right. What was wrong is that the row was created with status
+// COMPLETED, BEFORE any work ran: if the process then crashed mid-evaluation,
+// the bucket was permanently marked successful with zero decisions, and the
+// unique constraint made it impossible to ever retry. A crash did not lose a
+// tick temporarily; it lost it forever, silently, and the audit trail said the
+// tick had succeeded.
+//
+// The lifecycle is now explicit: IN_PROGRESS -> COMPLETED | HALTED | FAILED.
+//
+//   * A tick is CLAIMED (created IN_PROGRESS with a lease) before work starts.
+//   * It becomes COMPLETED only after the work actually finishes.
+//   * A thrown error marks it FAILED with the message, and clears the lease so
+//     it is immediately reclaimable.
+//   * A claim whose lease has expired — the signature of a crashed worker that
+//     will never come back to release anything — is reclaimable by any worker.
+//   * A live claim held by another worker is left alone.
+//
+// RETRY IS SAFE because the work is idempotent per experiment: a decision
+// applied in a partial run moved that experiment to a terminal executionStatus,
+// and the next pass only selects READY/RUNNING, so it is simply not re-decided.
+// The lesson write is separately idempotent (see lessons.ts) and is ordered
+// BEFORE the experiment update, so a crash between the two loses neither.
 import { db } from "@/lib/db";
 import { recordEvent } from "@/lib/observability/events";
 import { decide, type DecisionResult, type EconomicDecision } from "@/lib/economic/decide";
 import { toDecisionContract } from "@/lib/economic/experiments";
 import { getHaltState } from "@/lib/economic/halt";
 import { recordExperimentLesson } from "@/lib/economic/lessons";
+import { utcHourBucket } from "@/lib/economic/time";
+import { fromCents } from "@/lib/economic/money";
+import { POLICY_CONSUMING_PROVENANCES } from "@/lib/economic/accounting";
 import type { EconomicTickStatus } from "@/generated/prisma/enums";
 
 /**
@@ -42,9 +65,32 @@ import type { EconomicTickStatus } from "@/generated/prisma/enums";
  */
 export const TICK_BUCKET_MS = 60 * 60 * 1000;
 
-/** The deterministic bucket key. Same hour in, same key out, on any machine. */
+/**
+ * How long a worker's claim on a tick is honoured before another worker may
+ * take it over. Longer than any plausible tick (which does a bounded number of
+ * small queries), short enough that a crash does not stall the loop for hours.
+ */
+export const TICK_LEASE_MS = 5 * 60 * 1000;
+
+/**
+ * How many times a tick may be claimed before it is left alone.
+ *
+ * Without this, a tick that fails deterministically — a corrupt row, a bug —
+ * would be reclaimed and re-failed on every invocation forever. Exhausting the
+ * attempts leaves it FAILED with its error recorded, which is a visible,
+ * diagnosable end state rather than an infinite retry loop.
+ */
+export const MAX_TICK_ATTEMPTS = 5;
+
+/**
+ * The deterministic bucket key. Same instant in, same key out, on any machine.
+ *
+ * Computed in UTC: a bucket derived from local time would differ between two
+ * workers in different regions, and the unique constraint that makes a tick
+ * idempotent would stop meaning anything.
+ */
 export function tickKeyFor(now: Date): string {
-  return new Date(Math.floor(now.getTime() / TICK_BUCKET_MS) * TICK_BUCKET_MS).toISOString();
+  return utcHourBucket(now, TICK_BUCKET_MS).toISOString();
 }
 
 export interface ExperimentDecisionRecord {
@@ -79,53 +125,159 @@ function summarize(reasons: DecisionResult["reasons"]): string {
   return binding ? binding.detail : "No binding constraint recorded.";
 }
 
+export interface TickClaim {
+  tickId: string;
+  attempts: number;
+}
+
+/** A tick row as reported without doing any work. */
+function reportExisting(tick: {
+  id: string;
+  status: EconomicTickStatus;
+  evaluatedCount: number;
+  scaleCount: number;
+  holdCount: number;
+  killCount: number;
+  decisions: string | null;
+  note: string | null;
+}, tickKey: string): EconomicTickResult {
+  return {
+    tickId: tick.id,
+    tickKey,
+    status: tick.status,
+    performed: false,
+    evaluated: tick.evaluatedCount,
+    scaled: tick.scaleCount,
+    held: tick.holdCount,
+    killed: tick.killCount,
+    decisions: parseDecisions(tick.decisions),
+    note: tick.note,
+  };
+}
+
+/**
+ * Claims a tick bucket for this worker, or reports why it could not.
+ *
+ * The whole crash-safety story lives here. Four cases:
+ *
+ *   1. No row yet -> create it IN_PROGRESS with a lease. A unique-constraint
+ *      violation means another worker won the race; fall through to re-read.
+ *   2. Row is COMPLETED or HALTED -> terminal. Nothing to do.
+ *   3. Row is IN_PROGRESS with a LIVE lease -> another worker is on it. Leave
+ *      it alone; do not double-process.
+ *   4. Row is FAILED, or IN_PROGRESS with an EXPIRED lease (the fingerprint of
+ *      a crashed worker) -> reclaim it with a conditional updateMany whose
+ *      WHERE still names the exact state we decided from. If the count comes
+ *      back 0, another worker reclaimed it between our read and our write, and
+ *      we correctly do nothing. This is a compare-and-swap: the decision and
+ *      the claim cannot drift apart.
+ */
+async function claimTick(userId: string, tickKey: string, now: Date): Promise<TickClaim | EconomicTickResult> {
+  const leaseExpiresAt = new Date(now.getTime() + TICK_LEASE_MS);
+
+  const existing = await db.economicTick.findUnique({ where: { userId_tickKey: { userId, tickKey } } });
+
+  if (!existing) {
+    try {
+      const created = await db.economicTick.create({
+        data: { userId, tickKey, status: "IN_PROGRESS", leaseExpiresAt, attempts: 1, startedAt: now },
+      });
+      return { tickId: created.id, attempts: 1 };
+    } catch {
+      const winner = await db.economicTick.findUnique({ where: { userId_tickKey: { userId, tickKey } } });
+      if (!winner) throw new Error(`Economic tick ${tickKey} could not be claimed and no existing tick was found.`);
+      return reportExisting(winner, tickKey);
+    }
+  }
+
+  if (existing.status === "COMPLETED" || existing.status === "HALTED") {
+    return reportExisting(existing, tickKey);
+  }
+
+  const leaseIsLive = existing.leaseExpiresAt !== null && existing.leaseExpiresAt > now;
+  if (existing.status === "IN_PROGRESS" && leaseIsLive) {
+    return { ...reportExisting(existing, tickKey), note: existing.note ?? "Another worker holds a live claim on this tick." };
+  }
+
+  if (existing.attempts >= MAX_TICK_ATTEMPTS) {
+    return {
+      ...reportExisting(existing, tickKey),
+      note: `Tick abandoned after ${existing.attempts} attempts. Last error: ${existing.lastError ?? "unknown"}.`,
+    };
+  }
+
+  // Compare-and-swap reclaim. The WHERE repeats the state we read, so a
+  // concurrent reclaimer makes this a no-op rather than a double claim.
+  const reclaimed = await db.economicTick.updateMany({
+    where: {
+      id: existing.id,
+      status: existing.status,
+      attempts: existing.attempts,
+      ...(existing.status === "IN_PROGRESS" ? { leaseExpiresAt: { lt: now } } : {}),
+    },
+    data: { status: "IN_PROGRESS", leaseExpiresAt, attempts: existing.attempts + 1, lastError: null },
+  });
+
+  if (reclaimed.count !== 1) {
+    const winner = await db.economicTick.findUniqueOrThrow({ where: { id: existing.id } });
+    return { ...reportExisting(winner, tickKey), note: "Another worker reclaimed this tick first." };
+  }
+
+  return { tickId: existing.id, attempts: existing.attempts + 1 };
+}
+
 /**
  * Runs one tick of the economic loop.
  *
- * Safe to call more than once for the same bucket: the second call returns the
- * first call's result with `performed: false` and changes nothing.
+ * Safe to call more than once for the same bucket, concurrently or after a
+ * crash: a finished bucket is reported with `performed: false` and re-runs
+ * nothing, a live claim is respected, and an abandoned claim is recovered.
  */
 export async function runEconomicTick(userId: string, now: Date = new Date()): Promise<EconomicTickResult> {
   const tickKey = tickKeyFor(now);
 
-  const existing = await db.economicTick.findUnique({ where: { userId_tickKey: { userId, tickKey } } });
-  if (existing) {
-    return {
-      tickId: existing.id,
-      tickKey,
-      status: existing.status,
-      performed: false,
-      evaluated: existing.evaluatedCount,
-      scaled: existing.scaleCount,
-      held: existing.holdCount,
-      killed: existing.killCount,
-      decisions: parseDecisions(existing.decisions),
-      note: existing.note,
-    };
-  }
+  const claim = await claimTick(userId, tickKey, now);
+  if (!("attempts" in claim)) return claim;
 
-  // Claim the bucket BEFORE doing any work. If two callers race, exactly one
-  // insert survives; the loser re-reads and reports the winner's tick rather
-  // than evaluating the same contracts a second time.
-  let tick;
+  const tick = { id: claim.tickId };
+
   try {
-    tick = await db.economicTick.create({ data: { userId, tickKey, status: "COMPLETED" } });
-  } catch {
-    const winner = await db.economicTick.findUnique({ where: { userId_tickKey: { userId, tickKey } } });
-    if (!winner) throw new Error(`Economic tick ${tickKey} could not be claimed and no existing tick was found.`);
-    return {
-      tickId: winner.id,
-      tickKey,
-      status: winner.status,
-      performed: false,
-      evaluated: winner.evaluatedCount,
-      scaled: winner.scaleCount,
-      held: winner.holdCount,
-      killed: winner.killCount,
-      decisions: parseDecisions(winner.decisions),
-      note: winner.note,
-    };
+    return await evaluateClaimedTick(userId, tickKey, tick.id, now);
+  } catch (error) {
+    // FAILED, not COMPLETED, and the lease is cleared so the tick is
+    // immediately reclaimable. This is the case the previous implementation
+    // could not express at all: it had already written COMPLETED before
+    // starting, so a crash here left a permanently "successful" empty tick.
+    const message = error instanceof Error ? error.message : String(error);
+    await db.economicTick
+      .update({
+        where: { id: tick.id },
+        data: { status: "FAILED", lastError: message.slice(0, 1000), leaseExpiresAt: null, finishedAt: now },
+      })
+      .catch(() => {
+        // A failure to record the failure must not mask the original error.
+      });
+
+    await recordEvent({
+      userId,
+      type: "economic_tick.failed",
+      subjectType: "EconomicTick",
+      subjectId: tick.id,
+      payload: { tickKey, attempt: claim.attempts, error: message.slice(0, 500) },
+    }).catch(() => {});
+
+    throw error;
   }
+}
+
+/** The tick's actual work, run only once the bucket has been claimed. */
+async function evaluateClaimedTick(
+  userId: string,
+  tickKey: string,
+  tickId: string,
+  now: Date
+): Promise<EconomicTickResult> {
+  const tick = { id: tickId };
 
   const halt = await getHaltState(userId);
 
@@ -262,20 +414,29 @@ async function measureExperiment(economicAssetId: string | null) {
 
   const [revenue, expense] = await Promise.all([
     db.economicRevenue.aggregate({
-      where: { assetId: economicAssetId, provenance: { in: ["REALIZED", "USER_RECORDED"] } },
-      _sum: { amountUsd: true },
+      where: { assetId: economicAssetId, provenance: { in: [...POLICY_CONSUMING_PROVENANCES] } },
+      _sum: { amountCents: true },
     }),
     db.economicExpense.aggregate({
-      where: { assetId: economicAssetId, provenance: { in: ["REALIZED", "USER_RECORDED"] } },
-      _sum: { amountUsd: true },
+      where: { assetId: economicAssetId, provenance: { in: [...POLICY_CONSUMING_PROVENANCES] } },
+      _sum: { amountCents: true },
     }),
   ]);
 
-  // SIMULATED rows are excluded. A dry run's pretend profit must never keep a
-  // real contract alive, and its pretend loss must never kill one.
-  const revenueUsd = revenue._sum.amountUsd ?? 0;
-  const expenseUsd = expense._sum.amountUsd ?? 0;
-  return { netUsd: revenueUsd - expenseUsd, revenueUsd, expenseUsd };
+  // SIMULATED rows are excluded (the canonical provenance list above). A dry
+  // run's pretend profit must never keep a real contract alive, and its pretend
+  // loss must never kill one.
+  //
+  // Summed in integer cents, then converted once: the result is compared
+  // against a maximum-loss constraint, and a float sum drifting by a fraction
+  // of a cent at exactly that boundary decides whether an experiment lives.
+  const revenueCents = revenue._sum.amountCents ?? 0;
+  const expenseCents = expense._sum.amountCents ?? 0;
+  return {
+    netUsd: fromCents(revenueCents - expenseCents),
+    revenueUsd: fromCents(revenueCents),
+    expenseUsd: fromCents(expenseCents),
+  };
 }
 
 interface ApplyDecisionInput {
@@ -303,6 +464,25 @@ async function applyDecision(input: ApplyDecisionInput): Promise<ExperimentDecis
   let applied: ExperimentDecisionRecord["applied"] = "NONE";
 
   if (result.decision === "KILL") {
+    // ORDER MATTERS. The lesson is written BEFORE the experiment is marked
+    // terminal. If the process dies between the two, the next tick still sees a
+    // live experiment, re-decides it identically (decide() is pure), and the
+    // lesson write is idempotent — so neither the lesson nor the kill is lost.
+    // The reverse order loses the lesson forever, because a KILLED experiment
+    // is never re-evaluated.
+    await recordExperimentLesson({
+      userId,
+      experimentId: experiment.id,
+      hypothesis: experiment.hypothesis,
+      decision: "KILL",
+      bindingConstraint: result.bindingConstraint,
+      netUsd: actual.netUsd,
+      revenueUsd: actual.revenueUsd,
+      expenseUsd: actual.expenseUsd,
+      maxLossUsd: input.contractMaxLossUsd,
+      subject: input.subject,
+    });
+
     // Applied automatically: stopping requires no capability VOX lacks, and a
     // contract past its loss cap must not wait on a human to stop bleeding.
     await db.experiment.update({
@@ -316,21 +496,6 @@ async function applyDecision(input: ApplyDecisionInput): Promise<ExperimentDecis
       },
     });
     applied = "KILLED";
-
-    // The loop's return edge: a concluded experiment becomes a memory, which
-    // the next opportunity's evaluation can retrieve by relevance.
-    await recordExperimentLesson({
-      userId,
-      experimentId: experiment.id,
-      hypothesis: experiment.hypothesis,
-      decision: "KILL",
-      bindingConstraint: result.bindingConstraint,
-      netUsd: actual.netUsd,
-      revenueUsd: actual.revenueUsd,
-      expenseUsd: actual.expenseUsd,
-      maxLossUsd: input.contractMaxLossUsd,
-      subject: input.subject,
-    });
   } else if (result.decision === "SCALE") {
     // THE BOUNDARY. VOX has no payment, purchasing or deployment capability,
     // so scaling cannot be performed. Stopping here — visibly — is the whole

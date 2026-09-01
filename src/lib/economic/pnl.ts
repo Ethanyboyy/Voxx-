@@ -21,6 +21,9 @@
 // It reads the EXISTING EconomicRevenue/EconomicExpense rows. There is no
 // second ledger, and this module writes nothing at all.
 import { db } from "@/lib/db";
+import { fromCents } from "@/lib/economic/money";
+import { getPolicySpendPosition } from "@/lib/economic/accounting";
+import { startOfUtcDay, utcDaysAgo, ECONOMIC_TIMEZONE } from "@/lib/economic/time";
 import type { LedgerProvenance } from "@/generated/prisma/enums";
 
 /** The absolute minimum the economic engine is aiming at: $500 net profit/day. */
@@ -32,6 +35,10 @@ export const MONTHLY_NET_PROFIT_OBJECTIVE_USD = 100_000;
 export type PnlWindowName = "lifetime" | "today" | "trailing7d" | "trailing30d";
 
 export interface LedgerTotals {
+  /** CANONICAL. Integer cents; every USD field below is derived from these. */
+  revenueCents: number;
+  expenseCents: number;
+  netCents: number;
   revenueUsd: number;
   expenseUsd: number;
   netUsd: number;
@@ -142,6 +149,8 @@ export interface ProjectedOutlook {
 
 export interface PnlReport {
   generatedAt: Date;
+  /** The timezone every window boundary below was computed in. Always UTC. */
+  timezone: typeof ECONOMIC_TIMEZONE;
   lifetime: PnlWindow;
   today: PnlWindow;
   trailing7d: PnlWindow;
@@ -155,7 +164,7 @@ export interface PnlReport {
 }
 
 interface LedgerRow {
-  amountUsd: number;
+  amountCents: number;
   occurredAt: Date;
   provenance: LedgerProvenance;
 }
@@ -163,26 +172,30 @@ interface LedgerRow {
 const PROVENANCES: LedgerProvenance[] = ["REALIZED", "USER_RECORDED", "SIMULATED"];
 
 function emptyTotals(): LedgerTotals {
-  return { revenueUsd: 0, expenseUsd: 0, netUsd: 0, entryCount: 0 };
+  return { revenueCents: 0, expenseCents: 0, netCents: 0, revenueUsd: 0, expenseUsd: 0, netUsd: 0, entryCount: 0 };
 }
 
-function add(totals: LedgerTotals, amountUsd: number, side: "revenue" | "expense"): void {
-  if (side === "revenue") totals.revenueUsd += amountUsd;
-  else totals.expenseUsd += amountUsd;
-  totals.netUsd = totals.revenueUsd - totals.expenseUsd;
+/** Accumulates in integer cents, then derives USD once. Never sums Floats. */
+function add(totals: LedgerTotals, amountCents: number, side: "revenue" | "expense"): void {
+  if (side === "revenue") totals.revenueCents += amountCents;
+  else totals.expenseCents += amountCents;
+  totals.netCents = totals.revenueCents - totals.expenseCents;
+  totals.revenueUsd = fromCents(totals.revenueCents);
+  totals.expenseUsd = fromCents(totals.expenseCents);
+  totals.netUsd = fromCents(totals.netCents);
   totals.entryCount += 1;
 }
 
-/** Start of the local day containing `now`. Days are the floor's unit. */
-export function startOfDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function daysAgo(now: Date, days: number): Date {
-  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-}
+/**
+ * Start of the UTC day containing `now`.
+ *
+ * Was `setHours(0,0,0,0)` — midnight in the server's local zone, which made the
+ * daily floor a different question per deployment region and a different-sized
+ * window on DST days. See src/lib/economic/time.ts for the full rationale.
+ * Kept as an export under its old name so existing callers keep working, but
+ * every economic window now measures the same 24 hours everywhere.
+ */
+export const startOfDay = startOfUtcDay;
 
 function rollup(
   revenues: LedgerRow[],
@@ -199,17 +212,20 @@ function rollup(
   const inWindow = (row: LedgerRow) =>
     (since === null || row.occurredAt >= since) && row.occurredAt <= until;
 
-  for (const row of revenues) if (inWindow(row)) add(byProvenance[row.provenance], row.amountUsd, "revenue");
-  for (const row of expenses) if (inWindow(row)) add(byProvenance[row.provenance], row.amountUsd, "expense");
+  for (const row of revenues) if (inWindow(row)) add(byProvenance[row.provenance], row.amountCents, "revenue");
+  for (const row of expenses) if (inWindow(row)) add(byProvenance[row.provenance], row.amountCents, "expense");
 
   const combine = (classes: LedgerProvenance[]): LedgerTotals => {
     const totals = emptyTotals();
     for (const c of classes) {
-      totals.revenueUsd += byProvenance[c].revenueUsd;
-      totals.expenseUsd += byProvenance[c].expenseUsd;
+      totals.revenueCents += byProvenance[c].revenueCents;
+      totals.expenseCents += byProvenance[c].expenseCents;
       totals.entryCount += byProvenance[c].entryCount;
     }
-    totals.netUsd = totals.revenueUsd - totals.expenseUsd;
+    totals.netCents = totals.revenueCents - totals.expenseCents;
+    totals.revenueUsd = fromCents(totals.revenueCents);
+    totals.expenseUsd = fromCents(totals.expenseCents);
+    totals.netUsd = fromCents(totals.netCents);
     return totals;
   };
 
@@ -258,23 +274,19 @@ function goal(label: string, periodDays: number, targetUsd: number, window: PnlW
  * what happened.
  */
 export async function getPnlReport(userId: string, now: Date = new Date()): Promise<PnlReport> {
-  const [revenues, expenses, user, spentAgg, experiments] = await Promise.all([
+  const [revenues, expenses, position, experiments] = await Promise.all([
     db.economicRevenue.findMany({
       where: { asset: { userId } },
-      select: { amountUsd: true, occurredAt: true, provenance: true },
+      select: { amountCents: true, occurredAt: true, provenance: true },
     }),
     db.economicExpense.findMany({
       where: { asset: { userId } },
-      select: { amountUsd: true, occurredAt: true, provenance: true },
+      select: { amountCents: true, occurredAt: true, provenance: true },
     }),
-    db.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { maxAutonomousSpendUsd: true, economicHaltedAt: true, economicHaltReason: true },
-    }),
-    db.economicExpense.aggregate({
-      where: { asset: { userId }, provenance: { in: ["REALIZED", "USER_RECORDED"] } },
-      _sum: { amountUsd: true },
-    }),
+    // ONE canonical definition of policy-consumed spend, shared with the budget
+    // panel. Before this, that panel summed every provenance and this one
+    // filtered — two contradictory "remaining budget" figures on one screen.
+    getPolicySpendPosition(userId),
     db.experiment.findMany({
       where: { userId, executionStatus: { in: ["READY", "RUNNING", "AWAITING_HUMAN"] } },
       select: {
@@ -286,15 +298,11 @@ export async function getPnlReport(userId: string, now: Date = new Date()): Prom
     }),
   ]);
 
+  // Every window is UTC — see src/lib/economic/time.ts.
   const lifetime = rollup(revenues, expenses, "lifetime", null, now);
-  const today = rollup(revenues, expenses, "today", startOfDay(now), now);
-  const trailing7d = rollup(revenues, expenses, "trailing7d", daysAgo(now, 7), now);
-  const trailing30d = rollup(revenues, expenses, "trailing30d", daysAgo(now, 30), now);
-
-  // Simulated spend is excluded from the policy tally on purpose: a dry run
-  // never consumed the real ceiling, so counting it would silently throttle
-  // real spending on the strength of pretend spending.
-  const totalSpentUsd = spentAgg._sum.amountUsd ?? 0;
+  const today = rollup(revenues, expenses, "today", startOfUtcDay(now), now);
+  const trailing7d = rollup(revenues, expenses, "trailing7d", utcDaysAgo(now, 7), now);
+  const trailing30d = rollup(revenues, expenses, "trailing30d", utcDaysAgo(now, 30), now);
 
   const capital: CapitalPosture = {
     availableUsd: null,
@@ -303,10 +311,10 @@ export async function getPnlReport(userId: string, now: Date = new Date()): Prom
       "VOX has no connected account balance to read. No payment processor or bank " +
       "integration is configured, so there is no real cash position to report. The " +
       "autonomous spend ceiling below is a policy limit, not a balance.",
-    policyCeilingUsd: user.maxAutonomousSpendUsd,
-    policyRemainingUsd: Math.max(0, user.maxAutonomousSpendUsd - totalSpentUsd),
-    halted: user.economicHaltedAt !== null,
-    haltReason: user.economicHaltReason,
+    policyCeilingUsd: position.ceilingUsd,
+    policyRemainingUsd: position.remainingUsd,
+    halted: position.halted,
+    haltReason: position.haltReason,
   };
 
   const outlook: ProjectedOutlook = {
@@ -320,6 +328,7 @@ export async function getPnlReport(userId: string, now: Date = new Date()): Prom
 
   return {
     generatedAt: now,
+    timezone: ECONOMIC_TIMEZONE,
     lifetime,
     today,
     trailing7d,
@@ -353,11 +362,11 @@ export async function getExperimentLedger(
   const [revenues, expenses] = await Promise.all([
     db.economicRevenue.findMany({
       where: { assetId: experiment.economicAssetId },
-      select: { amountUsd: true, occurredAt: true, provenance: true },
+      select: { amountCents: true, occurredAt: true, provenance: true },
     }),
     db.economicExpense.findMany({
       where: { assetId: experiment.economicAssetId },
-      select: { amountUsd: true, occurredAt: true, provenance: true },
+      select: { amountCents: true, occurredAt: true, provenance: true },
     }),
   ]);
 

@@ -6,7 +6,7 @@ import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import { recordOpportunitySpend } from "@/lib/economic/service";
 import { ECONOMIC_LESSON_PROVENANCE, getRelevantLessons } from "@/lib/economic/lessons";
 import { listMemoriesByProvenance } from "@/lib/memory/service";
-import { createTestUser } from "./helpers";
+import { createTestUser, seedLedgerEntry } from "./helpers";
 
 /**
  * The control loop and the stop button.
@@ -144,8 +144,8 @@ describe("the tick stops at the execution boundary instead of pretending", () =>
   it("does not report a SCALE as executed — it parks it for a human", async () => {
     await db.user.update({ where: { id: userId }, data: { maxAutonomousSpendUsd: 1000 } });
     const experiment = await liveExperiment();
-    await db.economicRevenue.create({ data: { assetId, amountUsd: 900, occurredAt: NOW } });
-    await db.economicExpense.create({ data: { assetId, amountUsd: 100, occurredAt: NOW } });
+    await seedLedgerEntry("revenue", { assetId, amountUsd: 900, occurredAt: NOW });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 100, occurredAt: NOW });
 
     const tick = await runEconomicTick(userId, NOW);
     expect(tick.scaled).toBe(1);
@@ -165,7 +165,7 @@ describe("the tick stops at the execution boundary instead of pretending", () =>
 
   it("applies a KILL automatically, because stopping needs no capability VOX lacks", async () => {
     const experiment = await liveExperiment();
-    await db.economicExpense.create({ data: { assetId, amountUsd: 300, occurredAt: NOW } });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 300, occurredAt: NOW });
 
     const tick = await runEconomicTick(userId, NOW);
     expect(tick.killed).toBe(1);
@@ -210,9 +210,7 @@ describe("the tick stops at the execution boundary instead of pretending", () =>
     // A dry run's pretend profit must not keep a real contract alive, and its
     // pretend loss must not kill one.
     const experiment = await liveExperiment();
-    await db.economicExpense.create({
-      data: { assetId, amountUsd: 5_000, occurredAt: NOW, provenance: "SIMULATED" },
-    });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 5_000, occurredAt: NOW, provenance: "SIMULATED" });
     await runEconomicTick(userId, NOW);
     const after = await db.experiment.findUniqueOrThrow({ where: { id: experiment.id } });
     expect(after.executionStatus).toBe("RUNNING");
@@ -220,7 +218,7 @@ describe("the tick stops at the execution boundary instead of pretending", () =>
 
   it("records every decision as an Event", async () => {
     await liveExperiment();
-    await db.economicExpense.create({ data: { assetId, amountUsd: 300, occurredAt: NOW } });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 300, occurredAt: NOW });
     await runEconomicTick(userId, NOW);
 
     const decided = await db.event.findFirst({ where: { userId, type: "economic_experiment.decided" } });
@@ -234,7 +232,7 @@ describe("the tick stops at the execution boundary instead of pretending", () =>
 describe("outcome -> memory -> future evaluation", () => {
   it("writes a measured lesson when a contract is killed", async () => {
     await liveExperiment();
-    await db.economicExpense.create({ data: { assetId, amountUsd: 300, occurredAt: NOW } });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 300, occurredAt: NOW });
     await runEconomicTick(userId, NOW);
 
     const lessons = await listMemoriesByProvenance(userId, [ECONOMIC_LESSON_PROVENANCE]);
@@ -247,7 +245,7 @@ describe("outcome -> memory -> future evaluation", () => {
 
   it("retrieves a lesson by relevance, and returns nothing for an unrelated query", async () => {
     await liveExperiment();
-    await db.economicExpense.create({ data: { assetId, amountUsd: 300, occurredAt: NOW } });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 300, occurredAt: NOW });
     await runEconomicTick(userId, NOW);
 
     const related = await getRelevantLessons(userId, CONTRACT.hypothesis);
@@ -261,7 +259,7 @@ describe("outcome -> memory -> future evaluation", () => {
 
   it("scopes lessons to the user", async () => {
     await liveExperiment();
-    await db.economicExpense.create({ data: { assetId, amountUsd: 300, occurredAt: NOW } });
+    await seedLedgerEntry("expense", { assetId, amountUsd: 300, occurredAt: NOW });
     await runEconomicTick(userId, NOW);
 
     const other = await createTestUser();
