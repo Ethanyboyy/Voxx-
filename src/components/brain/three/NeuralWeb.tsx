@@ -45,7 +45,7 @@ const STATE_PULSE_SPEED: Record<BrainState, number> = {
  * the solid shell in BrainMesh is now a faint translucent silhouette
  * behind it, not the hero surface.
  */
-export function NeuralWeb({ brainState, opacity, xray = false }: { brainState: BrainState; opacity: number; xray?: boolean }) {
+export function NeuralWeb({ brainState, opacity, xray = false, intensity: activityLevel = 0 }: { brainState: BrainState; opacity: number; xray?: boolean; intensity?: number }) {
   const { positions, edges, colors, hubs } = useMemo(() => buildNeuralWeb(2), []);
   const pointsRef = useRef<Points>(null);
   const linesRef = useRef<LineSegments>(null);
@@ -82,7 +82,12 @@ export function NeuralWeb({ brainState, opacity, xray = false }: { brainState: B
     [hubs, positions, colors]
   );
 
-  const intensity = STATE_INTENSITY[brainState];
+  // State says WHAT KIND of work; activity level says HOW MUCH. Multiplying
+  // them means one memory lookup and three concurrent image attempts no longer
+  // look identical — which was the whole point of counting them. Zero activity
+  // multiplies to the state's own baseline, never below it, so an idle Brain
+  // still reads as present rather than switched off.
+  const intensity = STATE_INTENSITY[brainState] * (1 + activityLevel * 0.85);
   const pulseSpeed = STATE_PULSE_SPEED[brainState];
 
   useFrame(({ clock }) => {

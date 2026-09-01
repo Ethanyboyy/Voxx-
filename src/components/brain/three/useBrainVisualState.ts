@@ -39,6 +39,9 @@ const POLL_MS = 60000;
 /** The event feed is a recent window, not a log. */
 const EVENT_WINDOW = 60;
 
+/** Nothing happening. Intensity is exactly 0, never a resting shimmer. */
+const IDLE_ACTIVITY = { intensity: 0, runningRuns: 0, activeCapabilityRuns: 0, attempt: null } as const;
+
 export interface BrainVisualState {
   /** The live graph, refetched authoritatively — never patched from an event. */
   nodes: BrainNode[];
@@ -56,6 +59,9 @@ export interface BrainVisualState {
 
   /** Per-system pulse deadlines (performance.now() + PULSE_MS). */
   pulses: Partial<Record<BrainSystem, number>>;
+
+  /** How hard VOX is working right now, 0..1, counted from live rows. */
+  activity: NonNullable<BrainPayload["activity"]>;
 
   /** Honest connection state — "connecting" is not "offline". */
   liveStatus: EventStreamStatus;
@@ -80,6 +86,7 @@ export function useBrainVisualState(initial: BrainPayload): BrainVisualState {
   const [events, setEvents] = useState(initial.events);
   const [brain, setBrain] = useState(initial.brain);
   const [pulses, setPulses] = useState<Partial<Record<BrainSystem, number>>>({});
+  const [activity, setActivity] = useState(initial.activity ?? IDLE_ACTIVITY);
 
   const refreshGraph = useCallback(async () => {
     try {
@@ -90,6 +97,7 @@ export function useBrainVisualState(initial: BrainPayload): BrainVisualState {
       setEdges(data.edges);
       setEvents(data.events);
       setBrain(data.brain);
+      setActivity(data.activity ?? IDLE_ACTIVITY);
     } catch {
       // transient network hiccup — the next event or poll retries
     }
@@ -145,5 +153,5 @@ export function useBrainVisualState(initial: BrainPayload): BrainVisualState {
   const signalKinds = useMemo<SignalKind[]>(() => activeSignalKinds(events, brain.state), [events, brain.state]);
   const signalMix = useMemo(() => signalWeights(events), [events]);
 
-  return { nodes, edges, events, brain, nodesById, signalKinds, signalMix, pulses, liveStatus, refresh: refreshGraph, applyPatch };
+  return { nodes, edges, events, brain, nodesById, signalKinds, signalMix, pulses, activity, liveStatus, refresh: refreshGraph, applyPatch };
 }

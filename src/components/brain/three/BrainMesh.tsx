@@ -177,6 +177,7 @@ export function BrainMesh({
   clipEnabled,
   clipAxis,
   clipPosition,
+  intensity = 0,
 }: {
   brainState: BrainState;
   explodeAmount: number;
@@ -184,6 +185,9 @@ export function BrainMesh({
   clipEnabled: boolean;
   clipAxis: ClipAxis;
   clipPosition: number;
+  /** 0..1, counted from live rows. Raises the pulse floor and its swing so a
+      busy system visibly breathes harder than an idle one. */
+  intensity?: number;
 }) {
   const parts = useParts();
   const tier = useQualityTier();
@@ -210,7 +214,12 @@ export function BrainMesh({
 
   useFrame(({ clock }) => {
     const speed = STATE_PULSE_SPEED[brainState];
-    pulseRef.current = 0.05 + (0.5 + Math.sin(clock.elapsedTime * speed) * 0.5) * 0.09;
+    // Activity raises both the floor and the swing. At intensity 0 this is
+    // exactly the previous idle behaviour, so nothing shimmers on a system that
+    // has done nothing.
+    const floor = 0.05 + intensity * 0.05;
+    const swing = 0.09 + intensity * 0.10;
+    pulseRef.current = floor + (0.5 + Math.sin(clock.elapsedTime * speed) * 0.5) * swing;
   });
 
   const clipPlanes = clipEnabled ? [clipPlane] : [];

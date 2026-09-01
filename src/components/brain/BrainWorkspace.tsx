@@ -32,6 +32,10 @@ export interface BrainPayload {
   totals: { memories: number; research: number; tasks: number };
   brain: { state: BrainState; detail: string | null };
   events: ActivityEvent[];
+  /** How hard VOX is working, counted from live rows. Optional: a payload from
+      before this existed, or a client that has not refetched, simply renders
+      without it rather than breaking. */
+  activity?: { intensity: number; runningRuns: number; activeCapabilityRuns: number; attempt: number | null };
 }
 
 const POSITIONS_KEY = "vox-brain-positions-v1";

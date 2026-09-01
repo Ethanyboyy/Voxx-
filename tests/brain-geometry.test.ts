@@ -14,11 +14,19 @@ describe("buildBrainParts", () => {
     for (const [name, geo] of Object.entries(parts)) {
       const position = geo.getAttribute("position");
       expect(position.count, `${name} should have vertices`).toBeGreaterThan(0);
-      for (let i = 0; i < position.count; i++) {
-        expect(Number.isFinite(position.getX(i)), `${name} vertex ${i} x`).toBe(true);
-        expect(Number.isFinite(position.getY(i)), `${name} vertex ${i} y`).toBe(true);
-        expect(Number.isFinite(position.getZ(i)), `${name} vertex ${i} z`).toBe(true);
+
+      // Scan in plain JS and assert ONCE with the first offender named. The
+      // cerebrum alone is ~72k vertices, so an expect() per axis per vertex was
+      // roughly a million matcher calls — seconds of work that pushed this test
+      // against vitest's 5s timeout and made it pass or fail depending on how
+      // loaded the machine was. The assertion is identical in strength; only
+      // the cost of expressing it changed.
+      const array = position.array as ArrayLike<number>;
+      let bad = -1;
+      for (let i = 0; i < array.length; i++) {
+        if (!Number.isFinite(array[i])) { bad = i; break; }
       }
+      expect(bad, `${name} has a non-finite coordinate at buffer index ${bad} (vertex ${Math.floor(bad / 3)})`).toBe(-1);
     }
   });
 

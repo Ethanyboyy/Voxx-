@@ -97,7 +97,7 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   // The live graph, the event stream and their derived signals. Everything
   // below this line is view state — what the user is looking at, not what VOX
   // is doing. See useBrainVisualState for why the two are separated.
-  const { nodes, edges, events, brain, nodesById, signalKinds, signalMix, pulses, liveStatus, applyPatch } =
+  const { nodes, edges, events, brain, nodesById, signalKinds, signalMix, pulses, activity, liveStatus, applyPatch } =
     useBrainVisualState(initial);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -298,14 +298,14 @@ export function VoxBrain3D({ initial, onSwitchToStructural }: { initial: BrainPa
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
       <BrainScene focusPosition={focusPosition} focusDistance={focusDistance} reducedMotion={reducedMotion} forceRotate={forceRotate} tier={tier} onPointerMissed={() => setSelectedNodeId(null)}>
-        <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} />
+        <BrainMesh brainState={brain.state} explodeAmount={explodeAmount} xray={xray} clipEnabled={clipEnabled} clipAxis={clipAxis} clipPosition={clipPosition} intensity={activity.intensity} />
         {/* The reference's own Idle-state screenshot shows the connectome at
             full brightness — the network IS the brain's primary material,
             not a layer that hides at rest. It still brightens further on
             real activity (see NeuralWeb's per-state intensity/pulse-speed),
             just from a baseline that already matches what "Idle" actually
             looks like in the reference, not a faded-out default. */}
-        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} xray={xray || explodeAmount > 0.15} />
+        <NeuralWeb brainState={brain.state} opacity={explodeAmount > 0.15 ? 0.45 : 0.85} xray={xray || explodeAmount > 0.15} intensity={activity.intensity} />
 
         {/* Signals travelling the real pathways. This is what makes the Brain
             read as thinking rather than as a rotating object: emission is
