@@ -6,17 +6,49 @@ name: Deploy VOX to Fly.io
 # "project already exists" instead of skipping it. `flyctl deploy` (unlike
 # `flyctl launch`) never touches Tigris/extras at all, so this sidesteps
 # that entirely. Every step below is safe to re-run.
+# TRIGGER, AND WHY IT IS SHAPED THIS WAY.
+#
+# This used to auto-deploy on every push to `claude/vox-phase-1-build-mc2mzf` —
+# a Claude working branch that was abandoned several sessions ago. Two problems,
+# and only one of them is the stale name:
+#
+#   1. STALE. Development moved to a different `claude/*` branch, so the push
+#      trigger has silently fired on nothing for a long time. Repointing it at
+#      today's working branch would fix it until the next branch, then rot the
+#      same way. Working-branch names are ephemeral by design; a deploy trigger
+#      must not depend on one.
+#   2. UNVERIFIED. Auto-deploying every push to an in-progress working branch
+#      ships whatever state that branch is in, mid-refactor included. There was
+#      no verification gate in CI at all when that trigger was written.
+#
+# So: `main` is named as the release branch. The repository has NO main branch
+# today — only `claude/*` working branches — which means the push trigger is
+# deliberately DORMANT rather than firing on unverified work-in-progress. That
+# is strictly safer than the previous behaviour, and it becomes correct
+# automatically the day a trunk is created. Establishing that trunk is a
+# repository-owner decision, not one this workflow should make by guessing.
+#
+# `workflow_dispatch` remains the working path and matches DEPLOYMENT.md, which
+# describes deployment as a deliberate operation (`fly deploy`), not a
+# consequence of pushing code.
 on:
   workflow_dispatch:
   push:
-    branches: [claude/vox-phase-1-build-mc2mzf]
+    branches: [main]
 
 concurrency:
   group: fly-deploy
   cancel-in-progress: false
 
 jobs:
+  # Nothing reaches Fly without passing the same gate a pull request must pass.
+  # Reusing verify.yml via workflow_call rather than copying its steps means the
+  # deploy path can never drift into checking less than CI does.
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

@@ -55,9 +55,41 @@ next-env.d.ts
 # vox local data
 /data/
 
-# Agent skill installs (add-skill / plugin tooling) — tooling config, not VOX source
+# Agent tooling.
+#
+# VOX's own engineering configuration IS source and is committed: the
+# permission/hook settings, the project commands, the specialised agents, and
+# the hook scripts they run. Before this carve-out the whole of .claude/ was
+# ignored, so every session started with no permissions, no hooks and no
+# commands, and each one re-derived the same conventions from CLAUDE.md. A
+# fresh clone now reproduces them.
+#
+# What stays ignored is the VENDOR payload: .claude/skills/ is installed by the
+# plugin/skill tooling, is megabytes of third-party material, and is
+# reinstallable — committing it would put someone else's content in VOX's
+# history for no reproducibility gain. .claude/skills/README.md is the
+# exception, so a fresh clone still learns which skills this project expects.
 .agents/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/README.md
+!.claude/commands/
+!.claude/agents/
+!.claude/hooks/
+# Skills: keep the DIRECTORY visible, ignore its CONTENTS, then let the README
+# back through. All three lines are required and the order matters — git cannot
+# re-include a file whose parent directory is excluded, so `.claude/*` above
+# would otherwise make the final negation silently dead.
+#
+# The entries under it are symlinks into `.agents/skills/` (a shared store), so
+# what is ignored here is a set of links, not the payload itself.
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/README.md
+# Never commit local/personal overrides or any secret a tool may cache here.
+.claude/settings.local.json
+.claude/.credentials.json
+.claude/*.local.json
 skills-lock.json
 
 # Python bytecode from the 3D authoring pipeline
