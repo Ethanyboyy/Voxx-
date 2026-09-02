@@ -407,9 +407,69 @@ provider registry (P5). No xAI/Grok adapter (P6). No background autonomy (P7) �
 and P7 stays last, because the control plane has to exist before autonomy is
 expanded into it.
 
+## P3 — the pending-approval read model
+
+**A projection, not a state machine, and emphatically not an execution path.**
+
+Until P3, "what is waiting on me?" had five answers in five places and no way to
+ask it once. `src/lib/policy/pending-approvals.ts` reads all five and normalises
+them into one `PendingApproval[]`:
+
+| Source | Underlying state | Owner |
+|---|---|---|
+| `AGENT_RUN` | `AgentRun.status = WAITING_FOR_PERMISSION` | the executor's capability pause |
+| `SUPERVISOR_RUN` | `SupervisorRun.status = WAITING_FOR_APPROVAL` | supervisor plan approval |
+| `PROPOSAL` | `Proposal.status = PROPOSED` | the proposal engine |
+| `CONNECTION` | `Connection.status = AWAITING_APPROVAL` | Connections Hub |
+| `ECONOMIC_EXPERIMENT` | `Experiment.executionStatus = AWAITING_HUMAN` | the economic scheduler |
+
+**What P3 does not do**, stated as plainly as the constraints were given:
+
+- **No enforcement.** The gate is still shadow-only. `HOLD` executes, `DENY`
+  executes, `ALLOW` executes. A `policyDecision` on a queue entry is what the
+  gate *would* say, nothing more.
+- **No state migration.** The five states keep their own enums, their own
+  meanings and their own transitions. `PendingApproval.status` carries each
+  underlying value **verbatim** rather than flattening them to a shared word —
+  deciding whether they mean the same thing is not P3's to make.
+- **No new execution authority.** There is no `approvePendingApproval()`.
+  Approving still means calling exactly what it always meant:
+  `grantPermission()` + `resumeAgentRun()`, `beginSupervisorExecution()`,
+  `approveProposal()`, `grantAccess()`, or the economic engine's own path. The
+  dependency points one way only — existing workflow → existing approval state →
+  projection → reader. Never back.
+- **No writes.** No rows, no events, no grants, no tool calls, no model calls. A
+  test snapshots every table the projection touches plus the event count, reads
+  the queue three ways, and asserts the snapshot is unchanged.
+- **No fabricated data.** A field a record cannot supply is absent, not
+  defaulted. A classification is attached **only** when the action id is really
+  in a registry: the conservative `UNKNOWN_ACTION` fallback is how the *gate*
+  fails safe, and surfacing it here would tell a reader "VOX classified this"
+  when VOX did not.
+
+`policyDecision` is computed with the pure `evaluatePolicy()`, which writes
+nothing and calls nothing. Reading a previously recorded `policy.shadow_evaluated`
+event was considered and does not work: the gate fires at execution time, so an
+item still *waiting* has no recorded evaluation yet.
+
+`financial` and `reversibility` are deliberately **not** copied to the top level
+— they live inside `classification`, which is the same object the gate reads.
+Two copies of one fact are two facts that can disagree.
+
+**H-4 is not resolved.** `ACTION_HANDLERS` is now exported **for coverage only**:
+tests assert every registered handler has a classification and every
+classification has a handler, so neither table can drift. `approveProposal()` is
+still the only path that runs a handler, and it still calls the real
+`enforceCapability()` first. VOX still has two execution authorities.
+
+**The `FINANCIAL` + `IRREVERSIBLE` question remains unresolved.** P3 surfaces
+`economic.record_expense` in the queue with its shadow `DENY` attached, which
+makes the open question visible; it does not answer it.
+
 ## [P2.1] Findings still open
 
-Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**.
+Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**. P3 resolved none of the
+security findings below and was not intended to.
 
 **Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
 enforcement), **H-1** (composition → arbitrary code execution), **H-4**

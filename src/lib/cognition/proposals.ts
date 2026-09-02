@@ -80,7 +80,13 @@ export async function getProposal(userId: string, id: string) {
  */
 type ActionHandler = (userId: string, payload: Record<string, unknown>) => Promise<string>;
 
-const ACTION_HANDLERS: Record<string, ActionHandler> = {
+// Exported for COVERAGE ONLY (P3). Tests assert that every registered
+// actionType has a policy classification, so a handler cannot be added without
+// one and silently fall back to the conservative default. Exporting the table
+// does not make it a public execution surface: `approveProposal()` below is
+// still the only path that runs a handler, and it still calls the real
+// `enforceCapability()` first. Do not call these directly.
+export const ACTION_HANDLERS: Record<string, ActionHandler> = {
   "memory.create_relation": async (userId, payload) => {
     const relation = await createMemoryRelation({
       userId,
