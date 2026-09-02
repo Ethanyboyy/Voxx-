@@ -34,6 +34,39 @@
  */
 
 /**
+ * Runtime immutability for everything in this module.
+ *
+ * WHY THIS EXISTS. An adversarial audit of P1/P2 reproduced, in three lines,
+ * the reclassification of `workspace.write` from WRITE/PARTIALLY_REVERSIBLE
+ * (HOLD) to READ/REVERSIBLE (ALLOW), process-wide and permanently:
+ *
+ *   const c = classifyAction("tool", "workspace.write").classification;
+ *   c.effect = "READ";
+ *
+ * `Readonly<T>` and `readonly` are erased at compile time. They stop a
+ * TypeScript author; they stop nothing at runtime, and the lookup handed out a
+ * live reference INTO the shared table, so mutating the returned object was the
+ * same as editing the table. `UNKNOWN_ACTION` was worse: one shared object
+ * served as the conservative default for every unclassified action, so
+ * poisoning it once moved that default from HOLD to ALLOW for everything.
+ *
+ * Freezing is the fix rather than copy-on-read because a copy still leaves the
+ * source mutable, and because a frozen object can be shared safely — the
+ * lookup keeps returning the table's own entry, which is what makes the
+ * classification identity-stable. Assignment to a frozen property THROWS in
+ * strict mode (ES modules are always strict), so a mutation attempt fails
+ * loudly at the attempt rather than quietly succeeding.
+ */
+export function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const key of Object.getOwnPropertyNames(value)) {
+    deepFreeze((value as Record<string, unknown>)[key]);
+  }
+  return value;
+}
+
+/**
  * How exposed the material a task handles is.
  *
  * Ordered least to most restricted. Used today to record what a run touched;
@@ -42,7 +75,7 @@
  */
 export type Sensitivity = "PUBLIC" | "INTERNAL" | "PRIVATE" | "SENSITIVE";
 
-export const SENSITIVITIES: readonly Sensitivity[] = ["PUBLIC", "INTERNAL", "PRIVATE", "SENSITIVE"] as const;
+export const SENSITIVITIES: readonly Sensitivity[] = deepFreeze(["PUBLIC", "INTERNAL", "PRIVATE", "SENSITIVE"] as const);
 
 /**
  * How current the information a task needs has to be.
@@ -53,12 +86,12 @@ export const SENSITIVITIES: readonly Sensitivity[] = ["PUBLIC", "INTERNAL", "PRI
  */
 export type Freshness = "STATIC" | "FRESH" | "REALTIME";
 
-export const FRESHNESSES: readonly Freshness[] = ["STATIC", "FRESH", "REALTIME"] as const;
+export const FRESHNESSES: readonly Freshness[] = deepFreeze(["STATIC", "FRESH", "REALTIME"] as const);
 
 /** How much thinking the task warrants. Bounded on purpose — see the note below. */
 export type ReasoningDepth = "LOW" | "MEDIUM" | "HIGH";
 
-export const REASONING_DEPTHS: readonly ReasoningDepth[] = ["LOW", "MEDIUM", "HIGH"] as const;
+export const REASONING_DEPTHS: readonly ReasoningDepth[] = deepFreeze(["LOW", "MEDIUM", "HIGH"] as const);
 
 /**
  * How long the caller can wait.
@@ -69,7 +102,7 @@ export const REASONING_DEPTHS: readonly ReasoningDepth[] = ["LOW", "MEDIUM", "HI
  */
 export type LatencyBudget = "INTERACTIVE" | "STANDARD" | "EXTENDED";
 
-export const LATENCY_BUDGETS: readonly LatencyBudget[] = ["INTERACTIVE", "STANDARD", "EXTENDED"] as const;
+export const LATENCY_BUDGETS: readonly LatencyBudget[] = deepFreeze(["INTERACTIVE", "STANDARD", "EXTENDED"] as const);
 
 /**
  * What the task may cost at a third party.
@@ -79,7 +112,7 @@ export const LATENCY_BUDGETS: readonly LatencyBudget[] = ["INTERACTIVE", "STANDA
  */
 export type CostBudget = "FREE" | "LOW" | "MODERATE" | "HIGH";
 
-export const COST_BUDGETS: readonly CostBudget[] = ["FREE", "LOW", "MODERATE", "HIGH"] as const;
+export const COST_BUDGETS: readonly CostBudget[] = deepFreeze(["FREE", "LOW", "MODERATE", "HIGH"] as const);
 
 /**
  * What a task IS.
@@ -127,7 +160,7 @@ export interface TaskClassification {
  */
 export type Effect = "READ" | "ANALYZE" | "WRITE" | "ACT" | "FINANCIAL";
 
-export const EFFECTS: readonly Effect[] = ["READ", "ANALYZE", "WRITE", "ACT", "FINANCIAL"] as const;
+export const EFFECTS: readonly Effect[] = deepFreeze(["READ", "ANALYZE", "WRITE", "ACT", "FINANCIAL"] as const);
 
 /**
  * Whether the effect can be undone, and at what cost.
@@ -142,11 +175,11 @@ export const EFFECTS: readonly Effect[] = ["READ", "ANALYZE", "WRITE", "ACT", "F
  */
 export type Reversibility = "REVERSIBLE" | "PARTIALLY_REVERSIBLE" | "IRREVERSIBLE";
 
-export const REVERSIBILITIES: readonly Reversibility[] = [
+export const REVERSIBILITIES: readonly Reversibility[] = deepFreeze([
   "REVERSIBLE",
   "PARTIALLY_REVERSIBLE",
   "IRREVERSIBLE",
-] as const;
+] as const);
 
 export interface ActionClassification {
   effect: Effect;
@@ -184,12 +217,12 @@ export interface ActionClassification {
  * the stricter default and the wrong one: it would make forgetting a table entry
  * indistinguishable from a deliberate prohibition.
  */
-export const UNKNOWN_ACTION: ActionClassification = {
+export const UNKNOWN_ACTION: ActionClassification = deepFreeze({
   effect: "WRITE",
   reversibility: "PARTIALLY_REVERSIBLE",
   financial: false,
   untrustedOutput: false,
-};
+});
 
 /**
  * Every tool in src/lib/tools/registry.ts, classified.
@@ -198,7 +231,7 @@ export const UNKNOWN_ACTION: ActionClassification = {
  * calls `tool.execute()`, so this table plus that one call site is complete
  * coverage of tool execution.
  */
-export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = {
+export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = deepFreeze({
   // --- VOX's own memory and domain rows. Everything here is a row VOX created
   // and can delete again. ---
   "memory.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
@@ -212,17 +245,58 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   "lab.create_question": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
   "lab.attach_artifact": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
 
-  // Reads the open web. The C-1 ingress point: its output is authored by
-  // whoever wrote the page, and nothing downstream currently knows that.
-  "research.run": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true },
+  // WRITE, not READ. Corrected after the P1/P2 audit, which traced what
+  // `runResearch()` (src/lib/research/service.ts) actually does: a network
+  // request to the open web, N `ResearchItem` rows in a transaction, an Event,
+  // and `recordResearchExperience()` — which creates a durable Memory and
+  // knowledge-graph nodes and edges. "Observes; changes nothing" was wrong
+  // about a call that adds to what VOX knows.
+  //
+  // That the written state feeds back into planning is what makes the
+  // misclassification consequential rather than cosmetic:
+  // `buildPlanningContext()` reads these rows and renders them into the
+  // planner's prompt, so untrusted web text reaches the model that authors
+  // subsequent tool arguments. This entry now HOLDs instead of ALLOWing.
+  //
+  // PARTIALLY_REVERSIBLE, not REVERSIBLE: the rows and graph edges can be
+  // deleted, but anything that already read them has already been influenced.
+  "research.run": {
+    effect: "WRITE",
+    reversibility: "PARTIALLY_REVERSIBLE",
+    financial: false,
+    untrustedOutput: true,
+  },
 
   // --- Money. ---
-  // The one tool whose PURPOSE is moving the user's ledger. Partially
-  // reversible: the row can be corrected by a compensating entry, which is not
-  // the same as the spend never having happened.
+  //
+  // WHAT THIS OPERATION ACTUALLY IS. Traced end to end after the audit:
+  // `economic.record_expense` -> `recordOpportunitySpend()` ->
+  // `recordPolicySpend()` -> ONE SQL INSERT into `EconomicExpense`. There is no
+  // payment processor, no bank, no card, no transfer, and no external
+  // money-movement integration anywhere in VOX. So this is an ACCOUNTING
+  // MUTATION representing money moving elsewhere — NOT an external spend.
+  //
+  // It is not merely bookkeeping either, and that is why it stays FINANCIAL.
+  // The row consumes the user's autonomous spend ceiling, a finite budget that
+  // does not replenish and that only a human can raise. Recording an expense
+  // is how VOX uses up the authority a human granted it.
+  //
+  // IRREVERSIBLE, corrected from PARTIALLY_REVERSIBLE. The previous entry
+  // claimed the row "can be corrected by a compensating entry". No such
+  // mechanism exists: `db.economicExpense.create` is the only expense operation
+  // in the entire repository — there is no delete, no update, and `toCents()`
+  // rejects negative amounts outright. The ledger is append-only, so a
+  // recorded expense cannot be undone by any code path that exists.
+  //
+  // Under the matrix this now evaluates to DENY, and DENY is currently a
+  // SHADOW decision that stops nothing (P2 executes every decision). Before P4
+  // turns decisions into enforcement, the semantics of this cell need a
+  // deliberate answer — see POLICY_GATE.md, "The open question at
+  // FINANCIAL + IRREVERSIBLE". The classification here states the fact; it does
+  // not presume the policy.
   "economic.record_expense": {
     effect: "FINANCIAL",
-    reversibility: "PARTIALLY_REVERSIBLE",
+    reversibility: "IRREVERSIBLE",
     financial: true,
     untrustedOutput: false,
   },
@@ -274,7 +348,7 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   // as ANALYZE/REVERSIBLE — it changes nothing — and left as-is. Constraining
   // what it composes with is P4's job, not a classification's.
   "workspace.validate": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-};
+});
 
 /**
  * The proposal engine's closed action registry
@@ -287,7 +361,7 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
  * Every handler is internal-only by construction: each one calls a VOX service
  * function that writes a VOX row. None reaches a third party, none spends.
  */
-export const PROPOSAL_ACTION_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = {
+export const PROPOSAL_ACTION_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = deepFreeze({
   "memory.create_relation": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
   "task.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
   "knowledge.create_connection": {
@@ -300,7 +374,7 @@ export const PROPOSAL_ACTION_CLASSIFICATIONS: Readonly<Record<string, ActionClas
   // to nothing — the access grant is a separate, explicit human step.
   "connection.propose": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
   "lab.create_experiment": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-};
+});
 
 /**
  * Actions that cannot be performed without looking at an image.
@@ -311,11 +385,11 @@ export const PROPOSAL_ACTION_CLASSIFICATIONS: Readonly<Record<string, ActionClas
  * "must see an image" are different facts — `media.image.generate` produces one
  * without needing to look at anything.
  */
-const VISION_REQUIRING_TOOLS: ReadonlySet<string> = new Set([
+const VISION_REQUIRING_TOOLS: ReadonlySet<string> = Object.freeze(new Set([
   "qa.visual_review",
   "artifact.select_best",
   "media.image.refine",
-]);
+]));
 
 /** Which registry an action id belongs to. */
 export type ActionRegistry = "tool" | "proposal";

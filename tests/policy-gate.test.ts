@@ -4,6 +4,8 @@ import {
   evaluatePolicy,
   recordShadowPolicyEvaluation,
   strictest,
+  withPolicyBoundary,
+  isInsidePolicyBoundary,
   POLICY_MATRIX,
   type PolicyDecision,
 } from "@/lib/policy/gate";
@@ -26,6 +28,7 @@ import { listTools } from "@/lib/tools/registry";
 import { createProposal, approveProposal } from "@/lib/cognition/proposals";
 import { grantPermission } from "@/lib/permissions/service";
 import { startAgentRun } from "@/lib/agents/service";
+import { runResearch } from "@/lib/research/service";
 import { createTestUser } from "./helpers";
 
 /** Shorthand for a classification, so the matrix tests read as a table. */
@@ -108,6 +111,176 @@ describe("P1 — classification metadata", () => {
       expect(classifyAction("tool", bad).known).toBe(false);
       expect(() => classifyTask("tool", bad)).not.toThrow();
     }
+  });
+});
+
+describe("P2.1 / A-2 — policy metadata cannot be mutated at runtime", () => {
+  /**
+   * Attempts a mutation the way an attacker would and reports nothing about
+   * how it failed. Frozen properties throw in strict mode; a future
+   * implementation might not throw. Either is fine — what the tests below
+   * assert is that the DECISION is unchanged afterwards, which is the actual
+   * invariant. `Object.isFrozen()` is deliberately never asserted on its own.
+   */
+  function attempt(mutate: () => void): void {
+    try {
+      mutate();
+    } catch {
+      /* strict-mode TypeError is one acceptable outcome, not the point */
+    }
+  }
+
+  it("resists the exact attack the audit used against TOOL_CLASSIFICATIONS", () => {
+    const before = evaluatePolicy({ action: classifyAction("tool", "workspace.write").classification }).decision;
+    expect(before).toBe("HOLD");
+
+    // The audit's reproduction, verbatim: take the returned classification and
+    // reclassify a HOLD tool as a harmless read.
+    attempt(() => {
+      const live = classifyAction("tool", "workspace.write").classification as unknown as Record<string, string>;
+      live.effect = "READ";
+      live.reversibility = "REVERSIBLE";
+    });
+    attempt(() => {
+      (TOOL_CLASSIFICATIONS as unknown as Record<string, unknown>)["workspace.write"] = {
+        effect: "READ",
+        reversibility: "REVERSIBLE",
+        financial: false,
+        untrustedOutput: false,
+      };
+    });
+
+    expect(TOOL_CLASSIFICATIONS["workspace.write"].effect).toBe("WRITE");
+    expect(evaluatePolicy({ action: classifyAction("tool", "workspace.write").classification }).decision).toBe(before);
+  });
+
+  it("resists flipping a cell of POLICY_MATRIX", () => {
+    const financial = action({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true });
+    const act = action({ effect: "ACT", reversibility: "REVERSIBLE" });
+    const before = { financial: evaluatePolicy({ action: financial }).decision, act: evaluatePolicy({ action: act }).decision };
+    expect(before).toEqual({ financial: "DENY", act: "HOLD" });
+
+    attempt(() => {
+      (POLICY_MATRIX as unknown as Record<string, Record<string, string>>).FINANCIAL.IRREVERSIBLE = "ALLOW";
+    });
+    // A non-financial cell too: the financial flag would mask a FINANCIAL flip.
+    attempt(() => {
+      (POLICY_MATRIX as unknown as Record<string, Record<string, string>>).ACT.REVERSIBLE = "ALLOW";
+    });
+    attempt(() => {
+      (POLICY_MATRIX as unknown as Record<string, unknown>).ACT = {
+        REVERSIBLE: "ALLOW",
+        PARTIALLY_REVERSIBLE: "ALLOW",
+        IRREVERSIBLE: "ALLOW",
+      };
+    });
+
+    expect(evaluatePolicy({ action: financial }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: act }).decision).toBe("HOLD");
+  });
+
+  it("resists poisoning the UNKNOWN_ACTION default for every future tool", () => {
+    expect(evaluatePolicy({ action: classifyAction("tool", "not.registered.a").classification }).decision).toBe("HOLD");
+
+    attempt(() => {
+      (classifyAction("tool", "not.registered.a").classification as unknown as Record<string, string>).effect = "READ";
+    });
+    attempt(() => {
+      (UNKNOWN_ACTION as unknown as Record<string, string>).effect = "READ";
+      (UNKNOWN_ACTION as unknown as Record<string, string>).reversibility = "REVERSIBLE";
+    });
+
+    // A DIFFERENT unclassified action: the singleton is shared, so poisoning it
+    // once would have moved the conservative default for everything.
+    expect(evaluatePolicy({ action: classifyAction("tool", "not.registered.b").classification }).decision).toBe("HOLD");
+    expect(UNKNOWN_ACTION.effect).toBe("WRITE");
+  });
+
+  it("resists mutation of the proposal registry", () => {
+    const before = evaluatePolicy({ action: classifyAction("proposal", "task.create").classification }).decision;
+    attempt(() => {
+      (classifyAction("proposal", "task.create").classification as unknown as Record<string, string>).effect = "FINANCIAL";
+    });
+    expect(evaluatePolicy({ action: classifyAction("proposal", "task.create").classification }).decision).toBe(before);
+    expect(PROPOSAL_ACTION_CLASSIFICATIONS["task.create"].effect).toBe("WRITE");
+  });
+
+  it("resists mutation through the shadow recorder, which is what actually runs in production", async () => {
+    attempt(() => {
+      (classifyAction("tool", "economic.record_expense").classification as unknown as Record<string, string>).effect = "READ";
+    });
+    const user = await createTestUser();
+    await recordShadowPolicyEvaluation({
+      userId: user.id,
+      registry: "tool",
+      actionId: "economic.record_expense",
+      boundary: "test.post_mutation",
+    });
+    const events = await shadowEvents(user.id);
+    expect(payloadOf(events[events.length - 1]).effect).toBe("FINANCIAL");
+  });
+});
+
+describe("P2.1 / A-1 — economic.record_expense reflects an append-only ledger", () => {
+  it("is FINANCIAL and IRREVERSIBLE, because no undo path exists in the codebase", () => {
+    const entry = TOOL_CLASSIFICATIONS["economic.record_expense"];
+    expect(entry.effect).toBe("FINANCIAL");
+    // `db.economicExpense.create` is the only expense operation in the repo:
+    // no delete, no update, and toCents() rejects negatives, so there is no
+    // compensating entry either.
+    expect(entry.reversibility).toBe("IRREVERSIBLE");
+    expect(entry.financial).toBe(true);
+  });
+
+  it("therefore evaluates to a shadow DENY — which stops nothing in P2", () => {
+    const evaluation = evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification });
+    expect(evaluation.decision).toBe("DENY");
+    expect(evaluation.matrixDecision).toBe("DENY");
+  });
+
+  it("records that DENY as an observation with execution continuing", async () => {
+    const user = await createTestUser();
+    await recordShadowPolicyEvaluation({
+      userId: user.id,
+      registry: "tool",
+      actionId: "economic.record_expense",
+      boundary: "test.economic_shadow",
+    });
+    const payload = payloadOf((await shadowEvents(user.id))[0]);
+    expect(payload.decision).toBe("DENY");
+    expect(payload.shadowMode).toBe(true);
+    // The point of the assertion: a shadow DENY is NOT a block. Nothing in P2
+    // prevents the spend, and the record says so in its own payload.
+    expect(payload.executionContinued).toBe(true);
+  });
+
+  it("still cannot weaken an economic-engine restriction", () => {
+    // The gate may only add. Even at DENY it composes upward, never downward.
+    expect(evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification, prior: "ALLOW" }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: classifyAction("tool", "memory.search").classification, prior: "DENY" }).decision).toBe("DENY");
+  });
+});
+
+describe("P2.1 / A-3 — research.run reflects its real side effects", () => {
+  it("is a WRITE: it fetches the open web and writes rows, memory and graph nodes", () => {
+    const entry = TOOL_CLASSIFICATIONS["research.run"];
+    expect(entry.effect).toBe("WRITE");
+    expect(entry.reversibility).toBe("PARTIALLY_REVERSIBLE");
+    expect(entry.untrustedOutput).toBe(true);
+  });
+
+  it("now HOLDs where it previously allowed", () => {
+    expect(evaluatePolicy({ action: classifyAction("tool", "research.run").classification }).decision).toBe("HOLD");
+  });
+
+  it("keeps untrustedOutput observational — it is recorded, not enforced", () => {
+    // Identical classification minus the marker produces an identical decision.
+    // C-1 is not fixed here, and this test exists so that stays visible.
+    const withMarker = classifyAction("tool", "research.run").classification;
+    const withoutMarker = { ...withMarker, untrustedOutput: false };
+    expect(evaluatePolicy({ action: withoutMarker }).decision).toBe(
+      evaluatePolicy({ action: withMarker }).decision
+    );
   });
 });
 
@@ -389,9 +562,11 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
     const events = await shadowEvents(userId);
     const payload = payloadOf(events[events.length - 1]);
     expect(payload.untrustedOutput).toBe(true);
-    // C-1 is recorded, not enforced: research.run is still an ALLOW in P2,
-    // exactly as it would be without the marker. Enforcement is P4.
-    expect(payload.decision).toBe("ALLOW");
+    // C-1 is recorded, not enforced. The decision here is HOLD — but it is HOLD
+    // because A-3 corrected the EFFECT to WRITE, not because of this marker.
+    // The marker still contributes nothing; the sibling test in the A-3 block
+    // proves that by evaluating the same classification with it cleared.
+    expect(payload.decision).toBe("HOLD");
   });
 
   it("marks an unclassified action in the record instead of hiding it", async () => {
@@ -469,6 +644,59 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
     expect(payload.registry).toBe("proposal");
     expect(payload.actionId).toBe("task.create");
     expect(payload.executionContinued).toBe(true);
+  });
+
+  it("A-5: direct runResearch() — the POST /api/research path — is shadow-evaluated", async () => {
+    const user = await createTestUser();
+    // Exactly what the route does: call the service, never touching the executor.
+    await runResearch(user.id, "policy gate coverage for the direct research route");
+
+    const events = await shadowEvents(user.id);
+    expect(events).toHaveLength(1);
+
+    const payload = payloadOf(events[0]);
+    expect(payload.boundary).toBe("research.service");
+    expect(payload.actionId).toBe("research.run");
+    // Same underlying action, so the same classification the tool path gets.
+    expect(payload.effect).toBe("WRITE");
+    expect(payload.decision).toBe("HOLD");
+    expect(payload.executionContinued).toBe(true);
+  });
+
+  it("A-5: one research operation produces exactly one evaluation, via either path", async () => {
+    const user = await createTestUser();
+    await grantPermission(user.id, "research.web", "ANALYZE");
+
+    // Through the executor: the tool's execute() calls runResearch(), so both
+    // the executor gate and the service gate are on the stack for one operation.
+    const run = await startAgentRun({
+      userId: user.id,
+      objective: "Research something.",
+      steps: [{ description: "Look it up.", toolName: "research.run", input: { query: "duplicate suppression" } }],
+    });
+    expect(run.status).toBe("COMPLETED");
+
+    const events = await shadowEvents(user.id);
+    const forResearch = events.filter((e) => payloadOf(e).actionId === "research.run");
+    // ONE record, not two.
+    expect(forResearch).toHaveLength(1);
+    // The OUTERMOST boundary is the one that recorded it.
+    expect(payloadOf(forResearch[0]).boundary).toBe("agents.executor");
+  });
+
+  it("A-5: the nesting guard is per-async-context, not a global flag", async () => {
+    expect(isInsidePolicyBoundary()).toBe(false);
+    const inside = await withPolicyBoundary("test.outer", async () => isInsidePolicyBoundary());
+    expect(inside).toBe(true);
+    // Closed again once the scope exits, so a later unrelated operation records.
+    expect(isInsidePolicyBoundary()).toBe(false);
+  });
+
+  it("A-5: withPolicyBoundary does not alter the work it wraps", async () => {
+    await expect(withPolicyBoundary("test.passthrough", async () => "value")).resolves.toBe("value");
+    await expect(withPolicyBoundary("test.passthrough", async () => {
+      throw new Error("boom");
+    })).rejects.toThrow("boom");
   });
 
   it("writes shadow evaluations as non-consequential, so the audit view still shows real actions", async () => {

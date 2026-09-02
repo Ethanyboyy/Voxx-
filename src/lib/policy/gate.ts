@@ -30,11 +30,13 @@
  * against real traffic before anything is allowed to stop.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { recordEvent } from "@/lib/observability/events";
 import { logger } from "@/lib/observability/logger";
 import {
   classifyAction,
   classifyTask,
+  deepFreeze,
   type ActionClassification,
   type ActionRegistry,
   type Effect,
@@ -93,20 +95,31 @@ export function strictest(a: PolicyDecision, b: PolicyDecision): PolicyDecision 
  * does not un-send the invitation — so the whole row holds.
  *
  * FINANCIAL moves the user's money. Held in every case where recovery is even
- * partly possible, and DENIED where it is not: an irreversible financial action
- * is money that leaves with no correcting entry available and no external
- * confirmation that it arrived, which is the exact shape VOX's own economic
- * invariants (ECONOMIC_INVARIANTS.md, I1) say must never happen on VOX's
- * initiative. No tool in the registry is currently classified into that cell,
- * which is the point: DENY marks a boundary rather than describing today.
+ * partly possible, and DENIED where it is not.
+ *
+ * THAT CELL IS NO LONGER EMPTY. It was written on the assumption that nothing
+ * in the registry would land there. The P1/P2 audit showed `economic.record_expense`
+ * does: VOX's ledger is append-only, so a recorded expense cannot be undone by
+ * any code path that exists. The classification was corrected; this cell now
+ * describes a real tool, and DENY is a SHADOW verdict that stops nothing today.
+ *
+ * Whether DENY is the RIGHT verdict for a ceiling-bounded, human-authorized
+ * ledger entry is a policy question this patch deliberately does not answer —
+ * see POLICY_GATE.md, "The open question at FINANCIAL + IRREVERSIBLE". The
+ * matrix is unchanged because it remains consistent with its own stated
+ * semantics; what changed is that a fact was corrected underneath it.
+ *
+ * Frozen at module load, rows included. `Readonly<>` is erased at compile time
+ * and the audit flipped a cell in-process to prove it; the freeze is what makes
+ * the table actually constant. See the note atop classification.ts.
  */
-export const POLICY_MATRIX: Readonly<Record<Effect, Readonly<Record<Reversibility, PolicyDecision>>>> = {
+export const POLICY_MATRIX: Readonly<Record<Effect, Readonly<Record<Reversibility, PolicyDecision>>>> = deepFreeze({
   READ: { REVERSIBLE: "ALLOW", PARTIALLY_REVERSIBLE: "ALLOW", IRREVERSIBLE: "ALLOW" },
   ANALYZE: { REVERSIBLE: "ALLOW", PARTIALLY_REVERSIBLE: "ALLOW", IRREVERSIBLE: "ALLOW" },
   WRITE: { REVERSIBLE: "ALLOW", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "HOLD" },
   ACT: { REVERSIBLE: "HOLD", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "HOLD" },
   FINANCIAL: { REVERSIBLE: "HOLD", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "DENY" },
-};
+} as const);
 
 /** Why the gate decided what it decided. Codes, not prose — see `notes` for the words. */
 export type PolicyReasonCode =
@@ -215,6 +228,49 @@ function describe(value: unknown): string {
   return typeof value === "string" ? value : String(value);
 }
 
+/**
+ * Marks that a policy boundary is already open for the operation in flight.
+ *
+ * WHY. A single real operation must produce a single shadow record, and after
+ * the audit there are now two places that can evaluate the same one. The
+ * executor evaluates every tool it is about to run; `runResearch()` evaluates
+ * itself, so that `POST /api/research` — which never touches the executor — is
+ * no longer invisible to the gate. When the `research.run` TOOL runs, both fire
+ * for one piece of work.
+ *
+ * The rule that resolves it: THE OUTERMOST BOUNDARY RECORDS. An evaluation that
+ * finds a boundary already open defers to it and writes nothing, because the
+ * outer one has already described the operation the user actually asked for.
+ * This generalises — any future service-level gate placed under the executor
+ * behaves correctly without knowing the executor exists.
+ *
+ * AsyncLocalStorage rather than a module-level flag: concurrent runs share this
+ * process, and a plain boolean would let one run's boundary suppress an
+ * unrelated run's evaluation. The store is per-async-context, so two
+ * simultaneous requests cannot see each other's.
+ */
+const policyBoundary = new AsyncLocalStorage<{ boundary: string }>();
+
+/**
+ * Runs `fn` inside an open policy boundary.
+ *
+ * Call this around the work an evaluation covers, NOT around the evaluation
+ * itself: the outer `recordShadowPolicyEvaluation()` must run first, unsuppressed,
+ * and only what follows is inside the scope.
+ *
+ * Purely an observability concern. It does not gate, block, or alter the work
+ * in any way — `fn` runs exactly as it would without it, and its result and any
+ * thrown error pass straight through.
+ */
+export function withPolicyBoundary<T>(boundary: string, fn: () => Promise<T>): Promise<T> {
+  return policyBoundary.run({ boundary }, fn);
+}
+
+/** Whether an evaluation would be suppressed as nested. Exposed for tests. */
+export function isInsidePolicyBoundary(): boolean {
+  return policyBoundary.getStore() !== undefined;
+}
+
 export interface ShadowEvaluationInput {
   userId: string;
   /** "tool" for the executor's registry, "proposal" for the proposal handlers. */
@@ -250,6 +306,20 @@ export interface ShadowEvaluationInput {
  */
 export async function recordShadowPolicyEvaluation(input: ShadowEvaluationInput): Promise<void> {
   try {
+    // One operation, one record. An outer boundary has already described this
+    // work — see `withPolicyBoundary`. Deferring is not a lost evaluation: the
+    // outer record names the same action with the same classification, and only
+    // its `boundary` field differs.
+    const outer = policyBoundary.getStore();
+    if (outer) {
+      logger.info("policy.shadow_evaluation_nested", {
+        outerBoundary: outer.boundary,
+        innerBoundary: input.boundary,
+        actionId: typeof input.actionId === "string" ? input.actionId : null,
+      });
+      return;
+    }
+
     const { classification, known } = classifyAction(input.registry, input.actionId);
     const task = classifyTask(input.registry, input.actionId);
     const evaluation = evaluatePolicy({ action: classification, prior: input.prior });

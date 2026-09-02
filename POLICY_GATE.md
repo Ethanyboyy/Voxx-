@@ -2,6 +2,17 @@
 
 **Status: shadow mode. The gate observes and records. It blocks nothing.**
 
+**Patched at P2.1** after an adversarial audit reproduced defects in the original
+P1/P2 work: a wrong classification on the only money-touching tool (A-1),
+runtime-mutable policy metadata (A-2), and research ingress that was both
+under-classified (A-3) and partly invisible to the gate (A-5). All four are
+corrected below and marked **[P2.1]**. Nothing was enforced; the gate still
+blocks nothing.
+
+**Vocabulary, used strictly throughout:** *classified* = a static table entry
+exists. *Shadow-evaluated* = a decision was computed and recorded. *Enforced* =
+execution was prevented. **Nothing in VOX is enforced by the gate.**
+
 This document describes what was built in P1 (classification metadata) and P2
 (the Policy Gate, shadow-only), and — just as importantly — what was found and
 deliberately *not* fixed. Enforcement is P4 and does not exist yet.
@@ -40,10 +51,11 @@ modules, with no field in common.
 |---|---|
 | `src/lib/policy/classification.ts` | P1. Bounded vocabularies, the static per-action tables, and the derived task profile. |
 | `src/lib/policy/gate.ts` | P2. The policy matrix, `evaluatePolicy()` (pure), and `recordShadowPolicyEvaluation()` (records, never blocks). |
-| `tests/policy-gate.test.ts` | 41 tests over the matrix, determinism, model independence, economic authority, failure behaviour and boundary coverage. |
+| `tests/policy-gate.test.ts` | 57 tests over the matrix, determinism, model independence, economic authority, failure behaviour, boundary coverage, and **[P2.1]** runtime immutability, corrected classifications and single-evaluation coverage. |
 
-Two existing files gained one call each: `src/lib/agents/executor.ts` and
-`src/lib/cognition/proposals.ts`. Nothing else changed. No schema change, no
+Three existing files carry a gate call: `src/lib/agents/executor.ts`,
+`src/lib/cognition/proposals.ts`, and **[P2.1]** `src/lib/research/service.ts`.
+Nothing else changed. No schema change, no
 migration, no new dependency, no change to the permission system, the economic
 engine, the router, the orchestrator or the event bus.
 
@@ -79,6 +91,31 @@ safety decision. Provider availability already lives in
 
 Also absent: any permission key, capability level, or grant. A test asserts the
 classification records carry no such field, so the two taxonomies cannot drift.
+
+**[P2.1] Policy metadata is frozen at module load.** `Readonly<>` is erased at
+compile time, and the audit used that to reclassify `workspace.write` from HOLD
+to ALLOW in three lines, process-wide, because the lookup returned a live
+reference into the shared table. Every table, every row, and `UNKNOWN_ACTION`
+(one shared object that *is* the conservative default) are now deep-frozen. The
+tests assert the behavioural invariant — attempt the mutation, evaluate again,
+decision unchanged — not `Object.isFrozen()`.
+
+**[P2.1] `economic.record_expense` is `FINANCIAL` + `IRREVERSIBLE`.** Traced end
+to end, it reaches one SQL `INSERT`. There is no payment processor, bank, or
+external money-movement integration anywhere in VOX, so this is an **accounting
+mutation representing money moving elsewhere**, not an external spend. It stays
+`FINANCIAL` because the row consumes the autonomous spend ceiling, a finite
+budget only a human can raise. It is `IRREVERSIBLE` because
+`db.economicExpense.create` is the only expense operation in the repository: no
+delete, no update, and `toCents()` rejects negatives, **so the previous claim
+that a "compensating entry" could correct it was unsupported — no such
+mechanism exists.**
+
+**[P2.1] `research.run` is a `WRITE`, not a `READ`.** It fetches the open web,
+writes N `ResearchItem` rows, and calls `recordResearchExperience()`, which
+creates a durable Memory plus knowledge-graph nodes and edges. "Observes;
+changes nothing" was wrong about a call that adds to what VOX knows — and that
+written state feeds back into planning. It now evaluates to `HOLD`.
 
 **`FINANCIAL` vs `ACT` + `financial: true`.** `FINANCIAL` is for operations whose
 *purpose* is moving the user's ledger (`economic.record_expense`).
@@ -120,11 +157,34 @@ Reading the rows:
   reversible from the other party's view — deleting a calendar event does not
   un-send the invitation.
 - **`FINANCIAL`** is held wherever recovery is even partly possible and denied
-  where it is not. An irreversible financial action is money leaving with no
-  correcting entry and no external confirmation — the exact shape
-  `ECONOMIC_INVARIANTS.md` I1 says must never happen on VOX's initiative. **No
-  current tool is classified into that cell.** `DENY` marks a boundary rather
-  than describing today.
+  where it is not.
+
+**[P2.1] The `DENY` cell is no longer empty.** This document previously claimed
+no tool occupied it and presented that as a deliberate boundary. That was wrong:
+`economic.record_expense` belongs there, and the cell was empty only because its
+reversibility had been rated optimistically. It now evaluates to **`DENY`** —
+**a shadow verdict that stops nothing.**
+
+### The open question at `FINANCIAL` + `IRREVERSIBLE`
+
+This needs a deliberate answer **before P4**, and P2.1 does not presume it.
+
+`DENY` currently means *"policy refuses this categorically; no approval routes
+around it."* But a human raising the spend ceiling and authorising a spend is a
+legitimate authorisation path, and the economic engine already enforces it with
+an atomic ceiling and a global halt. Under enforcement as written, VOX could
+never record an autonomous expense again.
+
+One of these has to be chosen, as policy design rather than as a table edit:
+
+1. `DENY` keeps its categorical meaning, and this operation needs a reversibility
+   grade distinguishing *"unrecoverable"* from *"unrecoverable but bounded by an
+   authority the gate cannot see"*; or
+2. `DENY` splits into *forbidden* versus *requires authority beyond the gate*.
+
+The matrix was **not** changed here. It remains consistent with its own stated
+semantics; what changed is that a fact underneath it was corrected. Correct
+classification first, policy semantics second, enforcement later.
 
 **Unclassified actions** get `WRITE` + `PARTIALLY_REVERSIBLE` → `HOLD`.
 Conservative but recoverable: a forgotten table entry demands a human rather
@@ -196,6 +256,7 @@ place. A test pins the exact key set.
 | Orchestrator → executor | Yes | `driveRequest()` → `executeRun()` |
 | Supervisor run | Yes | creates `AgentRun`s → executor |
 | Direct tool invocation | Yes | `agents/executor.ts` is the **only** site in VOX that calls `tool.execute()` |
+| **`POST /api/research`** | **[P2.1] Yes** | gated at `runResearch()`, the shared service |
 | Proposal approval | Yes, separately | instrumented directly in `approveProposal()` |
 | Background execution | **N/A — none exists** | see below |
 
@@ -210,8 +271,36 @@ phase exists to measure.
 `POST /api/economic/tick` — a request a human makes. Nothing outside the gate
 runs on its own, because nothing runs on its own at all.
 
-**Nothing is outside the shadow gate.** Both execution authorities are
-instrumented.
+**[P2.1] What is and is not covered — the original claim here was false.**
+
+It read *"Nothing is outside the shadow gate."* That was true of **tool
+execution** and untrue of **VOX's execution surface**: `POST /api/research`
+called `runResearch()` directly, so the one operation that brings untrusted web
+content into VOX's memory and knowledge graph produced no record at all.
+
+Fixed by gating the **shared service** rather than the route, so every caller is
+covered instead of each new one having to remember. Double-recording is prevented
+by a policy-boundary scope (`withPolicyBoundary`, an `AsyncLocalStorage` in
+`policy/gate.ts`): the outermost boundary records and a nested evaluation defers
+to it. One research operation produces exactly one event whether it arrives
+through the tool or the route — asserted by test. It is per-async-context, not a
+global flag, so concurrent runs cannot suppress each other.
+
+**Still outside the gate**, stated plainly rather than papered over:
+
+- **~113 other mutating API routes** — a human acting through their own session,
+  rather than VOX acting on its own initiative.
+- **`POST /api/economic/assets/[id]/expenses`** → `addEconomicExpense()`, which
+  also bypasses the autonomous ceiling. That bypass is deliberate and documented
+  in `economic/spend.ts` (a human recording history they already incurred).
+- **`POST /api/connections/[service]/grant-access`** → `grantPermission(ACT)`.
+  The gate classifies *actions*, not the *granting of the authority* those
+  actions need. Finding A-6.
+- **`generation/blenderLocal.ts`**, an `execFile` subprocess with no caller —
+  unreachable today, unclassified if a future phase wires it up. Finding A-13.
+
+Both **execution authorities** are instrumented. That is a narrower and true
+claim than the one it replaces.
 
 ---
 
@@ -227,9 +316,17 @@ is a prompt-injection path from the open web to the filesystem.
 
 *This phase:* added `untrustedOutput: boolean`, set on `research.run` and
 `calendar.list_events`, recorded on every shadow event. It **plays no part in
-the policy decision** — a test asserts `research.run` still evaluates to `ALLOW`
-with the marker set. A half-built taint rule that held some paths and not others
-would be worse than an honest absence. Propagation and enforcement are P4.
+the policy decision** — a test evaluates the same classification with the marker
+cleared and asserts an identical result. A half-built taint rule holding some
+paths and not others would be worse than an honest absence.
+
+**[P2.1]** `research.run` now evaluates to `HOLD`, but because A-3 corrected its
+**effect** to `WRITE` — not because of the marker. The audit traced the concrete
+path the marker does *not* stop: web page → `ResearchItem` rows →
+`recordResearchExperience()` → Memory and graph nodes → `buildPlanningContext()`
+→ **the planner's prompt** → planner-authored `workspace.write` arguments. The
+taint is in the tool *arguments*; `untrustedOutput` marks *producers*. **C-1 is
+not fixed.** Propagation and enforcement are P4.
 
 ### C-2 — no blast-radius enforcement
 
@@ -239,12 +336,32 @@ P4 turns the recorded decisions into real ones.
 
 ### H-1 — `workspace.write` (ACT) + `workspace.validate` (ANALYZE)
 
-Composed, these amount to arbitrary code execution from a single `ACT` grant:
-write a file, then run the build that executes it. `workspace.validate` is
-classified honestly as `ANALYZE` / `REVERSIBLE` — it changes nothing — and left
-alone. Constraining what actions may *compose with* is not something a
-per-action classification can express; it needs the gate to see a sequence, which
-is P4.
+**[P2.1] Restated accurately — the original description understated this.**
+
+`workspace.validate` runs `execFile('npm', ['run', <script>])` over a closed set
+including `test` and `build`. **`npm run test` runs `vitest`, which loads and
+executes every `tests/**/*.test.ts` file in the repository as Node code**, with
+full process privileges: `child_process`, filesystem, network, `DATABASE_URL`.
+`npm run build` likewise executes configuration.
+
+```
+workspace.write   →  tests/anything.test.ts     [requires ACT]
+workspace.validate name:"test"                  [requires ANALYZE]
+                                                 ↑ DEFAULT_GRANTED_LEVEL
+                                                   — no grant needed at all
+```
+
+**A single `ACT` grant on `workspace.write` yields arbitrary code execution.**
+The executing half is free, because `ANALYZE` is the default granted level.
+
+The gate currently makes the wrong half safe: it `HOLD`s the write and
+**`ALLOW`s the execution**. It sees individual actions; the risk is in the
+sequence.
+
+`workspace.validate` remains classified `ANALYZE` / `REVERSIBLE`, honest about
+that action in isolation, and is left alone. Constraining what actions may
+*compose with* needs the gate to see a sequence, which is P4. **H-1 is not
+fixed.**
 
 ### H-4 — `approveProposal()` bypasses the main executor
 
@@ -289,3 +406,22 @@ No unified approval queue (P3). No gate enforcement or taint boundary (P4). No
 provider registry (P5). No xAI/Grok adapter (P6). No background autonomy (P7) —
 and P7 stays last, because the control plane has to exist before autonomy is
 expanded into it.
+
+## [P2.1] Findings still open
+
+Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**.
+
+**Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
+enforcement), **H-1** (composition → arbitrary code execution), **H-4**
+(proposal execution authority), **A-4** (= H-1's sequence problem), **A-6**
+(permission-granting routes ungated), **A-7** (one evaluation covers N paid
+provider calls — `media.image.generate` `count`, and the `media.image.refine`
+loop), **A-8** (`qa.visual_review` and `artifact.select_best` rated `REVERSIBLE`
+despite unrecoverable spend; the decision is right via the financial flag, the
+reasoning is not), **A-9** (= C-1's traced path), **A-10** (= H-4), **A-11**
+(`ACTION_HANDLERS` unexported, so no coverage test for the proposal key space),
+**A-12** (one `Event` write per tool step: latency and unbounded growth),
+**A-13** (unreachable Blender subprocess), **A-14** (calendar tools throw
+unconditionally, so their classifications are aspirational), plus the fact that
+six of eight `TaskProfile` fields are computed and discarded, two of them
+constants.

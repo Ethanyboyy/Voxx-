@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
-import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
+import { recordShadowPolicyEvaluation, withPolicyBoundary } from "@/lib/policy/gate";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
@@ -186,7 +186,15 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     let succeeded = false;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const result = await tool.execute(userId, parsedInput.data as never, executionContext);
+        // Executed inside the policy boundary opened by the evaluation above.
+        // A service that evaluates itself — `runResearch()`, so the direct
+        // `POST /api/research` route is not invisible to the gate — sees the
+        // boundary already open and defers, so one operation still produces one
+        // record. Observability only: withPolicyBoundary neither gates nor
+        // alters the call, and the result and any error pass straight through.
+        const result = await withPolicyBoundary("agents.executor", () =>
+          tool.execute(userId, parsedInput.data as never, executionContext)
+        );
         await db.agentStep.update({
           where: { id: step.id },
           data: { status: "COMPLETED", output: JSON.stringify(result.output), completedAt: new Date(), retryCount: attempt },

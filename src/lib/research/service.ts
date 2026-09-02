@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getResearchProvider } from "@/lib/research/index";
 import { enforceCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
+import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
 import { recordResearchExperience, recordResearchFailure } from "@/lib/research/learning";
 import { scopeObjectiveId } from "@/lib/cognition/experience";
 
@@ -21,6 +22,33 @@ export async function runResearch(
   optionsOrOpportunityId?: string | RunResearchOptions
 ) {
   await enforceCapability(userId, RESEARCH_CAPABILITY, "ANALYZE");
+
+  // POLICY GATE (P2), shadow mode — placed at the SERVICE, not at the route.
+  //
+  // The P1/P2 audit found that `POST /api/research` reaches this function
+  // directly, never touching agents/executor.ts, so the one operation that
+  // brings untrusted web content into VOX's memory and knowledge graph was
+  // invisible to the gate. Gating here rather than in the route covers every
+  // caller — the tool, the route, the Brain inspector, and anything added
+  // later — instead of leaving the next caller to remember.
+  //
+  // The action id is the TOOL's id on purpose: `research.run` through the
+  // executor and `POST /api/research` are the same underlying operation, so
+  // they must classify identically. Only `boundary` distinguishes them.
+  //
+  // No double-recording: when the executor runs the `research.run` tool it has
+  // already evaluated and opened a policy boundary, and this call defers to it
+  // (see withPolicyBoundary in policy/gate.ts). One operation, one record.
+  //
+  // Shadow-only, exactly as everywhere else — this returns void, cannot throw,
+  // and the research below proceeds whatever the decision is.
+  await recordShadowPolicyEvaluation({
+    userId,
+    registry: "tool",
+    actionId: "research.run",
+    boundary: "research.service",
+    subjectType: "ResearchQuery",
+  });
 
   // Kept accepting a bare opportunityId so existing callers (the tool
   // registry, the Brain inspector) are unchanged by the objective addition.
