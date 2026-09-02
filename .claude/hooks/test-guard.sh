@@ -3,7 +3,10 @@
 #
 # Exercises the guard without putting the
 # dangerous strings on the outer command line (which the guard would match).
-cd /home/user/Voxx- || exit 1
+# Resolve the repo root from this script's own location, not a hardcoded path —
+# a fresh clone lives somewhere else, and a test that only runs on one machine
+# is not a test.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || exit 1
 H=.claude/hooks/guard-destructive-bash.sh
 fails=0
 

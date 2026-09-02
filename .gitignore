@@ -101,6 +101,10 @@ __pycache__/
 
 # Local QA database, same rule as dev.db/test.db
 prisma/qa.db*
+# CI datasource path (see .github/workflows/verify.yml). Prisma's CLI needs a
+# resolvable DATABASE_URL to load prisma.config.ts; nothing creates this file,
+# but it is ignored so a local run of the same command cannot leave one behind.
+prisma/ci.db*
 
 # Generated artifact bytes (images, video, models produced by providers).
 # User content, not source — same class as prisma/dev.db. The ArtifactVersion

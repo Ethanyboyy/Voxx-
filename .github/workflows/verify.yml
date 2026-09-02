@@ -9,15 +9,26 @@ name: Verify
 # with a failing test in the tree. A convention cannot fail a pull request; this
 # can.
 #
-# NO SECRETS ARE NEEDED, and that is verified rather than assumed:
-#   * `npm run build` was run in this repository with .env removed entirely and
-#     exited 0 — Next.js does not evaluate the throw-on-missing-env code paths
-#     (crypto.ts, session.ts) during a build.
-#   * The test run supplies its own environment from vitest.config.mts, and the
-#     `pretest` script provisions prisma/test.db with `prisma migrate deploy`.
-#   * `postinstall` runs `prisma generate`, so the client exists after `npm ci`.
-# So this workflow needs no database service, no container, and no repository
-# secret. Anything added here later should have to justify itself the same way.
+# NO SECRETS ARE NEEDED. One non-secret variable is, and the first run of this
+# workflow is what proved it — the local check that preceded it was incomplete:
+#   * `npm run build` was run here with .env removed entirely and exited 0, so
+#     Next.js does not evaluate the throw-on-missing-env paths (crypto.ts,
+#     session.ts) during a build. True, but it tested the wrong step.
+#   * `npm ci` runs `postinstall` -> `prisma generate`, and prisma.config.ts
+#     calls `env("DATABASE_URL")`, which THROWS when unset. Locally that
+#     resolves because .env exists and the config imports `dotenv/config`; on a
+#     clean runner there is no .env, and run #1 failed at Install with
+#     `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL`.
+#     The local test could not have caught it: node_modules and the generated
+#     client already existed, so postinstall never re-ran without .env.
+#   * DATABASE_URL below is NOT a secret — it is a relative SQLite file path,
+#     the same class of value vitest.config.mts hardcodes. It exists so the
+#     Prisma CLI can resolve a datasource; no database is created by it.
+#   * The test run still supplies its own environment from vitest.config.mts,
+#     and `pretest` provisions prisma/test.db with `prisma migrate deploy`, so
+#     this value does not affect what the tests run against.
+# Still no database service, no container, and no repository secret. Anything
+# added here later should have to justify itself the same way.
 
 on:
   push:
@@ -43,6 +54,11 @@ jobs:
     # The full suite is ~172s locally and the build ~60s; 20 minutes leaves
     # generous headroom for a cold npm cache without hanging a stuck job all day.
     timeout-minutes: 20
+
+    env:
+      # Required by prisma.config.ts at CLI load time — see the header note.
+      # A relative SQLite path, not a secret, and not the database the tests use.
+      DATABASE_URL: file:./prisma/ci.db
 
     steps:
       - uses: actions/checkout@v4
