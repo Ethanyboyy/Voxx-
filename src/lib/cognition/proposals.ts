@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { enforceCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
+import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
 import { createMemoryRelation } from "@/lib/memory/relations";
 import { createTask } from "@/lib/projects/service";
 import { createConnection } from "@/lib/knowledge/service";
@@ -164,6 +165,27 @@ export async function approveProposal(userId: string, id: string) {
       data: { status: "FAILED", result: `No handler registered for action "${proposal.actionType}".`, resolvedAt: new Date() },
     });
   }
+
+  // THE POLICY GATE (P2), in shadow mode — instrumenting the second execution
+  // authority rather than unifying it.
+  //
+  // This path does NOT go through agents/executor.ts. `handler()` below runs a
+  // registry that only this function knows about, which means the executor's
+  // gate call cannot see it and the two authorities are observed separately.
+  // That is finding H-4, and it is real: authorization is not bypassed
+  // (enforceCapability() ran above, and is the same function everything else
+  // uses), but execution authority is duplicated. Merging the registries is a
+  // refactor with its own risk and belongs to P4, so this phase does the honest
+  // thing — instruments the path so the shadow record is complete — instead of
+  // leaving a hole in the audit trail or rewriting execution to close it.
+  await recordShadowPolicyEvaluation({
+    userId,
+    registry: "proposal",
+    actionId: proposal.actionType,
+    boundary: "cognition.proposals.approveProposal",
+    subjectType: "Proposal",
+    subjectId: proposal.id,
+  });
 
   try {
     const payload = JSON.parse(proposal.actionPayload) as Record<string, unknown>;

@@ -90,6 +90,13 @@ before making structural changes. These rules apply to every change, not just Ph
   waiting/error, derived from real AgentRun/Proposal state, never decorative).
   `src/components/brain/BrainWorkspace.tsx` is the pan/zoom/select spatial
   canvas UI built on top of it — see the Brain section in `ARCHITECTURE.md`.
+- `src/lib/policy/` — action/task classification (`classification.ts`) and the
+  Policy Gate (`gate.ts`), currently **shadow-only**: it records what it would
+  have decided and blocks nothing. Separate from `src/lib/permissions/` on
+  purpose — permissions answer "who may do this", the gate answers "what does
+  this do and can it be undone". Never derive one from the other, never give a
+  classification a permission field, and never let a model's text reach the
+  decision: `evaluatePolicy()` takes enums and booleans only. See `POLICY_GATE.md`.
 - `src/lib/knowledge/`, `src/lib/permissions/`, `src/lib/observability/` — domain services
 - `src/lib/integrations/` — provider-agnostic external-integration abstraction (catalog +
   stub provider); `src/lib/connections/` — the Connections Hub service layer (lifecycle,

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
+import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
@@ -157,6 +158,28 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
         requiredLevel: tool.requiredLevel,
         ...(resolvedInputJson ? { input: resolvedInputJson } : {}),
       },
+    });
+
+    // THE POLICY GATE (P2), in shadow mode. This is the narrowest boundary that
+    // covers everything: `tool.execute()` below is the ONLY site in VOX that
+    // runs a registered tool, so chat requests, orchestrated capability plans,
+    // supervisor-driven runs and direct agent runs all converge here and are all
+    // observed by this one call.
+    //
+    // It observes and records. It cannot stop this step — the function returns
+    // void, so there is nothing to branch on — and it cannot throw. A HOLD is
+    // written to the event log and the tool runs anyway; enforcement is P4.
+    //
+    // Placed outside the retry loop below: one attempt to run a step is one
+    // decision, and recording it per retry would inflate the shadow HOLD rate
+    // this phase exists to measure.
+    await recordShadowPolicyEvaluation({
+      userId,
+      registry: "tool",
+      actionId: tool.name,
+      boundary: "agents.executor",
+      subjectType: "AgentRun",
+      subjectId: run.id,
     });
 
     let lastError: string | null = null;
