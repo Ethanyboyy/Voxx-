@@ -140,6 +140,7 @@ model User {
 
   artifacts           Artifact[]
   capabilityRuns      CapabilityRun[]
+  approvalGrants      ApprovalGrant[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -2858,4 +2859,79 @@ model CapabilityRun {
   @@index([userId, startedAt])
   @@index([traceId])
   @@index([userId, capability, startedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Approval grants (P4-B)
+// ---------------------------------------------------------------------------
+
+/// One human approval, bound to ONE concrete action invocation.
+///
+/// WHY THIS EXISTS. Approval in VOX has meant granting a CAPABILITY: a human
+/// grants `workspace.write` at ACT, and every future write is thereby
+/// authorized, forever, whatever its arguments. The P4 audit named the
+/// consequences — an approval can be replayed, reused, and can authorize an
+/// action whose arguments changed after it was shown to the person approving.
+///
+/// A grant answers a narrower question: "this exact action, with these exact
+/// arguments, under this exact classification, once, before this time."
+///
+/// UNENFORCED IN P4-B. Nothing consumes a grant yet. `agents/executor.ts` is
+/// untouched and the policy gate is still shadow-only; P4-C is the phase that
+/// makes a HOLD require one of these. The primitive exists first so that the
+/// phase which starts blocking execution is not also the phase inventing the
+/// thing it blocks on.
+model ApprovalGrant {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// Which registry `actionId` belongs to: "tool" or "proposal". Stored because
+  /// the two key spaces overlap — `task.create` exists in both — and an approval
+  /// for one must never satisfy the other.
+  registry String
+  /// Tool name or proposal actionType, the same key `classifyAction()` takes.
+  actionId String
+
+  /// SHA-256 (hex) of the canonical serialization of the VALIDATED arguments.
+  /// See src/lib/policy/canonical.ts for exactly what "canonical" means.
+  argumentsHash String
+  /// SHA-256 (hex) of the classification snapshot shown to the approver. An
+  /// approval cannot survive a change to what the action is understood to do.
+  classificationHash String
+
+  /// The decision the human was actually shown. Persisted rather than
+  /// recomputed: what an approval MEANT is a historical fact, and re-deriving
+  /// it from today's tables would let a policy change silently rewrite it.
+  policyDecision String
+
+  /// Descriptive-only reference, in the same shape Event rows use.
+  targetType String?
+  targetId   String?
+
+  /// The authorization this grant was issued against. The permission system
+  /// remains the source of truth for whether it is held; this records what was
+  /// shown, so a grant cannot be matched against a different requirement.
+  capability    String
+  requiredLevel CapabilityLevel
+
+  /// How many underlying calls the approval covers. P4-F derives and enforces
+  /// this from validated arguments; until then it is whatever the caller
+  /// declared, defaulting to one, and nothing reads it at execution time.
+  amplification Int @default(1)
+
+  /// JSON string[] — a SNAPSHOT of the provenance disclosed to the approver.
+  /// Not the P4-G TrustLabel lattice, which does not exist: this is a record of
+  /// what a person was told, and P4-G will be what populates it.
+  trustLabels String?
+
+  createdAt DateTime  @default(now())
+  /// Required. An approval is never permanent.
+  expiresAt DateTime
+  /// NULL means unused. A timestamp means spent — set by a conditional update
+  /// so two concurrent consumers cannot both win.
+  consumedAt DateTime?
+
+  @@index([userId, registry, actionId])
+  @@index([userId, consumedAt])
 }

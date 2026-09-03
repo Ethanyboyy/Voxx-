@@ -56,6 +56,8 @@ modules, with no field in common.
 |---|---|
 | `src/lib/policy/classification.ts` | P1. Bounded vocabularies, the static per-action tables, and the derived task profile. |
 | `src/lib/policy/gate.ts` | P2. The policy matrix, `evaluatePolicy()` (pure), and `recordShadowPolicyEvaluation()` (records, never blocks). |
+| `src/lib/policy/canonical.ts` | **[P4-B]** Canonical serialization + SHA-256. The contract the argument hash rests on. |
+| `src/lib/policy/approvals.ts` | **[P4-B]** `ApprovalGrant` lifecycle: create, match, consume. **Unenforced.** |
 | `tests/policy-gate.test.ts` | 57 tests over the matrix, determinism, model independence, economic authority, failure behaviour, boundary coverage, and **[P2.1]** runtime immutability, corrected classifications and single-evaluation coverage. |
 
 Three existing files carry a gate call: `src/lib/agents/executor.ts`,
@@ -517,11 +519,116 @@ still the only path that runs a handler, and it still calls the real
 `economic.record_expense` in the queue with its shadow `DENY` attached, which
 makes the open question visible; it does not answer it.
 
+## P4-B — argument-bound, single-use approval grants
+
+**The primitive exists. Nothing enforces it.** `agents/executor.ts` is untouched,
+`recordShadowPolicyEvaluation()` still returns `void`, and a `HOLD` still
+executes. P4-C is the phase that makes a `HOLD` require a grant.
+
+### What was wrong with approval
+
+Approving in VOX meant granting a **capability**: a human grants
+`workspace.write` at `ACT`, and every future write is authorized — any path, any
+content, forever, any number of times. The audit named the consequences: an
+approval can be replayed, reused, and can authorize unboundedly many actions.
+
+Worse on the agent path: the executor resolves `{{stepN.output}}` references at
+**execution** time (`agents/executor.ts`), *after* the pause. What a person was
+shown and what runs are two different objects.
+
+### What a grant is
+
+Permission to perform **one** action, with **these** arguments, under **this**
+classification, **once**, before a stated time. `ApprovalGrant` pins every axis
+that could drift in between:
+
+| Field | Binds |
+|---|---|
+| `registry` + `actionId` | what it is |
+| `argumentsHash` | what it will be called with |
+| `classificationHash` | what VOX understood it to do |
+| `policyDecision` | what the person was shown — history, never recomputed |
+| `capability` + `requiredLevel` | the authorization it was issued against |
+| `amplification` | how many underlying calls it covers |
+| `trustLabels` | provenance disclosed at the time |
+| `targetType` + `targetId` | the entity it concerns |
+| `expiresAt` | after which it is worth nothing |
+| `consumedAt` | after which it is spent |
+
+`registry` is a column and part of the classification hash because the two key
+spaces **overlap** — `task.create` exists in both with an identical
+classification — so without it a proposal approval would satisfy a tool call.
+
+### Canonical serialization
+
+`src/lib/policy/canonical.ts`. The hash is the whole security property: two
+identical objects hashing differently makes every approval fail at random; two
+*different* objects hashing the same silently authorizes what nobody saw.
+
+Object keys are **sorted** (insertion order is not semantic). Array order is
+**preserved** (it is). Strings and keys are **NFC-normalized**, so a composed and
+a decomposed "é" cannot be two hashes for one argument. `NaN` and `Infinity` are
+**rejected** rather than encoded — `JSON.stringify` writes `null` for both and
+would conflate them with each other and with a real null. `-0` normalizes to `0`.
+`undefined` in an object drops the key; in an **array** it is rejected, where it
+would be indistinguishable from `null`. `Date`, `Map`, `Set`, `BigInt`, symbols,
+functions and class instances are rejected — a silent `toJSON()` is how a hash
+becomes a lie. Output is ordinary readable JSON; the rejections make it
+unambiguous without a bespoke tagged encoding.
+
+### Single use
+
+`consumeApprovalGrant()` is **one conditional update**. The `WHERE` repeats every
+condition that makes consumption legal — right user, unconsumed, unexpired — so
+check and write cannot come apart. A read-then-write pair has a window in which
+two callers both see `consumedAt: null` and both proceed, which is exactly the
+replay the model exists to prevent. Same compare-and-swap shape
+`economic/scheduler.ts` uses to claim a tick. `count !== 1` is the refusal; the
+re-read afterwards is advisory, only to say *which* condition failed. A test runs
+eight concurrent consumers and asserts exactly one winner and seven refusals.
+
+### Expiration
+
+15 minutes by default, capped at 60. `auth/session.ts` uses 30 days, which is
+right for "this person is logged in" and wrong for "this person looked at this
+action and said yes" — the longer a grant lives, the more the world it was
+approved against has moved on. Expired grants fail closed and are **never**
+implicitly renewed.
+
+### Deliberately not done, and why
+
+**`requiredLevel` matches exactly, not "at least".** A rank comparison would need
+a second copy of the `OBSERVE < ANALYZE < RECOMMEND < ASK < ACT` ladder here, and
+a duplicated ladder is the drift `capabilities/types.ts` refused a second
+permission vocabulary to avoid. Exact equality needs no ladder and fails closed.
+
+**`amplification` is declared, not derived.** P4-F derives it from validated
+arguments (`count`, `maxIterations`) and enforces it. Deriving it here would be a
+second amplification system for P4-F to reconcile with.
+
+**`trustLabels` is a snapshot, not the lattice.** P4-G is what will have anything
+true to put in it.
+
+### What still needs wiring, and why it waits for P4-C
+
+**No production code creates a grant yet, and that is not an omission.** The
+existing `HOLD` surface is the executor's `WAITING_FOR_PERMISSION` pause — and at
+that moment the arguments are **not final**: `step.input` may still hold
+unresolved `{{stepN.output}}` templates, which the executor substitutes later
+(`executor.ts`, `agents/references.ts`). An argument-bound grant issued there
+would bind a hash of a template.
+
+Making the arguments final at pause time means changing when references resolve,
+which is executor control flow — **P4-C**. So P4-B ships the complete, tested
+primitive and stops, rather than hacking a creation call into a pause that cannot
+yet supply what a grant needs.
+
 ## [P2.1] Findings still open
 
 Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**. P3 resolved none of the
 security findings below and was not intended to. **P4-A** resolved the financial
-semantics question only — no security finding, and no enforcement.
+semantics question only — no security finding, and no enforcement. **P4-B** built
+the approval primitive; it resolves nothing until P4-C enforces it.
 
 **Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
 enforcement), **H-1** (composition → arbitrary code execution), **H-4**
