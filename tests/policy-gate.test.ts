@@ -33,7 +33,14 @@ import { createTestUser } from "./helpers";
 
 /** Shorthand for a classification, so the matrix tests read as a table. */
 function action(over: Partial<ActionClassification>): ActionClassification {
-  return { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, ...over };
+  return {
+    effect: "READ",
+    reversibility: "REVERSIBLE",
+    financial: false,
+    untrustedOutput: false,
+    externalSystemOfRecord: false,
+    ...over,
+  };
 }
 
 function decide(over: Partial<ActionClassification>, prior?: PolicyDecision): PolicyDecision {
@@ -62,6 +69,7 @@ describe("P1 — classification metadata", () => {
       expect(REVERSIBILITIES, name).toContain(entry.reversibility);
       expect(typeof entry.financial, name).toBe("boolean");
       expect(typeof entry.untrustedOutput, name).toBe("boolean");
+      expect(typeof entry.externalSystemOfRecord, name).toBe("boolean");
     }
     for (const [name, entry] of Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS)) {
       expect(EFFECTS, name).toContain(entry.effect);
@@ -155,7 +163,14 @@ describe("P2.1 / A-2 — policy metadata cannot be mutated at runtime", () => {
   });
 
   it("resists flipping a cell of POLICY_MATRIX", () => {
-    const financial = action({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true });
+    const financial = action({
+      effect: "FINANCIAL",
+      reversibility: "IRREVERSIBLE",
+      financial: true,
+      externalSystemOfRecord: true,
+    });
+    // The internal counterpart, which must stay HOLD however the matrix is mauled.
+    const internal = action({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true });
     const act = action({ effect: "ACT", reversibility: "REVERSIBLE" });
     const before = { financial: evaluatePolicy({ action: financial }).decision, act: evaluatePolicy({ action: act }).decision };
     expect(before).toEqual({ financial: "DENY", act: "HOLD" });
@@ -176,6 +191,7 @@ describe("P2.1 / A-2 — policy metadata cannot be mutated at runtime", () => {
     });
 
     expect(evaluatePolicy({ action: financial }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: internal }).decision).toBe("HOLD");
     expect(evaluatePolicy({ action: act }).decision).toBe("HOLD");
   });
 
@@ -221,6 +237,120 @@ describe("P2.1 / A-2 — policy metadata cannot be mutated at runtime", () => {
   });
 });
 
+describe("P4-A — external system of record is the HOLD/DENY discriminator", () => {
+  /**
+   * A TEST-ONLY classification. There is no such action in either registry, and
+   * P4-A deliberately does not add one: VOX has no payment, banking or card
+   * integration, and inventing a production action to make a test pass would be
+   * exactly the fake functionality this phase forbids. The gate takes a
+   * classification object, so the fixture is the classification.
+   */
+  const HYPOTHETICAL_EXTERNAL_TRANSFER: ActionClassification = Object.freeze({
+    effect: "FINANCIAL",
+    reversibility: "IRREVERSIBLE",
+    financial: true,
+    untrustedOutput: false,
+    externalSystemOfRecord: true,
+  });
+
+  it("no production action claims to touch an external system of record", () => {
+    // The premise of the whole distinction. If this ever fails, someone added a
+    // real money-moving integration and P4-A's assumptions need re-reading.
+    const external = [
+      ...Object.entries(TOOL_CLASSIFICATIONS),
+      ...Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS),
+    ].filter(([, entry]) => entry.externalSystemOfRecord).map(([name]) => name);
+    expect(external).toEqual([]);
+  });
+
+  it("Test 1 — the internal ledger record HOLDs, despite being financial AND irreversible", () => {
+    const classification = classifyAction("tool", "economic.record_expense").classification;
+    // Both of the properties that used to force DENY are present...
+    expect(classification.financial).toBe(true);
+    expect(classification.reversibility).toBe("IRREVERSIBLE");
+    expect(classification.effect).toBe("FINANCIAL");
+    // ...and it is still HOLD, because the third axis says the record is VOX's own.
+    expect(classification.externalSystemOfRecord).toBe(false);
+    expect(evaluatePolicy({ action: classification }).decision).toBe("HOLD");
+  });
+
+  it("Test 2 — a hypothetical external-system financial action is DENIED", () => {
+    const evaluation = evaluatePolicy({ action: HYPOTHETICAL_EXTERNAL_TRANSFER });
+    expect(evaluation.decision).toBe("DENY");
+    expect(evaluation.reasonCodes).toContain("EXTERNAL_SYSTEM_OF_RECORD");
+    expect(evaluation.notes.join(" ")).toContain("outside VOX");
+  });
+
+  it("differs from the internal case by exactly one field", () => {
+    const internal = { ...HYPOTHETICAL_EXTERNAL_TRANSFER, externalSystemOfRecord: false };
+    expect(evaluatePolicy({ action: HYPOTHETICAL_EXTERNAL_TRANSFER }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: internal }).decision).toBe("HOLD");
+  });
+
+  it("requires all three conditions — no two of them produce DENY", () => {
+    // External but reversible.
+    expect(decide({ effect: "FINANCIAL", reversibility: "REVERSIBLE", financial: true, externalSystemOfRecord: true })).toBe("HOLD");
+    // External and irreversible but not financial in effect.
+    expect(decide({ effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, externalSystemOfRecord: true })).toBe("HOLD");
+    // Financial and irreversible but internal.
+    expect(decide({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true })).toBe("HOLD");
+  });
+
+  it("Test 3 — the matrix remains total after the amendment", () => {
+    for (const effect of EFFECTS) {
+      for (const reversibility of REVERSIBILITIES) {
+        expect(["ALLOW", "HOLD", "DENY"], `${effect}/${reversibility}`).toContain(POLICY_MATRIX[effect][reversibility]);
+      }
+    }
+    // And DENY is now produced ONLY by the escalation, never by a cell. That is
+    // the substance of P4-A: refusal is not a property of effect x reversibility.
+    const cells = EFFECTS.flatMap((e) => REVERSIBILITIES.map((r) => POLICY_MATRIX[e][r]));
+    expect(cells).not.toContain("DENY");
+  });
+
+  it("money is never ALLOW by default — the financial escalation is untouched", () => {
+    for (const effect of EFFECTS) {
+      for (const reversibility of REVERSIBILITIES) {
+        for (const externalSystemOfRecord of [true, false]) {
+          const result = decide({ effect, reversibility, financial: true, externalSystemOfRecord });
+          expect(result, `${effect}/${reversibility}/external=${externalSystemOfRecord}`).not.toBe("ALLOW");
+        }
+      }
+    }
+  });
+
+  it("stays monotonic: the new rule can only raise a decision", () => {
+    const severity: Record<PolicyDecision, number> = { ALLOW: 0, HOLD: 1, DENY: 2 };
+    for (const effect of EFFECTS) {
+      for (const reversibility of REVERSIBILITIES) {
+        for (const financial of [true, false]) {
+          const without = decide({ effect, reversibility, financial });
+          const with_ = decide({ effect, reversibility, financial, externalSystemOfRecord: true });
+          expect(severity[with_], `${effect}/${reversibility}/financial=${financial}`).toBeGreaterThanOrEqual(
+            severity[without]
+          );
+        }
+      }
+    }
+  });
+
+  it("records the discriminator on the shadow event", async () => {
+    const user = await createTestUser();
+    await recordShadowPolicyEvaluation({
+      userId: user.id,
+      registry: "tool",
+      actionId: "economic.record_expense",
+      boundary: "test.p4a_discriminator",
+    });
+    const payload = payloadOf((await shadowEvents(user.id))[0]);
+    expect(payload.externalSystemOfRecord).toBe(false);
+    expect(payload.decision).toBe("HOLD");
+    // Still shadow-only. P4-A changed a verdict, not what happens after one.
+    expect(payload.shadowMode).toBe(true);
+    expect(payload.executionContinued).toBe(true);
+  });
+});
+
 describe("P2.1 / A-1 — economic.record_expense reflects an append-only ledger", () => {
   it("is FINANCIAL and IRREVERSIBLE, because no undo path exists in the codebase", () => {
     const entry = TOOL_CLASSIFICATIONS["economic.record_expense"];
@@ -232,10 +362,11 @@ describe("P2.1 / A-1 — economic.record_expense reflects an append-only ledger"
     expect(entry.financial).toBe(true);
   });
 
-  it("therefore evaluates to a shadow DENY — which stops nothing in P2", () => {
+  it("[P4-A] evaluates to a shadow HOLD, not DENY — the ledger is VOX's own", () => {
     const evaluation = evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification });
-    expect(evaluation.decision).toBe("DENY");
-    expect(evaluation.matrixDecision).toBe("DENY");
+    expect(evaluation.decision).toBe("HOLD");
+    expect(evaluation.matrixDecision).toBe("HOLD");
+    expect(evaluation.reasonCodes).not.toContain("EXTERNAL_SYSTEM_OF_RECORD");
   });
 
   it("records that DENY as an observation with execution continuing", async () => {
@@ -247,7 +378,7 @@ describe("P2.1 / A-1 — economic.record_expense reflects an append-only ledger"
       boundary: "test.economic_shadow",
     });
     const payload = payloadOf((await shadowEvents(user.id))[0]);
-    expect(payload.decision).toBe("DENY");
+    expect(payload.decision).toBe("HOLD");
     expect(payload.shadowMode).toBe(true);
     // The point of the assertion: a shadow DENY is NOT a block. Nothing in P2
     // prevents the spend, and the record says so in its own payload.
@@ -256,7 +387,8 @@ describe("P2.1 / A-1 — economic.record_expense reflects an append-only ledger"
 
   it("still cannot weaken an economic-engine restriction", () => {
     // The gate may only add. Even at DENY it composes upward, never downward.
-    expect(evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification, prior: "ALLOW" }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification, prior: "DENY" }).decision).toBe("DENY");
+    expect(evaluatePolicy({ action: classifyAction("tool", "economic.record_expense").classification, prior: "ALLOW" }).decision).toBe("HOLD");
     expect(evaluatePolicy({ action: classifyAction("tool", "memory.search").classification, prior: "DENY" }).decision).toBe("DENY");
   });
 });
@@ -324,8 +456,22 @@ describe("P2 — the policy matrix", () => {
     expect(decide({ effect: "FINANCIAL", reversibility: "REVERSIBLE", financial: true })).toBe("HOLD");
   });
 
-  it("financial + irreversible → DENY", () => {
-    expect(decide({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true })).toBe("DENY");
+  it("financial + irreversible, INTERNAL ledger → HOLD", () => {
+    // [P4-A] Corrected from DENY. An append-only VOX ledger row is irreversible
+    // and financial, but a human raising the ceiling and approving it is a real
+    // authorization path — so it is held for that human, not refused outright.
+    expect(decide({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true })).toBe("HOLD");
+  });
+
+  it("financial + irreversible + EXTERNAL system of record → DENY", () => {
+    expect(
+      decide({
+        effect: "FINANCIAL",
+        reversibility: "IRREVERSIBLE",
+        financial: true,
+        externalSystemOfRecord: true,
+      })
+    ).toBe("DENY");
   });
 
   it("escalates an otherwise-allowed action that costs money", () => {
@@ -359,7 +505,12 @@ describe("P2 — determinism", () => {
   });
 
   it("is order- and time-independent: no state carries between evaluations", () => {
-    const risky = action({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true });
+    const risky = action({
+      effect: "FINANCIAL",
+      reversibility: "IRREVERSIBLE",
+      financial: true,
+      externalSystemOfRecord: true,
+    });
     const safe = action({ effect: "READ" });
     expect(evaluatePolicy({ action: risky }).decision).toBe("DENY");
     expect(evaluatePolicy({ action: safe }).decision).toBe("ALLOW");
@@ -436,7 +587,12 @@ describe("P2 — economic authority is never weakened", () => {
 
   it("still escalates on top of a prior — the gate may add a HOLD", () => {
     const evaluation = evaluatePolicy({
-      action: action({ effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true }),
+      action: action({
+        effect: "FINANCIAL",
+        reversibility: "IRREVERSIBLE",
+        financial: true,
+        externalSystemOfRecord: true,
+      }),
       prior: "ALLOW",
     });
     expect(evaluation.decision).toBe("DENY");
@@ -605,6 +761,7 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
         "sensitivity",
         "shadowMode",
         "untrustedOutput",
+        "externalSystemOfRecord",
       ].sort()
     );
   });

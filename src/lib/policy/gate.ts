@@ -77,7 +77,11 @@ export function strictest(a: PolicyDecision, b: PolicyDecision): PolicyDecision 
  *   ANALYZE            ALLOW        ALLOW                  ALLOW
  *   WRITE              ALLOW        HOLD                   HOLD
  *   ACT                HOLD         HOLD                   HOLD
- *   FINANCIAL          HOLD         HOLD                   DENY
+ *   FINANCIAL          HOLD         HOLD                   HOLD
+ *
+ * THE MATRIX NO LONGER PRODUCES DENY AT ALL. That is [P4-A] and it is the
+ * point: whether an action is refused categorically turns out not to be a
+ * property of (effect x reversibility). See the note below the rows.
  *
  * The reasoning, cell by cell rather than in aggregate:
  *
@@ -94,20 +98,31 @@ export function strictest(a: PolicyDecision, b: PolicyDecision): PolicyDecision 
  * reversible from the other party's point of view — deleting a calendar event
  * does not un-send the invitation — so the whole row holds.
  *
- * FINANCIAL moves the user's money. Held in every case where recovery is even
- * partly possible, and DENIED where it is not.
+ * FINANCIAL moves the user's money. Held in every case, because money is never
+ * ordinary work.
  *
- * THAT CELL IS NO LONGER EMPTY. It was written on the assumption that nothing
- * in the registry would land there. The P1/P2 audit showed `economic.record_expense`
- * does: VOX's ledger is append-only, so a recorded expense cannot be undone by
- * any code path that exists. The classification was corrected; this cell now
- * describes a real tool, and DENY is a SHADOW verdict that stops nothing today.
+ * [P4-A] WHY FINANCIAL/IRREVERSIBLE IS NO LONGER `DENY` HERE.
  *
- * Whether DENY is the RIGHT verdict for a ceiling-bounded, human-authorized
- * ledger entry is a policy question this patch deliberately does not answer —
- * see POLICY_GATE.md, "The open question at FINANCIAL + IRREVERSIBLE". The
- * matrix is unchanged because it remains consistent with its own stated
- * semantics; what changed is that a fact was corrected underneath it.
+ * P2 put DENY in that cell reasoning that an irreversible financial action is
+ * "money leaving with no correcting entry". The P2.1 audit then found a real
+ * tool in it — `economic.record_expense` — and that exposed the conflation.
+ * Traced end to end (src/lib/economic/spend.ts#recordPolicySpend), that tool
+ * reaches ONE SQL INSERT. There is no payment processor, no bank, no card
+ * anywhere in VOX. It is irreversible, because the ledger is append-only, and
+ * it is genuinely financial, because the row consumes a spend ceiling only a
+ * human can raise. But no external record changes.
+ *
+ * DENY does not mean "risky", and it does not mean "irreversible". It means
+ * THERE IS NO LEGITIMATE AUTHORIZATION PATH — nothing a human could approve
+ * that would make it acceptable. A human raising the ceiling and approving an
+ * expense is exactly such a path, so DENY was the wrong verdict; enforcing it
+ * would have left VOX permanently unable to record its own spending.
+ *
+ * The discriminator is the third axis added in P4-A:
+ * `ActionClassification.externalSystemOfRecord`, which mirrors the line
+ * `prisma/schema.prisma` already draws in `LedgerProvenance` between REALIZED
+ * ("confirmed against an external system of record") and USER_RECORDED. It is
+ * applied as an escalation in `evaluatePolicy()` below, not as a matrix cell.
  *
  * Frozen at module load, rows included. `Readonly<>` is erased at compile time
  * and the audit flipped a cell in-process to prove it; the freeze is what makes
@@ -118,7 +133,7 @@ export const POLICY_MATRIX: Readonly<Record<Effect, Readonly<Record<Reversibilit
   ANALYZE: { REVERSIBLE: "ALLOW", PARTIALLY_REVERSIBLE: "ALLOW", IRREVERSIBLE: "ALLOW" },
   WRITE: { REVERSIBLE: "ALLOW", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "HOLD" },
   ACT: { REVERSIBLE: "HOLD", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "HOLD" },
-  FINANCIAL: { REVERSIBLE: "HOLD", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "DENY" },
+  FINANCIAL: { REVERSIBLE: "HOLD", PARTIALLY_REVERSIBLE: "HOLD", IRREVERSIBLE: "HOLD" },
 } as const);
 
 /** Why the gate decided what it decided. Codes, not prose — see `notes` for the words. */
@@ -127,6 +142,8 @@ export type PolicyReasonCode =
   | "MATRIX"
   /** The matrix said ALLOW but the action costs money, so it was escalated. */
   | "FINANCIAL_ESCALATION"
+  /** [P4-A] An irreversible financial action against a system of record outside VOX. */
+  | "EXTERNAL_SYSTEM_OF_RECORD"
   /** An upstream restriction was stricter than anything this gate produced. */
   | "UPSTREAM_RESTRICTION"
   /** No classification existed; the conservative default was used. */
@@ -206,6 +223,35 @@ export function evaluatePolicy(input: PolicyEvaluationInput): PolicyEvaluation {
     decision = "HOLD";
     reasonCodes.push("FINANCIAL_ESCALATION");
     notes.push("Action costs real money, so an otherwise-allowed decision is escalated to HOLD.");
+  }
+
+  // [P4-A] THE ONLY SOURCE OF DENY.
+  //
+  // Irreversible AND financial AND against a record outside VOX. All three, or
+  // the rule does not fire. This is the one combination for which no authority
+  // inside VOX can grant permission — there is no approval that un-sends a wire
+  // — so it is refused categorically rather than held for a human.
+  //
+  // Written as an ESCALATION rather than as a matrix cell, deliberately. The
+  // matrix is keyed on (effect x reversibility) and cannot see a third axis
+  // without becoming a cube. More importantly, expressing it here keeps the
+  // gate monotonic: every rule in this function may only ever RAISE a decision,
+  // and a matrix cell that read DENY would have needed a downgrade to reach the
+  // internal-ledger case, which is precisely the move `strictest()` exists to
+  // make unrepresentable.
+  if (
+    action!.externalSystemOfRecord === true &&
+    action!.effect === "FINANCIAL" &&
+    action!.reversibility === "IRREVERSIBLE"
+  ) {
+    const denied = strictest(decision, "DENY");
+    if (denied !== decision) {
+      decision = denied;
+      reasonCodes.push("EXTERNAL_SYSTEM_OF_RECORD");
+      notes.push(
+        "Irreversible and financial against a system of record outside VOX. No authorization path exists for this, so it is denied rather than held."
+      );
+    }
   }
 
   const prior = normalizePrior(input?.prior);
@@ -351,6 +397,10 @@ export async function recordShadowPolicyEvaluation(input: ShadowEvaluationInput)
         financial: classification.financial,
         // Recorded for P4's taint boundary. Plays no part in the decision above.
         untrustedOutput: classification.untrustedOutput,
+        // [P4-A] The sole discriminator between HOLD and DENY on an irreversible
+        // financial action. Recorded so an auditor can see WHY a decision landed
+        // where it did, rather than having to re-derive it from the tables.
+        externalSystemOfRecord: classification.externalSystemOfRecord,
         sensitivity: task.sensitivity,
         freshness: task.freshness,
         decision: evaluation.decision,

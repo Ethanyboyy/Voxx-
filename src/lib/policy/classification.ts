@@ -204,6 +204,39 @@ export interface ActionClassification {
    * than the honest absence of one.
    */
   untrustedOutput: boolean;
+  /**
+   * [P4-A] Does this action write a fact confirmed by, or directly affect, a
+   * system of record OUTSIDE VOX?
+   *
+   * This is the single discriminator that separates a boundary VOX must never
+   * cross from a consequential action a human can legitimately authorize. It is
+   * narrow on purpose, and it is NOT any of the questions it is easy to mistake
+   * it for:
+   *
+   *   - NOT "does this involve money?"            -> that is `financial`
+   *   - NOT "is this financially sensitive?"      -> that is `effect: FINANCIAL`
+   *   - NOT "is this irreversible?"               -> that is `reversibility`
+   *   - NOT "does this write to VOX's database?"  -> almost everything does
+   *
+   * It asks only: after this action, is a record outside VOX different — a
+   * payment processor's, a bank's, a card network's?
+   *
+   * WHERE THE VOCABULARY COMES FROM. Not invented here. `prisma/schema.prisma`
+   * already draws exactly this line in `LedgerProvenance`: `REALIZED` is
+   * documented as "confirmed against an external system of record (payment
+   * processor, bank statement)", with the explicit note that NOTHING in VOX can
+   * write it today because no such integration exists. `USER_RECORDED` is a
+   * human's assertion in VOX's own book. This flag is that same axis, lifted to
+   * the action level so the gate can reason about it before the row is written.
+   *
+   * TODAY EVERY ACTION IS `false`, and that is a finding rather than an
+   * oversight: VOX has no payment, banking or card integration, so no action it
+   * can perform changes anyone else's ledger. The flag exists so that the day
+   * one is added, the person adding it has to answer this question in a diff —
+   * and so that `DENY` marks a real boundary instead of an empty cell nobody
+   * has had to justify.
+   */
+  externalSystemOfRecord: boolean;
 }
 
 /**
@@ -222,6 +255,14 @@ export const UNKNOWN_ACTION: ActionClassification = deepFreeze({
   reversibility: "PARTIALLY_REVERSIBLE",
   financial: false,
   untrustedOutput: false,
+  externalSystemOfRecord: false,
+  // [P4-A] `false`, deliberately, even though this object is the CONSERVATIVE
+  // default. Setting it `true` would be the stricter-looking choice and the
+  // wrong one: an unclassified action is not KNOWN to touch an external system
+  // of record, and claiming it does would be a fabricated fact. It would also
+  // make a forgotten table entry unrecoverable the moment the unknown default
+  // ever became FINANCIAL + IRREVERSIBLE, which is exactly the failure the note
+  // above rejects. Conservatism here means HOLD — demand a person — not DENY.
 });
 
 /**
@@ -234,16 +275,16 @@ export const UNKNOWN_ACTION: ActionClassification = deepFreeze({
 export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = deepFreeze({
   // --- VOX's own memory and domain rows. Everything here is a row VOX created
   // and can delete again. ---
-  "memory.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "memory.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "task.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "project.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "idea.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "decision.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "connection.suggest": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "lab.create_requirement": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "lab.create_question": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "lab.attach_artifact": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
+  "memory.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "memory.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "task.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "project.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "idea.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "decision.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "connection.suggest": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "lab.create_requirement": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "lab.create_question": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "lab.attach_artifact": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
 
   // WRITE, not READ. Corrected after the P1/P2 audit, which traced what
   // `runResearch()` (src/lib/research/service.ts) actually does: a network
@@ -265,6 +306,7 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     reversibility: "PARTIALLY_REVERSIBLE",
     financial: false,
     untrustedOutput: true,
+    externalSystemOfRecord: false,
   },
 
   // --- Money. ---
@@ -299,36 +341,38 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     reversibility: "IRREVERSIBLE",
     financial: true,
     untrustedOutput: false,
+    externalSystemOfRecord: false,
   },
 
   // --- Someone else's systems. ---
-  "calendar.list_events": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true },
+  "calendar.list_events": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
   // The event can be deleted; the invitation has already been delivered.
   "calendar.create_event": {
     effect: "ACT",
     reversibility: "PARTIALLY_REVERSIBLE",
     financial: false,
     untrustedOutput: false,
+    externalSystemOfRecord: false,
   },
 
   // --- Metered providers. ACT rather than FINANCIAL (the purpose is the media),
   // financial: true because the charge is real, IRREVERSIBLE because a provider
   // call cannot be un-spent. ---
-  "media.image.generate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false },
-  "media.video.generate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false },
-  "media.image.refine": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false },
+  "media.image.generate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
+  "media.video.generate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
+  "media.image.refine": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
   // Judges rather than produces, so ANALYZE — but it calls a metered provider,
   // which is precisely the case the separate financial flag exists to catch.
-  "qa.visual_review": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false },
+  "qa.visual_review": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
   // Writes an approval on an artifact VOX owns, having paid to compare candidates.
-  "artifact.select_best": { effect: "WRITE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false },
+  "artifact.select_best": { effect: "WRITE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
 
   // --- The workspace: VOX's own source tree. ---
-  "workspace.list": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "workspace.structure": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "workspace.read": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "workspace.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "workspace.git_status": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
+  "workspace.list": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "workspace.structure": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "workspace.read": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "workspace.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "workspace.git_status": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
   // PARTIALLY_REVERSIBLE, not REVERSIBLE: git restores a tracked file, and
   // restores nothing at all for a file that was never committed.
   "workspace.write": {
@@ -336,18 +380,20 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     reversibility: "PARTIALLY_REVERSIBLE",
     financial: false,
     untrustedOutput: false,
+    externalSystemOfRecord: false,
   },
   "workspace.patch": {
     effect: "WRITE",
     reversibility: "PARTIALLY_REVERSIBLE",
     financial: false,
     untrustedOutput: false,
+    externalSystemOfRecord: false,
   },
   // Finding H-1 lives here: this runs the repository's own typecheck, lint,
   // tests and build, which is code execution, at ANALYZE. Classified honestly
   // as ANALYZE/REVERSIBLE — it changes nothing — and left as-is. Constraining
   // what it composes with is P4's job, not a classification's.
-  "workspace.validate": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
+  "workspace.validate": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
 });
 
 /**
@@ -362,18 +408,19 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
  * function that writes a VOX row. None reaches a third party, none spends.
  */
 export const PROPOSAL_ACTION_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>> = deepFreeze({
-  "memory.create_relation": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "task.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
+  "memory.create_relation": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "task.create": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
   "knowledge.create_connection": {
     effect: "WRITE",
     reversibility: "REVERSIBLE",
     financial: false,
     untrustedOutput: false,
+    externalSystemOfRecord: false,
   },
   // Moves a Connections Hub row to AWAITING_APPROVAL. Grants nothing, connects
   // to nothing — the access grant is a separate, explicit human step.
-  "connection.propose": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
-  "lab.create_experiment": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false },
+  "connection.propose": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "lab.create_experiment": { effect: "WRITE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
 });
 
 /**

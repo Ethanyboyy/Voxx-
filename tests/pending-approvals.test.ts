@@ -326,9 +326,12 @@ describe("P3 — PendingApproval projection", () => {
       expect(approval.classification).toEqual(classifyAction("tool", "economic.record_expense").classification);
       expect(approval.classification?.financial).toBe(true);
       expect(approval.classification?.reversibility).toBe("IRREVERSIBLE");
-      // Shown, not enforced. A DENY here stops nothing — P2/P2.1 is shadow-only
-      // and P4 owns enforcement.
-      expect(approval.policyDecision).toBe("DENY");
+      // [P4-A] HOLD, not DENY. Financial and irreversible, but the ledger is
+      // VOX's own — `externalSystemOfRecord` is false — so a human raising the
+      // ceiling is a real authorization path. Shown, not enforced either way:
+      // the gate is still shadow-only and P4-C owns enforcement.
+      expect(approval.classification?.externalSystemOfRecord).toBe(false);
+      expect(approval.policyDecision).toBe("HOLD");
     });
 
     it("omits classification entirely for an action id no registry knows", async () => {

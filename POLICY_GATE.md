@@ -9,6 +9,11 @@ under-classified (A-3) and partly invisible to the gate (A-5). All four are
 corrected below and marked **[P2.1]**. Nothing was enforced; the gate still
 blocks nothing.
 
+**[P4-A] Financial semantics resolved.** The open question P2.1 left at
+`FINANCIAL + IRREVERSIBLE` is answered below (§4). One field was added,
+`externalSystemOfRecord`, and one matrix cell relaxed. **Enforcement is still
+off** — P4-A changed what a verdict *is*, not what happens after one.
+
 **Vocabulary, used strictly throughout:** *classified* = a static table entry
 exists. *Shadow-evaluated* = a decision was computed and recorded. *Enforced* =
 execution was prevented. **Nothing in VOX is enforced by the gate.**
@@ -82,6 +87,7 @@ engine, the router, the orchestrator or the event bus.
 | `reversibility` | `REVERSIBLE` · `PARTIALLY_REVERSIBLE` · `IRREVERSIBLE` |
 | `financial` | boolean |
 | `untrustedOutput` | boolean — **recorded only**, see §7 |
+| `externalSystemOfRecord` | boolean — **[P4-A]** the HOLD/DENY discriminator, see §4 |
 
 Deliberately absent: `confidence`, `reliability`, `availability`. Those describe
 how a provider is behaving right now, not what a task requires; mixing a runtime
@@ -99,6 +105,10 @@ reference into the shared table. Every table, every row, and `UNKNOWN_ACTION`
 (one shared object that *is* the conservative default) are now deep-frozen. The
 tests assert the behavioural invariant — attempt the mutation, evaluate again,
 decision unchanged — not `Object.isFrozen()`.
+
+**[P4-A] `economic.record_expense` evaluates to `HOLD`, not `DENY`** — see §4.
+The classification below is unchanged and still correct; what changed is that a
+third axis now separates an internal ledger record from an external one.
 
 **[P2.1] `economic.record_expense` is `FINANCIAL` + `IRREVERSIBLE`.** Traced end
 to end, it reaches one SQL `INSERT`. There is no payment processor, bank, or
@@ -138,7 +148,12 @@ Effect down, reversibility across. This table *is* the decision procedure.
 | **`ANALYZE`** | ALLOW | ALLOW | ALLOW |
 | **`WRITE`** | ALLOW | HOLD | HOLD |
 | **`ACT`** | HOLD | HOLD | HOLD |
-| **`FINANCIAL`** | HOLD | HOLD | **DENY** |
+| **`FINANCIAL`** | HOLD | HOLD | HOLD |
+
+**[P4-A] The matrix no longer produces `DENY` at all.** That is the substance of
+this phase: whether an action is refused categorically turns out not to be a
+property of (effect × reversibility). `DENY` is now produced by exactly one
+escalation rule, described below.
 
 Plus exactly one rule: **`financial: true` escalates an `ALLOW` to `HOLD`.** It
 can only ever raise, never lower. It exists for the case the matrix alone
@@ -165,26 +180,62 @@ no tool occupied it and presented that as a deliberate boundary. That was wrong:
 reversibility had been rated optimistically. It now evaluates to **`DENY`** —
 **a shadow verdict that stops nothing.**
 
-### The open question at `FINANCIAL` + `IRREVERSIBLE`
+### [P4-A] `externalSystemOfRecord` — the HOLD/DENY discriminator
 
-This needs a deliberate answer **before P4**, and P2.1 does not presume it.
+P2.1 left this open. It is now answered, and the answer is **not** a new
+vocabulary: `prisma/schema.prisma` already draws the line, in `LedgerProvenance`.
 
-`DENY` currently means *"policy refuses this categorically; no approval routes
-around it."* But a human raising the spend ceiling and authorising a spend is a
-legitimate authorisation path, and the economic engine already enforces it with
-an atomic ceiling and a global halt. Under enforcement as written, VOX could
-never record an autonomous expense again.
+> `REALIZED` — *"Confirmed against an external system of record (payment
+> processor, bank statement). **NOTHING in VOX can write this today: no payment
+> or banking integration exists.**"*
+> `USER_RECORDED` — *"A human entered it. True as far as VOX knows."*
 
-One of these has to be chosen, as policy design rather than as a table edit:
+`ActionClassification.externalSystemOfRecord` is that same axis, lifted to the
+action so the gate can reason about it before a row is written.
 
-1. `DENY` keeps its categorical meaning, and this operation needs a reversibility
-   grade distinguishing *"unrecoverable"* from *"unrecoverable but bounded by an
-   authority the gate cannot see"*; or
-2. `DENY` splits into *forbidden* versus *requires authority beyond the gate*.
+**`externalSystemOfRecord = true`** — the action writes or affects a fact
+confirmed **outside** VOX: a payment processor's record, a bank's, a card
+network's. For an irreversible financial action the verdict is **`DENY`**.
 
-The matrix was **not** changed here. It remains consistent with its own stated
-semantics; what changed is that a fact underneath it was corrected. Correct
-classification first, policy semantics second, enforcement later.
+**`externalSystemOfRecord = false`** — the action only changes VOX's own
+accounting state. For an irreversible financial action the verdict is
+**`HOLD`**.
+
+It is narrow on purpose, and it is none of the questions it resembles: not *"does
+this involve money"* (`financial`), not *"is this financially sensitive"*
+(`effect`), not *"is this irreversible"* (`reversibility`), and not *"does this
+write to the database"* (nearly everything does).
+
+**What `DENY` means, precisely.** Not "risky". Not "irreversible". It means
+**there is no legitimate authorization path** — nothing any human could approve
+that would make the action acceptable, because the effect lands in a record VOX
+cannot reach and cannot recall.
+
+**What `HOLD` means.** Consequential, and authorizable — by the approval
+mechanism a later phase will build. It is not a softer DENY; it is a different
+claim about who is allowed to decide.
+
+**Why `economic.record_expense` is `HOLD`.** Traced end to end
+(`src/lib/economic/spend.ts#recordPolicySpend`), it reaches **one SQL `INSERT`**.
+No payment processor, no bank, no card exists anywhere in VOX. It is genuinely
+irreversible — the ledger is append-only, `db.economicExpense.create` is the only
+expense operation in the repository, and `toCents()` rejects negatives — and
+genuinely financial, because the row consumes a spend ceiling only a human can
+raise. But no external record changes. Enforcing `DENY` would have left VOX
+permanently unable to record its own spending, which is an economic deadlock
+rather than a safety property.
+
+**Why it is an escalation, not a matrix cell.** The matrix is keyed on
+(effect × reversibility) and cannot take a third axis without becoming a cube.
+More importantly, a cell reading `DENY` would have required a *downgrade* to
+reach the internal-ledger case — and downgrades are exactly what `strictest()`
+exists to make unrepresentable. Expressed as an escalation, every rule in
+`evaluatePolicy()` can still only ever raise a decision.
+
+**Today no action in either registry sets it `true`**, and a test asserts that.
+The `DENY` cell is a boundary again — empty for the right reason this time, and
+guarded so that the day someone adds a real money-moving integration, they have
+to answer the question in a diff.
 
 **Unclassified actions** get `WRITE` + `PARTIALLY_REVERSIBLE` → `HOLD`.
 Conservative but recoverable: a forgotten table entry demands a human rather
@@ -469,7 +520,8 @@ makes the open question visible; it does not answer it.
 ## [P2.1] Findings still open
 
 Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**. P3 resolved none of the
-security findings below and was not intended to.
+security findings below and was not intended to. **P4-A** resolved the financial
+semantics question only — no security finding, and no enforcement.
 
 **Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
 enforcement), **H-1** (composition → arbitrary code execution), **H-4**
