@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { getResearchProvider } from "@/lib/research/index";
 import { enforceCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
-import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
+import { assertExecutionAuthorized } from "@/lib/policy/gate";
 import { recordResearchExperience, recordResearchFailure } from "@/lib/research/learning";
 import { scopeObjectiveId } from "@/lib/cognition/experience";
 
@@ -23,32 +23,29 @@ export async function runResearch(
 ) {
   await enforceCapability(userId, RESEARCH_CAPABILITY, "ANALYZE");
 
-  // POLICY GATE (P2), shadow mode — placed at the SERVICE, not at the route.
+  // ---- [P4-D] THE SINK GUARD ----
   //
-  // The P1/P2 audit found that `POST /api/research` reaches this function
-  // directly, never touching agents/executor.ts, so the one operation that
-  // brings untrusted web content into VOX's memory and knowledge graph was
-  // invisible to the gate. Gating here rather than in the route covers every
-  // caller — the tool, the route, the Brain inspector, and anything added
-  // later — instead of leaving the next caller to remember.
+  // `research.run` is WRITE + PARTIALLY_REVERSIBLE with untrusted output — a
+  // HOLD. It fetches the open web, writes N ResearchItem rows, and calls
+  // recordResearchExperience(), which creates a durable Memory plus knowledge
+  // graph nodes and edges. That written state then feeds back into planning, so
+  // this is the operation that brings untrusted external content into what VOX
+  // believes.
   //
-  // The action id is the TOOL's id on purpose: `research.run` through the
-  // executor and `POST /api/research` are the same underlying operation, so
-  // they must classify identically. Only `boundary` distinguishes them.
+  // P4-C3 enforced it at the executor. This function was still reachable
+  // directly — `POST /api/research` called it and never touched the executor —
+  // so the same operation was blocked through one door and free through another.
+  // The P4-C3 report named that gap; this closes it.
   //
-  // No double-recording: when the executor runs the `research.run` tool it has
-  // already evaluated and opened a policy boundary, and this call defers to it
-  // (see withPolicyBoundary in policy/gate.ts). One operation, one record.
+  // THE GUARD IS AT THE SINK, NOT THE ROUTE, on purpose. Gating the route
+  // protects the route. Gating here protects every caller: the tool, the route,
+  // the Brain inspector, and whatever is added next by someone who has never
+  // read this file. The route below now goes through the executor, so this
+  // throwing is the invariant holding rather than a path anyone should hit.
   //
-  // Shadow-only, exactly as everywhere else — this returns void, cannot throw,
-  // and the research below proceeds whatever the decision is.
-  await recordShadowPolicyEvaluation({
-    userId,
-    registry: "tool",
-    actionId: "research.run",
-    boundary: "research.service",
-    subjectType: "ResearchQuery",
-  });
+  // Fail-closed: it throws. There is no boolean to ignore and no branch that
+  // continues without an enforcement decision in scope.
+  assertExecutionAuthorized("research.run");
 
   // Kept accepting a bare opportunityId so existing callers (the tool
   // registry, the Brain inspector) are unchanged by the objective addition.

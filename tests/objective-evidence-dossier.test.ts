@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { createObjective } from "@/lib/objectives/service";
-import { runResearch } from "@/lib/research/service";
 import { createExperiment, addExperimentResult, nextExperimentCode } from "@/lib/lab/experiments";
 import { createSimulation, executeSimulation } from "@/lib/lab/simulations";
 import { getObjectiveEvidence } from "@/lib/objectives/evidence";
-import { createTestUser } from "./helpers";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 /**
  * The user-facing read of the evidence linkage. It must agree with what the
@@ -25,7 +24,7 @@ describe("Objective evidence dossier", () => {
     objectiveId = (await createObjective({ userId, title: "Dossier objective." })).id;
     otherObjectiveId = (await createObjective({ userId, title: "Unrelated objective." })).id;
 
-    await runResearch(userId, "dossier research query", { objectiveId });
+    await runResearchViaAgent(userId, "dossier research query", { objectiveId });
 
     const code = await nextExperimentCode(userId);
     const experiment = await createExperiment({

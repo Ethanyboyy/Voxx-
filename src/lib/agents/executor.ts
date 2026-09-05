@@ -2,9 +2,9 @@ import { db } from "@/lib/db";
 import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
-import { recordShadowPolicyEvaluation, withPolicyBoundary } from "@/lib/policy/gate";
+import { recordShadowPolicyEvaluation, withEnforcedExecution } from "@/lib/policy/gate";
 import { hashArguments, STEP_APPROVAL_TARGET_TYPE } from "@/lib/policy/approvals";
-import { enforceStepExecution, recordExecutionRefusal } from "@/lib/policy/enforcement";
+import { enforceExecution, recordExecutionRefusal } from "@/lib/policy/enforcement";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
@@ -209,7 +209,7 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     // which is what makes an approval granted five minutes ago authorization
     // for *this* execution rather than for whatever it was at the time.
     //
-    // `enforceStepExecution` returns a value that must be branched on. That is
+    // `enforceExecution` returns a value that must be branched on. That is
     // the whole difference from P2 through P4-C2, where the gate returned void
     // precisely so nobody could enforce it by accident. A HOLD with no matching,
     // unconsumed, human-issued grant now ends the attempt here — the tool is not
@@ -219,7 +219,7 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
     // left in a state a human can act on, and RUNNING is a claim that work is
     // underway. It is also before the retry loop, so one attempt spends at most
     // one approval.
-    const enforcement = await enforceStepExecution({
+    const enforcement = await enforceExecution({
       userId,
       registry: "tool",
       // From the registry, not from anything the planner or a client said.
@@ -315,7 +315,14 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
         // boundary already open and defers, so one operation still produces one
         // record. Observability only: withPolicyBoundary neither gates nor
         // alters the call, and the result and any error pass straight through.
-        const result = await withPolicyBoundary("agents.executor", () =>
+        // [P4-D] The boundary is now opened as ENFORCED, carrying the fact that
+        // `enforceExecution()` above permitted this exact action. Consequential
+        // sinks assert that fact at the sink itself (`assertExecutionAuthorized`),
+        // so a service reached by some future caller that never heard of the gate
+        // refuses rather than running. It still suppresses the nested duplicate
+        // record, and still neither gates nor alters the call: the result and any
+        // error pass straight through.
+        const result = await withEnforcedExecution("agents.executor", tool.name, () =>
           tool.execute(userId, parsedInput.data as never, executionContext)
         );
         await db.agentStep.update({

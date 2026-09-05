@@ -10,6 +10,43 @@ export async function createTestUser(email = `test-${randomUUID()}@example.com`)
 }
 
 /**
+ * [P4-D] Runs research the way production now does — through the executor.
+ *
+ * `runResearch()` is no longer callable directly: it asserts an enforced policy
+ * boundary at the sink, so the only way to reach it is a path that evaluated the
+ * policy and, since `research.run` is a HOLD, matched a human approval. This
+ * mirrors `POST /api/research` exactly: a one-step agent run, then the human.
+ *
+ * A test that wants research to have happened has to go through the gate like
+ * everything else. That is the point — a helper that reached the service some
+ * other way would prove the guard was decorative.
+ */
+export async function runResearchViaAgent(
+  userId: string,
+  query: string,
+  options: { opportunityId?: string; objectiveId?: string } = {}
+) {
+  const { startAgentRun } = await import("@/lib/agents/service");
+  const run = await startAgentRun({
+    userId,
+    objective: `Research: ${query}`,
+    steps: [
+      {
+        description: `Research "${query}".`,
+        toolName: "research.run",
+        input: {
+          query,
+          ...(options.opportunityId ? { opportunityId: options.opportunityId } : {}),
+          ...(options.objectiveId ? { objectiveId: options.objectiveId } : {}),
+        },
+      },
+    ],
+  });
+  await approveAndResume(userId, run.id);
+  return db.researchItem.findMany({ where: { userId, query }, orderBy: { createdAt: "desc" } });
+}
+
+/**
  * [P4-C3] Plays the human through an enforced run: approve the parked step,
  * resume, repeat until the run stops waiting.
  *

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { createObjective } from "@/lib/objectives/service";
-import { runResearch } from "@/lib/research/service";
 import { createExperiment, addExperimentResult, nextExperimentCode } from "@/lib/lab/experiments";
 import { createSimulation, executeSimulation } from "@/lib/lab/simulations";
 import { getNodeForEntity, findRelated } from "@/lib/knowledge/service";
@@ -11,7 +10,7 @@ import { recordResearchExperience } from "@/lib/research/learning";
 import { listMemoriesByProvenance } from "@/lib/memory/service";
 import { grantPermission } from "@/lib/permissions/service";
 import { executeRun } from "@/lib/agents/executor";
-import { createTestUser, approveAndResume } from "./helpers";
+import { createTestUser, approveAndResume, runResearchViaAgent } from "./helpers";
 
 /**
  * The question this feature exists to answer: "what evidence do I have
@@ -51,7 +50,7 @@ describe("Research is retained against the objective it was run for", () => {
     objectiveA = (await createObjective({ userId, title: "Ship a weather-resistant outer layer." })).id;
     objectiveB = (await createObjective({ userId, title: "Reduce total suit mass below 3 kg." })).id;
 
-    await runResearch(userId, "hydrophobic coatings for technical textiles", { objectiveId: objectiveA });
+    await runResearchViaAgent(userId, "hydrophobic coatings for technical textiles", { objectiveId: objectiveA });
   });
 
   it("stores the objective on the ResearchItem itself, not only in the graph", async () => {
@@ -152,7 +151,7 @@ describe("Research is retained against the objective it was run for", () => {
   it("refuses to attach evidence to another user's objective", async () => {
     const stranger = await createTestUser();
     const theirs = await createObjective({ userId: stranger.id, title: "Not yours." });
-    await runResearch(userId, "unowned objective attempt", { objectiveId: theirs.id });
+    await runResearchViaAgent(userId, "unowned objective attempt", { objectiveId: theirs.id });
 
     // The research still ran — it just did not attach to a goal that isn't
     // this user's. Unscoped is the correct failure mode, not an error.
@@ -219,7 +218,7 @@ describe("Lab work is retained against the objective it was run for", () => {
   it("E: puts objective-specific evidence ahead of merely-recent observations", async () => {
     // Unrelated, and newer than everything above — recency alone would rank
     // it first, which is precisely the behaviour being replaced.
-    await runResearch(userId, "completely unrelated topic about paint drying");
+    await runResearchViaAgent(userId, "completely unrelated topic about paint drying");
 
     const context = await buildPlanningContext(userId, "forearm plate", { objectiveId });
     expect(context.observations[0].objectiveLinked).toBe(true);
@@ -283,7 +282,7 @@ describe("Unscoped work behaves exactly as before", () => {
   });
 
   it("I: research, experiments and simulations still work with no objective", async () => {
-    const items = await runResearch(userId, "unscoped lookup");
+    const items = await runResearchViaAgent(userId, "unscoped lookup");
     expect(items.length).toBeGreaterThan(0);
     expect(items[0].objectiveId).toBeNull();
 

@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { createObjective } from "@/lib/objectives/service";
-import { runResearch } from "@/lib/research/service";
 import { createExperiment, addExperimentResult, nextExperimentCode } from "@/lib/lab/experiments";
 import { createSimulation, executeSimulation } from "@/lib/lab/simulations";
 import { createMemory } from "@/lib/memory/service";
 import { createProject, createTask } from "@/lib/projects/service";
 import { SUBJECT_TYPE_TO_SYSTEM } from "@/components/brain/three/anatomy";
-import { createTestUser } from "./helpers";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 /**
  * The Brain claims to be a visualization of what VOX is doing. That claim is
@@ -35,7 +34,7 @@ describe("Brain event coverage: everything VOX does reaches the visualization", 
     const since = new Date();
     // Real work across the domains that emit consequential events.
     const objective = await createObjective({ userId, title: "Brain coverage objective." });
-    await runResearch(userId, "brain coverage research", { objectiveId: objective.id });
+    await runResearchViaAgent(userId, "brain coverage research", { objectiveId: objective.id });
 
     const code = await nextExperimentCode(userId);
     const experiment = await createExperiment({

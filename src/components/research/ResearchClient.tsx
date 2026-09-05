@@ -41,6 +41,12 @@ export function ResearchClient({ initialItems }: { initialItems: ResearchItem[] 
       return;
     }
     const data = await res.json();
+    // [P4-D] Research now runs through the executor, so the policy gate can
+    // hold it. Saying "no results" would be a lie — it did not run.
+    if (data.status === "WAITING_FOR_PERMISSION") {
+      setError("This research needs your approval before it runs. Open it under Agents to review and approve the exact query.");
+      return;
+    }
     setItems((prev) => [...data.items, ...prev]);
     setQuery("");
   }

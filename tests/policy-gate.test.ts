@@ -29,6 +29,7 @@ import { createProposal, approveProposal } from "@/lib/cognition/proposals";
 import { grantPermission } from "@/lib/permissions/service";
 import { startAgentRun } from "@/lib/agents/service";
 import { runResearch } from "@/lib/research/service";
+import { ExecutionNotAuthorizedError } from "@/lib/policy/gate";
 import { createTestUser, approveAndResume } from "./helpers";
 
 /** Shorthand for a classification, so the matrix tests read as a table. */
@@ -777,7 +778,7 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("also evaluates the proposal path, VOX's second execution authority", async () => {
+  it("[P4-D] ENFORCES the proposal path — VOX's second execution authority", async () => {
     const proposal = await createProposal({
       userId,
       observation: "Something worth following up.",
@@ -788,36 +789,30 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
     });
 
     const approved = await approveProposal(userId, proposal.id);
-    // approveProposal() runs its own ACTION_HANDLERS registry, not the
-    // executor — finding H-4. It is instrumented here rather than unified.
+    // `task.create` is WRITE + REVERSIBLE — an ALLOW — so it still executes,
+    // and that is the regression this asserts: P4-D put the gate in the path
+    // without turning ordinary internal work into an approval queue. What
+    // changed is that the gate now DECIDES here rather than observing, so a
+    // handler added later with a real external effect is refused.
     expect(approved?.status).toBe("EXECUTED");
-
-    const events = await shadowEvents(userId);
-    const forProposal = events.filter((e) => e.subjectId === proposal.id);
-    expect(forProposal).toHaveLength(1);
-
-    const payload = payloadOf(forProposal[0]);
-    expect(payload.boundary).toBe("cognition.proposals.approveProposal");
-    expect(payload.registry).toBe("proposal");
-    expect(payload.actionId).toBe("task.create");
-    expect(payload.executionContinued).toBe(true);
+    expect(await db.task.count({ where: { userId, title: "Policy gate shadow coverage" } })).toBe(1);
+    // An ALLOW is not refused, so no refusal is recorded.
+    expect(await db.event.count({ where: { userId, type: "policy.execution_refused" } })).toBe(0);
   });
 
-  it("A-5: direct runResearch() — the POST /api/research path — is shadow-evaluated", async () => {
+  it("[P4-D] runResearch() cannot be called outside an enforced boundary", async () => {
     const user = await createTestUser();
-    // Exactly what the route does: call the service, never touching the executor.
-    await runResearch(user.id, "policy gate coverage for the direct research route");
+    await grantPermission(user.id, "research.web", "ANALYZE");
 
-    const events = await shadowEvents(user.id);
-    expect(events).toHaveLength(1);
+    // What the route used to do: call the service directly, never touching the
+    // executor. That was the P4-C3 gap. The sink now refuses, and refuses by
+    // throwing, so there is no value a caller can shrug off.
+    await expect(
+      runResearch(user.id, "policy gate coverage for the direct research route")
+    ).rejects.toBeInstanceOf(ExecutionNotAuthorizedError);
 
-    const payload = payloadOf(events[0]);
-    expect(payload.boundary).toBe("research.service");
-    expect(payload.actionId).toBe("research.run");
-    // Same underlying action, so the same classification the tool path gets.
-    expect(payload.effect).toBe("WRITE");
-    expect(payload.decision).toBe("HOLD");
-    expect(payload.executionContinued).toBe(true);
+    // Nothing was fetched, nothing was written.
+    expect(await db.researchItem.count({ where: { userId: user.id } })).toBe(0);
   });
 
   it("A-5: one research operation produces exactly one evaluation, via either path", async () => {

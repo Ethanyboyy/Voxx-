@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
-import { runResearch, listResearchItems } from "@/lib/research/service";
+import { listResearchItems } from "@/lib/research/service";
 import { getResearchProvider, _resetResearchProviderCache } from "@/lib/research";
 import { AnthropicWebSearchProvider } from "@/lib/research/anthropic";
-import { createTestUser } from "./helpers";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 describe("research engine", () => {
   let userId: string;
@@ -23,7 +23,7 @@ describe("research engine", () => {
   });
 
   it("persists ResearchItem rows preserving source, title, relevance, confidence, retrieval time", async () => {
-    const items = await runResearch(userId, "customer acquisition strategies for a small online shop");
+    const items = await runResearchViaAgent(userId, "customer acquisition strategies for a small online shop");
     expect(items.length).toBeGreaterThan(0);
     for (const item of items) {
       expect(item.query).toBe("customer acquisition strategies for a small online shop");
@@ -37,8 +37,8 @@ describe("research engine", () => {
 
   it("listResearchItems returns items scoped to the user, most recent first", async () => {
     const otherUser = await createTestUser();
-    await runResearch(otherUser.id, "unrelated query");
-    await runResearch(userId, "second query");
+    await runResearchViaAgent(otherUser.id, "unrelated query");
+    await runResearchViaAgent(userId, "second query");
 
     const items = await listResearchItems(userId);
     expect(items.every((i) => i.query !== "unrelated query")).toBe(true);

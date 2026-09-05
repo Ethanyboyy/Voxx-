@@ -2,14 +2,13 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { createMemory, getSemanticMemories } from "@/lib/memory/service";
 import { createProject } from "@/lib/projects/service";
-import { runResearch } from "@/lib/research/service";
 import { ensureNodeForEntity, createConnection, findRelated } from "@/lib/knowledge/service";
 import { detectPatterns } from "@/lib/cognition/patterns";
 import { listProposals, approveProposal } from "@/lib/cognition/proposals";
 import { listRecentEvents } from "@/lib/observability/events";
 import { grantPermission, PermissionDeniedError } from "@/lib/permissions/service";
 import { listTasks } from "@/lib/projects/service";
-import { createTestUser } from "./helpers";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 /**
  * Exercises the full cognitive loop described in PHASE_2_ARCHITECTURE.md §11
@@ -47,7 +46,7 @@ describe("full cognitive loop integration", () => {
     expect(semanticMatches.some((m) => m.id === memory.id)).toBe(true);
 
     // --- RESEARCH: a real (mock-provider) research query is run and persisted
-    const researchItems = await runResearch(user.id, "average cost to open a second retail location");
+    const researchItems = await runResearchViaAgent(user.id, "average cost to open a second retail location");
     expect(researchItems.length).toBeGreaterThan(0);
 
     // --- KNOWLEDGE GRAPH: connect the project, the memory, and the research -

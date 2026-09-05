@@ -86,6 +86,11 @@ export const SUBJECT_TYPE_TO_SYSTEM: Record<string, BrainSystem> = {
   LabExperiment: "RESEARCH",
   LabSimulation: "RESEARCH",
   LabSimulationRun: "RESEARCH",
+  // [P4-D] A human's approval being spent is an execution event: it is the
+  // moment a held action was allowed to proceed. It belongs on the same region
+  // as the run it authorized rather than a system of its own — the Brain shows
+  // what VOX did, and what it did was execute.
+  ApprovalGrant: "EXECUTION",
 };
 
 export type Vec3 = [number, number, number];

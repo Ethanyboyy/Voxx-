@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import { enforceCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
-import { recordShadowPolicyEvaluation } from "@/lib/policy/gate";
+import { withEnforcedExecution } from "@/lib/policy/gate";
+import { enforceExecution, recordExecutionRefusal } from "@/lib/policy/enforcement";
+import { hashArguments } from "@/lib/policy/approvals";
 import { createMemoryRelation } from "@/lib/memory/relations";
 import { createTask } from "@/lib/projects/service";
 import { createConnection } from "@/lib/knowledge/service";
@@ -79,6 +81,14 @@ export async function getProposal(userId: string, id: string) {
  * enforceCapability() at ACT; the proposal machinery doesn't change.
  */
 type ActionHandler = (userId: string, payload: Record<string, unknown>) => Promise<string>;
+
+/**
+ * [P4-D] Ties an approval grant to one Proposal.
+ *
+ * A sibling of `STEP_APPROVAL_TARGET_TYPE`, using the same `targetType` column
+ * on the same table. Two target kinds, one authorization primitive.
+ */
+export const PROPOSAL_APPROVAL_TARGET_TYPE = "Proposal";
 
 // Exported for COVERAGE ONLY (P3). Tests assert that every registered
 // actionType has a policy classification, so a handler cannot be added without
@@ -164,6 +174,69 @@ export async function approveProposal(userId: string, id: string) {
     consequential: true,
   });
 
+  // ---- [P4-D] THE POLICY GATE, ENFORCING ----
+  //
+  // This was the second execution authority the P1/P2 audit found (finding
+  // H-4): `handler()` below runs a registry only this function knows about, so
+  // the executor's gate never saw it. P2 through P4-C3 instrumented it; this
+  // enforces it.
+  //
+  // TWO DIFFERENT THINGS, and conflating them is the mistake this guards
+  // against. A human approving a PROPOSAL is consent to the idea. Whether the
+  // resulting action may execute is a policy question about what that action
+  // does — and the answer has to come from the same table, the same matrix and
+  // the same approval primitive the executor uses, or VOX has two policies.
+  //
+  // Today every handler in the registry above is WRITE + REVERSIBLE — an ALLOW
+  // — so nothing here changes behaviour. That is the point: the gate is now in
+  // the path, so a handler added later with a real external side effect is
+  // refused rather than silently executed. The registry existing is not
+  // authorization; this call is.
+  //
+  // The target is the PROPOSAL, not an AgentStep. `ApprovalGrant.targetType` is
+  // already a free string, so binding to a different entity needs no new table,
+  // no new grant type and no second approval system — the generalization P4-D
+  // asked about was already there.
+  const enforcement = await enforceExecution({
+    userId,
+    registry: "proposal",
+    // From the persisted proposal, never from a caller.
+    actionId: proposal.actionType,
+    argumentsHash: hashArguments(JSON.parse(proposal.actionPayload)),
+    capability: proposal.capability,
+    requiredLevel: proposal.requiredLevel,
+    targetType: PROPOSAL_APPROVAL_TARGET_TYPE,
+    targetId: proposal.id,
+    subjectType: "Proposal",
+    subjectId: proposal.id,
+  });
+
+  if (!enforcement.permitted) {
+    await recordExecutionRefusal({
+      userId,
+      actionId: proposal.actionType,
+      registry: "proposal",
+      decision: enforcement.decision,
+      disposition: enforcement.disposition,
+      reasons: enforcement.reasons,
+      grantId: enforcement.grantId,
+      classificationHash: enforcement.classificationHash,
+      argumentsHash: hashArguments(JSON.parse(proposal.actionPayload)),
+      subjectType: "Proposal",
+      subjectId: proposal.id,
+    });
+    // Fail closed, and leave the proposal APPROVED-but-unexecuted rather than
+    // EXECUTED. Recording it as executed would be the one lie that matters.
+    return db.proposal.update({
+      where: { id },
+      data: {
+        status: "FAILED",
+        result: `Policy refused "${proposal.actionType}": ${enforcement.reasons.join(", ")}.`,
+        resolvedAt: new Date(),
+      },
+    });
+  }
+
   const handler = ACTION_HANDLERS[proposal.actionType];
   if (!handler) {
     return db.proposal.update({
@@ -172,30 +245,15 @@ export async function approveProposal(userId: string, id: string) {
     });
   }
 
-  // THE POLICY GATE (P2), in shadow mode — instrumenting the second execution
-  // authority rather than unifying it.
-  //
-  // This path does NOT go through agents/executor.ts. `handler()` below runs a
-  // registry that only this function knows about, which means the executor's
-  // gate call cannot see it and the two authorities are observed separately.
-  // That is finding H-4, and it is real: authorization is not bypassed
-  // (enforceCapability() ran above, and is the same function everything else
-  // uses), but execution authority is duplicated. Merging the registries is a
-  // refactor with its own risk and belongs to P4, so this phase does the honest
-  // thing — instruments the path so the shadow record is complete — instead of
-  // leaving a hole in the audit trail or rewriting execution to close it.
-  await recordShadowPolicyEvaluation({
-    userId,
-    registry: "proposal",
-    actionId: proposal.actionType,
-    boundary: "cognition.proposals.approveProposal",
-    subjectType: "Proposal",
-    subjectId: proposal.id,
-  });
-
   try {
     const payload = JSON.parse(proposal.actionPayload) as Record<string, unknown>;
-    const result = await handler(userId, payload);
+    // [P4-D] Inside the ENFORCED boundary, so a sink guard deep in the call
+    // graph sees that a policy decision permitted this exact action.
+    const result = await withEnforcedExecution(
+      "cognition.proposals.approveProposal",
+      proposal.actionType,
+      () => handler(userId, payload)
+    );
     const executed = await db.proposal.update({
       where: { id },
       data: { status: "EXECUTED", result, resolvedAt: new Date() },

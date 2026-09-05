@@ -135,7 +135,7 @@ export interface EnforceExecutionInput {
  *   6. ONLY THEN consume, via the existing compare-and-swap.
  *   7. A consumption that loses the race refuses. It does not fall through.
  */
-export async function enforceStepExecution(input: EnforceExecutionInput): Promise<EnforcementOutcome> {
+export async function enforceExecution(input: EnforceExecutionInput): Promise<EnforcementOutcome> {
   try {
     const classified = hashRegisteredClassification(input.registry, input.actionId);
     if (!classified) {

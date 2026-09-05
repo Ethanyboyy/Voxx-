@@ -65,6 +65,10 @@ describe("cognition proposal engine", () => {
   });
 
   it("approveProposal marks FAILED for an unregistered actionType, after permission passes", async () => {
+    // [P4-D] The refusal moved one step earlier and to a stricter authority:
+    // an actionType with no classification cannot be evaluated, so the policy
+    // gate refuses it before a handler is resolved. FAILED either way, and
+    // nothing ran either way.
     await grantPermission(userId, "cognition.proposal.unknown-action", "RECOMMEND");
     const proposal = await createProposal({
       userId,
@@ -78,7 +82,8 @@ describe("cognition proposal engine", () => {
 
     const result = await approveProposal(userId, proposal.id);
     expect(result?.status).toBe("FAILED");
-    expect(result?.result).toMatch(/no handler/i);
+    expect(result?.result).toMatch(/policy refused/i);
+    expect(result?.result).toContain("UNCLASSIFIED_ACTION");
   });
 
   it("denyProposal marks DENIED and records the reason without executing anything", async () => {

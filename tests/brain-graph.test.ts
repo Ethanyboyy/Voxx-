@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { getBrainGraph, getBrainState } from "@/lib/brain/graph";
 import { createObjective, createOpportunity, promoteOpportunityToProject } from "@/lib/objectives/service";
 import { createTask } from "@/lib/projects/service";
-import { runResearch, listResearchItems } from "@/lib/research/service";
-import { createTestUser } from "./helpers";
+import { listResearchItems } from "@/lib/research/service";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 describe("brain graph", () => {
   let userId: string;
@@ -102,7 +102,7 @@ describe("brain graph", () => {
   it("scopes research to an opportunity and represents it as an evidenced_by edge", async () => {
     const objective = await createObjective({ userId, title: "Research objective" });
     const opportunity = await createOpportunity({ userId, objectiveId: objective.id, title: "Needs research" });
-    await runResearch(userId, "market size for this opportunity", opportunity!.id);
+    await runResearchViaAgent(userId, "market size for this opportunity", { opportunityId: opportunity!.id });
 
     const scoped = await listResearchItems(userId, 50, opportunity!.id);
     expect(scoped.length).toBeGreaterThan(0);
@@ -122,7 +122,7 @@ describe("brain graph", () => {
     const objective = await createObjective({ userId: otherUser.id, title: "Not mine" });
     const opportunity = await createOpportunity({ userId: otherUser.id, objectiveId: objective.id, title: "Not mine either" });
 
-    const items = await runResearch(userId, "some query", opportunity!.id);
+    const items = await runResearchViaAgent(userId, "some query", { opportunityId: opportunity!.id });
     expect(items.every((i) => i.opportunityId == null)).toBe(true);
   });
 

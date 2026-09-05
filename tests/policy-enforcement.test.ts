@@ -13,7 +13,7 @@ import {
   STEP_APPROVAL_TARGET_TYPE,
 } from "@/lib/policy/approvals";
 import { getPendingStepApproval, approveAgentStep, rejectAgentStep } from "@/lib/policy/step-approvals";
-import { enforceStepExecution } from "@/lib/policy/enforcement";
+import { enforceExecution } from "@/lib/policy/enforcement";
 import { createTestUser } from "./helpers";
 
 /**
@@ -199,7 +199,7 @@ describe("P4-C3 — an approval authorizes ONE execution", () => {
 
     const argumentsHash = hashArguments({ query: "enforcement" });
     const call = () =>
-      enforceStepExecution({
+      enforceExecution({
         userId: user.id,
         registry: "tool",
         actionId: "research.run",
@@ -378,7 +378,7 @@ describe("P4-C3 — rejection and refusal semantics", () => {
 
   it("refuses an action with no classification, rather than letting it through", async () => {
     const user = await createTestUser();
-    const outcome = await enforceStepExecution({
+    const outcome = await enforceExecution({
       userId: user.id,
       registry: "tool",
       actionId: "tool.that.was.never.classified",

@@ -434,7 +434,13 @@ describe("P3 — PendingApproval projection", () => {
       });
       const result = await approveProposal(user.id, proposal.id);
       expect(result?.status).toBe("FAILED");
-      expect(result?.result).toContain("No handler registered");
+      // [P4-D] The refusal now comes from the POLICY GATE rather than the
+      // handler lookup, and one step earlier: an actionType with no
+      // classification cannot be evaluated, so enforcement refuses it before a
+      // handler is even resolved. Same outcome for the user — FAILED, nothing
+      // executed — from the stricter of the two checks.
+      expect(result?.result).toContain("Policy refused");
+      expect(result?.result).toContain("UNCLASSIFIED_ACTION");
       // And it leaves the queue, because its underlying status changed.
       expect(await listPendingApprovals(user.id)).toEqual([]);
     });

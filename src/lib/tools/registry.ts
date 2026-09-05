@@ -147,12 +147,25 @@ register({
   category: "research",
   capability: "research.web",
   requiredLevel: "ANALYZE",
-  inputSchema: z.object({ query: z.string().min(1).max(500) }),
+  // [P4-D] `opportunityId`/`objectiveId` are optional here because this tool is
+  // now the ONE definition of "run a research query" — `POST /api/research`
+  // creates a step against it rather than calling the service beside it, so the
+  // scoping the route always supported has to live in the tool's own schema.
+  // Both are ids the service re-checks ownership on; neither is authority.
+  inputSchema: z.object({
+    query: z.string().min(1).max(500),
+    opportunityId: z.string().min(1).max(80).optional(),
+    objectiveId: z.string().min(1).max(80).optional(),
+  }),
   execute: async (userId, input, context) => {
     // A supervised run researching in pursuit of an objective keeps that
     // objective on the findings, so the next planning pass for the same goal
-    // retrieves them as its own evidence rather than as recent noise.
-    const items = await runResearch(userId, input.query, { objectiveId: context?.objectiveId });
+    // retrieves them as its own evidence rather than as recent noise. An
+    // explicit objective on the step wins over the run's ambient one.
+    const items = await runResearch(userId, input.query, {
+      opportunityId: input.opportunityId,
+      objectiveId: input.objectiveId ?? context?.objectiveId,
+    });
     return {
       output: items.map((i) => ({ title: i.title, sourceUrl: i.sourceUrl, summary: i.summary })),
       summary: `Found ${items.length} research ${items.length === 1 ? "result" : "results"} for "${input.query}".`,

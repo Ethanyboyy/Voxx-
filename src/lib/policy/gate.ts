@@ -295,7 +295,71 @@ function describe(value: unknown): string {
  * unrelated run's evaluation. The store is per-async-context, so two
  * simultaneous requests cannot see each other's.
  */
-const policyBoundary = new AsyncLocalStorage<{ boundary: string }>();
+const policyBoundary = new AsyncLocalStorage<PolicyBoundaryScope>();
+
+interface PolicyBoundaryScope {
+  boundary: string;
+  /**
+   * [P4-D] Whether an ENFORCEMENT decision opened this scope, as opposed to an
+   * observation.
+   *
+   * The two are not the same thing and must never be conflated. An observability
+   * boundary says "an outer evaluation already recorded this operation". An
+   * enforced boundary says "a policy decision permitted this exact action, and
+   * where that decision was HOLD, a human's approval was matched and spent."
+   * Only the second is authorization, and only the second satisfies
+   * `assertExecutionAuthorized()`.
+   */
+  enforced: boolean;
+  /** The action the enforcement decision was about. Checked at the sink. */
+  actionId?: string;
+}
+
+/**
+ * [P4-D] Raised at a consequential sink reached without an enforcement decision.
+ *
+ * Not an `ApiError`: this is not a client mistake to be mapped to a status code,
+ * it is VOX refusing to perform a side effect nothing authorized. It propagates
+ * as a 500 through `apiErrorResponse` precisely because a caller should never be
+ * in a position to trigger it.
+ */
+export class ExecutionNotAuthorizedError extends Error {
+  constructor(readonly actionId: string) {
+    super(
+      `"${actionId}" was reached outside an enforced policy boundary. This action has consequences, so it may only run through a path that evaluated the policy and, where required, matched a human approval.`
+    );
+    this.name = "ExecutionNotAuthorizedError";
+  }
+}
+
+/**
+ * [P4-D] Opens the boundary for work an ENFORCEMENT decision has permitted.
+ *
+ * The executor calls this immediately after `enforceExecution()` returns
+ * `permitted`, wrapping the actual side effect. Everything inside runs with the
+ * fact of that decision in scope, so a sink deep in the call graph can check for
+ * it without every intermediate function having to pass a flag down.
+ */
+export function withEnforcedExecution<T>(boundary: string, actionId: string, fn: () => Promise<T>): Promise<T> {
+  return policyBoundary.run({ boundary, enforced: true, actionId }, fn);
+}
+
+/**
+ * [P4-D] THE SINK GUARD. Throws unless an enforcement decision is in scope.
+ *
+ * Placed at the consequential operation itself rather than at its callers, which
+ * is the whole point: a gate on a route protects that route, and a gate on the
+ * sink protects every caller that exists now and every one added later. The
+ * failure mode this exists for is not a malicious HTTP request — it is a future
+ * service function that reaches a side effect having never heard of the gate.
+ *
+ * Fail-closed by construction: it throws rather than returning a boolean, so
+ * there is no value a caller can accidentally ignore.
+ */
+export function assertExecutionAuthorized(actionId: string): void {
+  const scope = policyBoundary.getStore();
+  if (!scope?.enforced) throw new ExecutionNotAuthorizedError(actionId);
+}
 
 /**
  * Runs `fn` inside an open policy boundary.
@@ -309,7 +373,10 @@ const policyBoundary = new AsyncLocalStorage<{ boundary: string }>();
  * thrown error pass straight through.
  */
 export function withPolicyBoundary<T>(boundary: string, fn: () => Promise<T>): Promise<T> {
-  return policyBoundary.run({ boundary }, fn);
+  // `enforced: false` — this overload is the OBSERVABILITY one. It suppresses a
+  // nested evaluation's duplicate record and nothing else; it does not and must
+  // not satisfy `assertExecutionAuthorized()`. See `withEnforcedExecution`.
+  return policyBoundary.run({ boundary, enforced: false }, fn);
 }
 
 /** Whether an evaluation would be suppressed as nested. Exposed for tests. */

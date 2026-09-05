@@ -177,6 +177,13 @@ export function InspectorPanel({
         return;
       }
       const data = await res.json();
+      // [P4-D] The gate can hold this now; reporting an empty result would
+      // claim the research ran and found nothing.
+      if (data.status === "WAITING_FOR_PERMISSION") {
+        setError("This research needs your approval before it runs — review it under Agents.");
+        onActivity("waiting", "Research is waiting for your approval");
+        return;
+      }
       const newNodes: BrainNode[] = data.items.map((r: { id: string; title: string | null; query: string; sourceUrl: string | null; summary: string | null; relevance: number | null; confidence: string; provider: string; opportunityId: string | null; createdAt: string }) => ({
         id: `RESEARCH:${r.id}`,
         entityId: r.id,

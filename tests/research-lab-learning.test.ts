@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { runResearch } from "@/lib/research/service";
 import { createExperiment, addExperimentResult, nextExperimentCode } from "@/lib/lab/experiments";
 import { createSimulation, executeSimulation } from "@/lib/lab/simulations";
 import { getNodeForEntity, findRelated } from "@/lib/knowledge/service";
 import { buildPlanningContext, renderPlanningContext } from "@/lib/agents/context";
 import { aggregateSourceConfidence, isSubstantiveResult } from "@/lib/research/learning";
 import { EXPERIENCE_PROVENANCE, labConfidenceToMemoryConfidence } from "@/lib/cognition/experience";
-import { createTestUser } from "./helpers";
+import { createTestUser, runResearchViaAgent } from "./helpers";
 
 /**
  * Research and the Lab were the two largest bodies of genuinely-working code
@@ -43,7 +42,7 @@ describe("Research feeds the organism", () => {
   });
 
   it("records what was retrieved as a durable memory carrying its sources", async () => {
-    const items = await runResearch(userId, "thermal regulation in lightweight protective fabrics");
+    const items = await runResearchViaAgent(userId, "thermal regulation in lightweight protective fabrics");
     expect(items.length).toBeGreaterThan(0);
 
     const memory = await db.memory.findFirst({
@@ -230,7 +229,7 @@ describe("One pathway, not three silos", () => {
   });
 
   it("puts research and Lab findings in front of the planner, correctly attributed", async () => {
-    await runResearch(userId, "impact-absorbing lattice geometries");
+    await runResearchViaAgent(userId, "impact-absorbing lattice geometries");
 
     const code = await nextExperimentCode(userId);
     const experiment = await createExperiment({

@@ -1,9 +1,10 @@
 # The Policy Gate — P1 + P2
 
-**Status: ENFORCING at the agent-step boundary (P4-C3). A `HOLD` no longer runs
-without a human's approval of that exact execution.** Non-executor boundaries
-(notably `runResearch()` reached directly through `POST /api/research`) remain
-shadow-only — see the P4-C3 section.
+**Status: ENFORCING. A `HOLD` no longer runs without a human's approval of that
+exact execution, and as of P4-D there is no consequential execution surface left
+outside the boundary.** The two paths P4-C3 named — `POST /api/research` and
+`approveProposal()` — are closed; see the P4-D section for the full sweep and the
+two items deliberately deferred with reasons.
 
 **Patched at P2.1** after an adversarial audit reproduced defects in the original
 P1/P2 work: a wrong classification on the only money-touching tool (A-1),
@@ -29,7 +30,8 @@ step parks and waits for one. `DENY` and unclassified actions fail outright.
 exists. *Shadow-evaluated* = a decision was computed and recorded, and nothing
 was prevented. *Approved* = a human consented to one exact invocation.
 *Enforced* = execution was actually prevented. Since P4-C3 the executor enforces;
-the other boundaries still only shadow-evaluate.
+since P4-D the proposal path enforces too, and every other consequential sink is
+either behind one of those or classified non-consequential (see the P4-D sweep).
 
 This document describes what was built in P1 (classification metadata) and P2
 (the Policy Gate), what enforcement now does (P4-C3), and — just as importantly —
@@ -72,7 +74,7 @@ modules, with no field in common.
 | `src/lib/policy/canonical.ts` | **[P4-B]** Canonical serialization + SHA-256. The contract the argument hash rests on. |
 | `src/lib/policy/approvals.ts` | **[P4-B]** `ApprovalGrant` lifecycle: create, match, consume. |
 | `src/lib/policy/step-approvals.ts` | **[P4-C2]** The human approval act — the only caller of the grant constructor. |
-| `src/lib/policy/enforcement.ts` | **[P4-C3]** `enforceStepExecution()` — the one function that turns a decision into a refusal. |
+| `src/lib/policy/enforcement.ts` | **[P4-C3]** `enforceExecution()` — the one function that turns a decision into a refusal. **[P4-D]** now serves non-step targets too. |
 | `tests/policy-gate.test.ts` | 57 tests over the matrix, determinism, model independence, economic authority, failure behaviour, boundary coverage, and **[P2.1]** runtime immutability, corrected classifications and single-evaluation coverage. |
 
 Three existing files carry a gate call: `src/lib/agents/executor.ts`,
@@ -960,6 +962,122 @@ a person. Image generation, visual review, artifact selection, Lab writes,
 workspace writes, research and expense recording all park mid-run. Autonomous
 multi-step work is no longer autonomous past its first consequential action —
 which is what the policy has said since P2, now actually applied.
+
+## P4-D — closing the policy surface
+
+P4-C3 enforced the agent-step boundary and named two consequential paths beside
+it. P4-D closes both, and audits the repository for the ones nobody had named.
+
+### The execution-surface inventory
+
+| Sink | Reached via | Verdict |
+|---|---|---|
+| `writeWorkspaceFile` / `patchWorkspaceFile` | tool registry only | **PROTECTED** (P4-C3) |
+| `recordOpportunitySpend` → `recordPolicySpend` | tool registry only | **PROTECTED** (P4-C3) |
+| `generateImage` / `submitVideo` / `refineUntilAcceptable` / `selectBestVersion` | `capabilities/*` ← tool registry only | **PROTECTED** (P4-C3) |
+| `reviewArtifact` (paid vision) | tool registry only | **PROTECTED** (P4-C3) |
+| Blender subprocess (`generation/blenderLocal.ts`) | generation provider ← tool registry only | **PROTECTED** (P4-C3) |
+| Supervisor execution | `startAgentRun()` → executor | **PROTECTED** (P4-C3) |
+| Chat / orchestrator execution | `startAgentRun()` → executor | **PROTECTED** (P4-C3) |
+| Economic tick (`runEconomicTick`) | route; executes no tool, spends nothing | **NON-CONSEQUENTIAL** |
+| `runResearch()` | route **and** tool registry | **BYPASS — FIXED** |
+| `approveProposal()` handler registry | proposals route | **BYPASS — FIXED** |
+| `addEconomicExpense` (`POST /api/economic/.../expenses`) | route | **NON-CONSEQUENTIAL** — the user recording their own `USER_RECORDED` entry; `assertNotRealized` blocks claiming external confirmation, and it cannot reach `recordPolicySpend` |
+| `grantAccess` (`POST /api/connections/[service]/grant-access`) | route | **NON-CONSEQUENTIAL** — this *is* an authorization act, not an execution; every provider is a stub reporting `isConfigured: false` without real vendor env vars |
+| Ordinary CRUD routes (memory, task, project, Lab, knowledge) | routes | **NON-CONSEQUENTIAL** — `WRITE + REVERSIBLE` is `ALLOW` in the matrix; the gate would permit them anyway |
+| `workspace.validate` (runs `npm run <script>`, `git`) | tool registry → executor | **DEFERRED** — see below |
+
+### The sink guard
+
+The structural change P4-D makes is that the check moved to the **sink**.
+
+`withPolicyBoundary()` already existed, and the executor already opened it around
+`tool.execute()` — but purely for observability, to suppress a nested duplicate
+record. P4-D splits that in two:
+
+- `withPolicyBoundary(boundary, fn)` — observation. `enforced: false`.
+- `withEnforcedExecution(boundary, actionId, fn)` — opened only after
+  `enforceExecution()` returned `permitted`. `enforced: true`.
+- `assertExecutionAuthorized(actionId)` — **throws** `ExecutionNotAuthorizedError`
+  unless an enforced scope is in flight.
+
+Conflating those two would have been the whole vulnerability: any code that
+wanted to quiet a log line would also have been granting itself permission. A
+test pins it — an observability boundary does **not** satisfy the guard.
+
+Gating a route protects that route. Gating the sink protects every caller that
+exists and every one added later, which is the failure mode that actually
+happens: a future service function reaching a side effect having never heard of
+the gate.
+
+### Research
+
+`runResearch()` now calls `assertExecutionAuthorized("research.run")` and throws
+if nothing enforced the call. `POST /api/research` no longer calls it: the route
+creates the same thing the agent framework would — a one-step run whose tool is
+`research.run` — so argument finalization, the canonical hash, the policy
+decision, the approval match, single-use consumption, the audit trail and the
+existing approval endpoint and UI all apply unchanged.
+
+The response says which happened: `201` with `items` when it ran, `202` with
+`status: "WAITING_FOR_PERMISSION"` and the `runId`/`stepId` when the gate held
+it. Both research surfaces (the Research page, the Brain inspector) report the
+hold rather than showing an empty result, because "no findings" would be a lie
+about an operation that never ran.
+
+`research.run`'s input schema gained optional `opportunityId`/`objectiveId` so
+the tool is now the single definition of the operation, including the scoping the
+route always supported.
+
+### Proposals
+
+`approveProposal()` now calls the real `enforceExecution()` — the same function
+the executor uses, with `registry: "proposal"` and the proposal itself as the
+target — **before** resolving a handler, and runs the handler inside
+`withEnforcedExecution`.
+
+Every handler in the registry is `WRITE + REVERSIBLE` — an `ALLOW` — so nothing
+changes behaviourally today. That is the point: the gate is in the path, so a
+handler added later with a real external effect is refused rather than silently
+executed. The registry existing is not authorization; the enforcement call is.
+
+One consequence is deliberate and visible in two updated tests: an actionType
+with **no classification** is now refused by the gate (`UNCLASSIFIED_ACTION`)
+before the handler lookup, rather than falling through to "no handler
+registered". Same outcome, stricter authority, one step earlier.
+
+### Was a generalized approval target needed?
+
+**No new abstraction was required, because the generalization was already
+there.** `ApprovalGrant.targetType` is a free string, so binding a grant to a
+`Proposal` instead of an `AgentStep` needed no new table, no new grant type, no
+second consumption primitive and no parallel approval service — one enforcement
+function now serves two target kinds. Research needed no new target at all: it
+goes through `AgentStep` because it now goes through the executor.
+
+### Deferred, with reasons
+
+- **`workspace.validate` runs `npm run <script>`.** It is behind the executor's
+  enforcement boundary, so it is *covered*; but it classifies as `ANALYZE` →
+  `ALLOW`, so enforcement permits it without a human. Running the repository's
+  own scripts is effectively arbitrary code execution — the original audit's
+  finding H-1. Correcting that is a classification change, and P4-D's scope rule
+  forbids modifying unrelated policy classifications. **Covered by the boundary,
+  not held by the policy.**
+- **`untrustedOutput` still does not affect any decision** (finding C-1). Research
+  output reaching `workspace.write` is now two separately-approved HOLDs rather
+  than an unbroken chain, which narrows it, but taint is still recorded and not
+  enforced.
+
+### Security verdict
+
+*Can any consequential VOX action execute through a path that bypasses an
+authoritative policy/enforcement boundary?* **No** — evidenced by the sweep table
+above, by a test that walks all of `src/` asserting each consequential sink has
+no caller outside its allowed module, and by the sink guard that fails closed for
+any caller that appears in future. The one action a reader should not mistake for
+"unreachable" is `workspace.validate`: it is *inside* the boundary and *permitted
+by* the policy, which is a classification question rather than a surface one.
 
 ## [P2.1] Findings still open
 
