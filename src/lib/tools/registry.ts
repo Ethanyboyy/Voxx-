@@ -146,7 +146,13 @@ register({
   description: "Run a web research query and return grounded results with sources.",
   category: "research",
   capability: "research.web",
-  requiredLevel: "ANALYZE",
+  // [P4-E] RECOMMEND, raised from ANALYZE. `DEFAULT_GRANTED_LEVEL` is ANALYZE,
+  // so web research was available to an account that had granted nothing.
+  // CLAUDE.md's own rule 4 puts the consequential threshold at RECOMMEND, and
+  // the gate classifies this action as a HOLD — it fetches the open web and
+  // writes what it finds into memory and the knowledge graph. It was below the
+  // project's own line for "consequential".
+  requiredLevel: "RECOMMEND",
   // [P4-D] `opportunityId`/`objectiveId` are optional here because this tool is
   // now the ONE definition of "run a research query" — `POST /api/research`
   // creates a step against it rather than calling the service beside it, so the
@@ -695,7 +701,12 @@ register({
     "Run one of the project's own checks: typecheck, lint, test, or build. A failing check is a result, not an error.",
   category: "workspace",
   capability: "workspace.validate",
-  requiredLevel: "ANALYZE",
+  // [P4-E] ACT, raised from ANALYZE. `DEFAULT_GRANTED_LEVEL` is ANALYZE, so
+  // this was granted to every account that had never granted anything — and it
+  // executes repository-controlled code with the server's own environment.
+  // Executing the project's code is at least as consequential as editing it,
+  // and editing it (`workspace.write`) has always required ACT.
+  requiredLevel: "ACT",
   inputSchema: z.object({ check: z.enum(VALIDATION_NAMES as [string, ...string[]]) }),
   execute: async (userId, input) => {
     const name = input.check as ValidationName;

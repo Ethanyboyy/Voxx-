@@ -21,7 +21,9 @@ export async function runResearch(
   query: string,
   optionsOrOpportunityId?: string | RunResearchOptions
 ) {
-  await enforceCapability(userId, RESEARCH_CAPABILITY, "ANALYZE");
+  // [P4-E] RECOMMEND, matching the tool. A service check weaker than the
+  // tool that calls it is a hole shaped like the difference.
+  await enforceCapability(userId, RESEARCH_CAPABILITY, "RECOMMEND");
 
   // ---- [P4-D] THE SINK GUARD ----
   //

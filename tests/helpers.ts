@@ -27,6 +27,11 @@ export async function runResearchViaAgent(
   options: { opportunityId?: string; objectiveId?: string } = {}
 ) {
   const { startAgentRun } = await import("@/lib/agents/service");
+  const { grantPermission } = await import("@/lib/permissions/service");
+  // [P4-E] `research.web` requires RECOMMEND now, above the level every account
+  // holds by default. The helper already plays the human for the approval; the
+  // capability grant is the same person answering the other question.
+  await grantPermission(userId, "research.web", "RECOMMEND");
   const run = await startAgentRun({
     userId,
     objective: `Research: ${query}`,

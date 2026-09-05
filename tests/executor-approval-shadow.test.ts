@@ -198,7 +198,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
     const user = await createTestUser();
     // Grant the capability so the step does NOT park on the permission gate —
     // this isolates the approval gate from it.
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const run = await startAgentRun({
       userId: user.id,
       objective: "Look something up.",
@@ -229,7 +229,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
 
   it("binds the shadow evaluation to the FINALIZED arguments and the real classification", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const run = await startAgentRun({
       userId: user.id,
       objective: "Look something up.",
@@ -261,7 +261,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
 
   it("spends nothing when the arguments differ from the ones approved", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
 
     // A grant that does NOT match this execution (different arguments).
     const { createApprovalGrant } = await import("@/lib/policy/approvals");
@@ -272,7 +272,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
       parsedArguments: { query: "something else entirely" },
       policyDecision: "HOLD",
       capability: "research.web",
-      requiredLevel: "ANALYZE",
+      requiredLevel: "RECOMMEND",
     });
 
     await startAgentRun({
@@ -294,7 +294,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
 
   it("reports wouldAuthorize when a matching grant genuinely exists, and spends it", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const { createApprovalGrant } = await import("@/lib/policy/approvals");
     const grant = await createApprovalGrant({
       userId: user.id,
@@ -303,7 +303,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
       parsedArguments: { query: "the approved query" },
       policyDecision: "HOLD",
       capability: "research.web",
-      requiredLevel: "ANALYZE",
+      requiredLevel: "RECOMMEND",
     });
 
     await startAgentRun({
@@ -327,7 +327,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
 
   it("leaves a non-matching grant untouched — a failed match never burns an approval", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const { createApprovalGrant } = await import("@/lib/policy/approvals");
     const grant = await createApprovalGrant({
       userId: user.id,
@@ -336,7 +336,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
       parsedArguments: { query: "the approved query" },
       policyDecision: "HOLD",
       capability: "research.web",
-      requiredLevel: "ANALYZE",
+      requiredLevel: "RECOMMEND",
     });
 
     // A DIFFERENT query, so the argument hashes disagree.
@@ -355,7 +355,7 @@ describe("P4-C3 — the approval gate now enforces", () => {
 
   it("[P4-C3] refuses cleanly rather than crashing the run", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     // The shadow-mode version of this test asserted a HOLD reached COMPLETED.
     // That contract is gone. What survives it is the reason it existed: the gate
     // must not be able to break the run it decides about. So a refusal is a
@@ -394,7 +394,7 @@ describe("P4-C1 — retry keeps one logical approval identity", () => {
 
   it("keeps the hash stable across the whole HOLD → resume → execute lifecycle", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const run = await startAgentRun({
       userId: user.id,
       objective: "Look something up.",

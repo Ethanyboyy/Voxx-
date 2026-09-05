@@ -363,16 +363,25 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   "media.image.refine": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
   // Judges rather than produces, so ANALYZE — but it calls a metered provider,
   // which is precisely the case the separate financial flag exists to catch.
-  "qa.visual_review": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
+  // [P4-E] The verdict is a third-party model's prose about an image, and the
+  // refinement loop branches on it. Taint, not effect: the decision is already
+  // HOLD via the financial escalation.
+  "qa.visual_review": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: true, externalSystemOfRecord: false },
   // Writes an approval on an artifact VOX owns, having paid to compare candidates.
   "artifact.select_best": { effect: "WRITE", reversibility: "REVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
 
   // --- The workspace: VOX's own source tree. ---
-  "workspace.list": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
-  "workspace.structure": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
-  "workspace.read": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
-  "workspace.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
-  "workspace.git_status": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  "workspace.list": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
+  "workspace.structure": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
+  "workspace.read": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
+  "workspace.search": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
+  // [P4-E] Also a subprocess, but a different animal: fixed argv (`rev-parse`,
+  // `status --porcelain`, `diff --stat`) and `.git/` is both unreadable and
+  // unwritable to the workspace tools, so the config/hook/alias vectors that
+  // would let git run repository-controlled code are closed. It genuinely
+  // cannot mutate anything. What IS repository-controlled is what it prints —
+  // branch names, paths, diff text — and that reaches the model.
+  "workspace.git_status": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
   // PARTIALLY_REVERSIBLE, not REVERSIBLE: git restores a tracked file, and
   // restores nothing at all for a file that was never committed.
   "workspace.write": {
@@ -393,7 +402,44 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   // tests and build, which is code execution, at ANALYZE. Classified honestly
   // as ANALYZE/REVERSIBLE — it changes nothing — and left as-is. Constraining
   // what it composes with is P4's job, not a classification's.
-  "workspace.validate": { effect: "ANALYZE", reversibility: "REVERSIBLE", financial: false, untrustedOutput: false, externalSystemOfRecord: false },
+  // ---- [P4-E] THE CLASSIFICATION BUG THIS PHASE EXISTS FOR ----
+  //
+  // This read `ANALYZE + REVERSIBLE` — an ALLOW — at requiredLevel ANALYZE,
+  // which `DEFAULT_GRANTED_LEVEL` hands to every account with no grant at all.
+  // So the most powerful operation in the registry needed neither a permission
+  // nor an approval, because its NAME said "validate".
+  //
+  // WHAT IT ACTUALLY DOES. `runValidation()` spawns `npm run <script>` for one
+  // of four fixed script names. The SET of names is closed; what those names DO
+  // is whatever `package.json` says, and every one of the four executes
+  // repository-controlled JavaScript:
+  //
+  //   typecheck -> `next typegen` loads next.config.ts
+  //   lint      -> ESLint loads eslint.config.mjs
+  //   test      -> Vitest executes every file under tests/
+  //   build     -> all of the above, plus the app's own module graph
+  //
+  // There is no safe subset to split off (see P4-E in POLICY_GATE.md), so this
+  // is one capability, classified for what it can cause.
+  //
+  // THE ESCALATION CHAIN, concretely: `workspace.write` is a HOLD, so a human
+  // approves the exact contents of `tests/anything.test.ts`. `workspace.validate`
+  // then EXECUTES that file — and executing it was the half that was free. The
+  // child inherits `process.env` (ANTHROPIC_API_KEY, SESSION_SECRET,
+  // DATABASE_URL), full network, and write access to any absolute path the
+  // process user can reach; `cwd` bounds where it starts, not where it can go.
+  //
+  // ACT because it reaches outside VOX. IRREVERSIBLE because nothing can undo
+  // what an arbitrary program did. `untrustedOutput` because the tail of
+  // stdout/stderr is returned to the model, so repository-controlled text
+  // chooses what lands in the next planning context.
+  //
+  // NOT `financial: true`, deliberately: executed code could spend through
+  // inherited keys, but that flag drives the economic engine's ledger and
+  // budget semantics, and asserting a spend that has no amount, asset or entry
+  // would corrupt those. The decision is already HOLD without it; the risk is
+  // recorded here instead of mislabelled there.
+  "workspace.validate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
 });
 
 /**

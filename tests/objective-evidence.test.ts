@@ -310,7 +310,7 @@ describe("Unscoped work behaves exactly as before", () => {
     // tool call, so what an agent researches while pursuing a goal is that
     // goal's evidence, exactly as if the user had scoped the query manually.
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     const objective = await createObjective({ userId: user.id, title: "Tool-driven evidence objective." });
 
     const supRun = await db.supervisorRun.create({

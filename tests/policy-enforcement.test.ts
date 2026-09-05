@@ -53,7 +53,7 @@ afterAll(async () => {
 
 /** A run holding one HOLD step, with the capability already granted. */
 async function heldRun(userId: string, query = "enforcement") {
-  await grantPermission(userId, "research.web", "ANALYZE");
+  await grantPermission(userId, "research.web", "RECOMMEND");
   const run = await startAgentRun({
     userId,
     objective: "Look something up.",
@@ -205,7 +205,7 @@ describe("P4-C3 — an approval authorizes ONE execution", () => {
         actionId: "research.run",
         argumentsHash,
         capability: "research.web",
-        requiredLevel: "ANALYZE",
+        requiredLevel: "RECOMMEND",
         targetType: STEP_APPROVAL_TARGET_TYPE,
         targetId: step.id,
         runId: run.id,
@@ -244,7 +244,7 @@ describe("P4-C3 — an approval authorizes ONE execution", () => {
 describe("P4-C3 — an approval is bound to one exact execution", () => {
   it("does not authorize a sibling step in the same run", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     // Two identical steps. Same user, same run, same action, same arguments —
     // the step id is the only thing separating them.
     const run = await startAgentRun({
@@ -338,7 +338,7 @@ describe("P4-C3 — an approval is bound to one exact execution", () => {
       parsedArguments: { query: "not what the step will run" },
       policyDecision: "HOLD",
       capability: "research.web",
-      requiredLevel: "ANALYZE",
+      requiredLevel: "RECOMMEND",
       targetType: STEP_APPROVAL_TARGET_TYPE,
       targetId: step.id,
     });

@@ -802,7 +802,7 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
 
   it("[P4-D] runResearch() cannot be called outside an enforced boundary", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
 
     // What the route used to do: call the service directly, never touching the
     // executor. That was the P4-C3 gap. The sink now refuses, and refuses by
@@ -817,7 +817,7 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
 
   it("A-5: one research operation produces exactly one evaluation, via either path", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
 
     // Through the executor: the tool's execute() calls runResearch(), so both
     // the executor gate and the service gate are on the stack for one operation.

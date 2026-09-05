@@ -218,10 +218,14 @@ describe("workspace tools in the existing registry", () => {
     }
 
     expect(getTool("workspace.read")!.requiredLevel).toBe("OBSERVE");
-    expect(getTool("workspace.validate")!.requiredLevel).toBe("ANALYZE");
     // The consequential ones. ACT is not granted by default.
     expect(getTool("workspace.write")!.requiredLevel).toBe("ACT");
     expect(getTool("workspace.patch")!.requiredLevel).toBe("ACT");
+    // [P4-E] `workspace.validate` is on this list now, and used to read
+    // ANALYZE. It runs `npm run <script>`, which executes repository-controlled
+    // code — executing the project is at least as consequential as editing it,
+    // and ANALYZE is the level every account holds without granting anything.
+    expect(getTool("workspace.validate")!.requiredLevel).toBe("ACT");
   });
 
   it("gives every workspace tool a capability key the permission system checks", () => {

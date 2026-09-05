@@ -50,7 +50,7 @@ afterEach(() => {
 describe("P4-D — the research sink refuses callers outside the boundary", () => {
   it("throws rather than researching when nothing enforced the call", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
 
     // The capability is HELD. That is deliberate: it isolates the new guard
     // from the permission check, and shows the two answer different questions.
@@ -63,7 +63,7 @@ describe("P4-D — the research sink refuses callers outside the boundary", () =
 
   it("is not satisfied by an OBSERVABILITY boundary", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
 
     // `withPolicyBoundary` suppresses a duplicate shadow record. It is not
     // authorization, and the guard must not confuse the two — otherwise any
@@ -86,7 +86,7 @@ describe("P4-D — the research sink refuses callers outside the boundary", () =
 describe("P4-D — the research route goes through enforcement", () => {
   it("holds a direct HTTP research request instead of running it", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     asUser(user);
 
     const res = await researchPost(researchRequest({ query: "http cannot bypass the gate" }));
@@ -103,7 +103,7 @@ describe("P4-D — the research route goes through enforcement", () => {
 
   it("runs it once the human approves the exact query", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     asUser(user);
 
     const res = await researchPost(researchRequest({ query: "approved query" }));
@@ -116,7 +116,7 @@ describe("P4-D — the research route goes through enforcement", () => {
 
   it("does not let one approval authorize a second research request", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     asUser(user);
 
     const first = await (await researchPost(researchRequest({ query: "replay target" }))).json();
@@ -134,7 +134,7 @@ describe("P4-D — the research route goes through enforcement", () => {
   it("does not let one person's approval authorize another's research", async () => {
     const owner = await createTestUser();
     const stranger = await createTestUser();
-    for (const u of [owner, stranger]) await grantPermission(u.id, "research.web", "ANALYZE");
+    for (const u of [owner, stranger]) await grantPermission(u.id, "research.web", "RECOMMEND");
 
     asUser(owner);
     const theirs = await (await researchPost(researchRequest({ query: "shared query text" }))).json();
@@ -149,7 +149,7 @@ describe("P4-D — the research route goes through enforcement", () => {
 
   it("invalidates the approval when the stored query is mutated afterwards", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     asUser(user);
 
     const body = await (await researchPost(researchRequest({ query: "original question" }))).json();
@@ -179,7 +179,7 @@ describe("P4-D — the research route goes through enforcement", () => {
 
   it("takes the classification from the registry, not from the request body", async () => {
     const user = await createTestUser();
-    await grantPermission(user.id, "research.web", "ANALYZE");
+    await grantPermission(user.id, "research.web", "RECOMMEND");
     asUser(user);
 
     // A body asserting its own harmlessness. The schema strips it; even if it

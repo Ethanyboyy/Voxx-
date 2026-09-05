@@ -2,9 +2,10 @@
 
 **Status: ENFORCING. A `HOLD` no longer runs without a human's approval of that
 exact execution, and as of P4-D there is no consequential execution surface left
-outside the boundary.** The two paths P4-C3 named — `POST /api/research` and
-`approveProposal()` — are closed; see the P4-D section for the full sweep and the
-two items deliberately deferred with reasons.
+outside the boundary, and as of P4-E no capability declares a classification
+weaker than what its implementation can cause.** The two paths P4-C3 named —
+`POST /api/research` and `approveProposal()` — are closed by P4-D; the
+`workspace.validate` classification P4-D deferred is corrected by P4-E.
 
 **Patched at P2.1** after an adversarial audit reproduced defects in the original
 P1/P2 work: a wrong classification on the only money-touching tool (A-1),
@@ -57,8 +58,11 @@ derived from the other:
 
 | Tool | Permission level | What it actually does |
 |---|---|---|
-| `workspace.validate` | `ANALYZE` | Runs the repository's own typecheck, lint, tests and build |
+| `workspace.validate` | `ANALYZE` *(until P4-E; now `ACT`)* | Executes the repository's own scripts — arbitrary code, with the server's environment |
 | `qa.visual_review` | `RECOMMEND` | Charges a third-party provider on every call |
+
+The first row is the whole of P4-E in one line: the level and the name both said
+*harmless*, and the implementation was the most powerful thing in the registry.
 
 Authorization and consequence are separate questions. They are kept in separate
 modules, with no field in common.
@@ -1078,6 +1082,102 @@ no caller outside its allowed module, and by the sink guard that fails closed fo
 any caller that appears in future. The one action a reader should not mistake for
 "unreachable" is `workspace.validate`: it is *inside* the boundary and *permitted
 by* the policy, which is a classification question rather than a surface one.
+
+## P4-E — capability classification
+
+P4-D proved every consequential action is *behind* the enforcement boundary.
+That is a different claim from the one this section makes:
+
+> A capability must not receive a lower-impact classification than the maximum
+> consequence of what its implementation can actually cause.
+
+Being gated means nothing if the gate is told the action is harmless.
+
+### Observation, authorization, classification
+
+Three layers, and confusing any two of them is how a hole appears:
+
+| Layer | Question | Failure mode |
+|---|---|---|
+| **Observation** (`withPolicyBoundary`) | has this operation already been recorded? | mistaking it for authorization — P4-D's split |
+| **Authorization** (`enforceExecution` → `withEnforcedExecution`) | may this execution proceed? | bypassing it — P4-D's two closed paths |
+| **Classification** (`classification.ts`) | what does this action actually do? | **understating it — P4-E** |
+
+### `workspace.validate` — what was wrong
+
+It read `ANALYZE + REVERSIBLE` → **ALLOW**, at `requiredLevel: ANALYZE`, which
+`DEFAULT_GRANTED_LEVEL` hands to every account that has granted nothing. So the
+most powerful operation in the registry required **neither a permission nor an
+approval** — because its name said *validate*.
+
+What it does: `npm run <script>` for one of four fixed names. The set of names
+is closed; what those names *do* is whatever `package.json` says, and all four
+execute repository-controlled JavaScript — `typecheck` loads `next.config.ts`,
+`lint` loads `eslint.config.mjs`, `test` executes every file under `tests/`,
+`build` does all of it. The child inherits `process.env` (API keys,
+`SESSION_SECRET`, `DATABASE_URL`), full network, and write access to any
+absolute path the process user can reach; `cwd` bounds where it starts, not
+where it can go. Its output tail is returned to the model, so
+repository-controlled text chooses what enters the next planning context.
+
+**The escalation chain:** `workspace.write` is a HOLD, so a human approves the
+exact contents of `tests/anything.test.ts`. `workspace.validate` then *executes*
+that file — and executing it was the half that was free.
+
+**Correction:** `ACT + IRREVERSIBLE + untrustedOutput: true` → **HOLD**, and
+`requiredLevel` raised to **ACT**. Executing the project is at least as
+consequential as editing it, and editing it has always required ACT.
+
+**Why no capability split.** P4-E prefers separation over relabelling, and there
+is genuinely nothing safe to separate out: all four scripts load
+repository-controlled code, so a "safe subset" would be false precision. The
+separation that *does* exist was already there — `workspace.git_status` is a
+different tool with fixed argv (`rev-parse`, `status --porcelain`,
+`diff --stat`), and `.git/` is unreadable and unwritable to the workspace tools,
+which closes the config/hook/alias routes to repository-controlled execution. It
+stays `ANALYZE` → ALLOW.
+
+### The other mismatch: `research.run`
+
+Found by the invariant test, not by inspection. Its *classification* was already
+correct (HOLD, corrected in P2.1), but it asked for `requiredLevel: ANALYZE` —
+the default-granted level — so web research was available to an account that had
+authorized nothing. CLAUDE.md rule 4 puts the consequential threshold at
+RECOMMEND; a HOLD action sitting below the project's own line for "consequential"
+is an inconsistency, not a style choice. Raised to **RECOMMEND**, in the tool and
+in `runResearch()`'s own `enforceCapability` call, which must not stay weaker
+than the tool that calls it.
+
+### Taint corrections (recording only)
+
+`workspace.read`/`list`/`structure`/`search`, `workspace.git_status` and
+`qa.visual_review` now carry `untrustedOutput: true`. All of them hand
+repository- or third-party-controlled text to the model. None of these changes a
+decision — `untrustedOutput` still affects nothing (finding C-1) — but the table
+should not claim content is trusted when it is not.
+
+### The invariant, encoded
+
+`tests/capability-classification.test.ts` holds the mechanical parts:
+
+- **The subprocess list is derived, not declared.** Whatever imports
+  `node:child_process` is a process-spawning module; a new one fails the test and
+  has to be classified rather than merely merged.
+- **A tool that executes repository-controlled code classifies at least
+  `ACT + IRREVERSIBLE`.**
+- **No tool the gate holds may require only the default-granted level.** This is
+  the pairing that produced the bug, and it is now an empty-list assertion.
+- **Every registered tool is classified**, so nothing defaults into harmlessness.
+- Behavioural, not enum-only: the held run is asserted to have produced no
+  `execution.validation_started` event, i.e. no process was spawned.
+
+### Capability names are not security guarantees
+
+`workspace.validate` was named `validate`, categorised `workspace`, and described
+as running "the project's own checks". Every surface signal said harmless. The
+only thing that decides is the table, which is why the invariant is expressed
+against the implementation — the modules that spawn processes — rather than
+against names.
 
 ## [P2.1] Findings still open
 
