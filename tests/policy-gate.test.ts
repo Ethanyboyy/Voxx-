@@ -29,7 +29,7 @@ import { createProposal, approveProposal } from "@/lib/cognition/proposals";
 import { grantPermission } from "@/lib/permissions/service";
 import { startAgentRun } from "@/lib/agents/service";
 import { runResearch } from "@/lib/research/service";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 
 /** Shorthand for a classification, so the matrix tests read as a table. */
 function action(over: Partial<ActionClassification>): ActionClassification {
@@ -831,7 +831,11 @@ describe("P2 — shadow behaviour at the execution boundary", () => {
       objective: "Research something.",
       steps: [{ description: "Look it up.", toolName: "research.run", input: { query: "duplicate suppression" } }],
     });
-    expect(run.status).toBe("COMPLETED");
+    // [P4-C3] research.run is a HOLD, so it stops for a human first. The
+    // nesting-suppression property under test only exists once the tool really
+    // runs, so the approval is supplied through the real service.
+    expect(run.status).toBe("WAITING_FOR_PERMISSION");
+    expect((await approveAndResume(user.id, run.id)).status).toBe("COMPLETED");
 
     const events = await shadowEvents(user.id);
     const forResearch = events.filter((e) => payloadOf(e).actionId === "research.run");

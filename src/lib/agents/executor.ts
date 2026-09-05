@@ -3,15 +3,8 @@ import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
 import { recordShadowPolicyEvaluation, withPolicyBoundary } from "@/lib/policy/gate";
-import {
-  evaluateApprovalForExecution,
-  consumeApprovalGrant,
-  hashArguments,
-  hashRegisteredClassification,
-  STEP_APPROVAL_TARGET_TYPE,
-  type ApprovalConsumption,
-} from "@/lib/policy/approvals";
-import { logger } from "@/lib/observability/logger";
+import { hashArguments, STEP_APPROVAL_TARGET_TYPE } from "@/lib/policy/approvals";
+import { enforceStepExecution, recordExecutionRefusal } from "@/lib/policy/enforcement";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
@@ -198,9 +191,84 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
           requiredLevel: tool.requiredLevel,
           argumentsHash,
           argumentsFinalized: true,
+          // [P4-C3] Which gate stopped it. There are now two that park a step in
+          // this state, and a reader should not have to guess which.
+          blockedOn: "CAPABILITY",
         },
       });
       return waiting;
+    }
+
+    // ---- [P4-C3] THE ENFORCEMENT BOUNDARY ----
+    //
+    // Everything above this line re-derived the execution from authoritative
+    // state: the run and its steps were reloaded at the top of this function,
+    // `step.input` was re-parsed, re-resolved and re-validated through the
+    // tool's own schema, and `argumentsHash` was recomputed from the result.
+    // Nothing here trusts a snapshot, a client payload, or an earlier pass —
+    // which is what makes an approval granted five minutes ago authorization
+    // for *this* execution rather than for whatever it was at the time.
+    //
+    // `enforceStepExecution` returns a value that must be branched on. That is
+    // the whole difference from P2 through P4-C2, where the gate returned void
+    // precisely so nobody could enforce it by accident. A HOLD with no matching,
+    // unconsumed, human-issued grant now ends the attempt here — the tool is not
+    // reached, `withPolicyBoundary` is never entered, and no side effect occurs.
+    //
+    // Placed BEFORE the step goes RUNNING, deliberately. A refused step must be
+    // left in a state a human can act on, and RUNNING is a claim that work is
+    // underway. It is also before the retry loop, so one attempt spends at most
+    // one approval.
+    const enforcement = await enforceStepExecution({
+      userId,
+      registry: "tool",
+      // From the registry, not from anything the planner or a client said.
+      actionId: tool.name,
+      argumentsHash,
+      capability: tool.capability,
+      requiredLevel: tool.requiredLevel,
+      targetType: STEP_APPROVAL_TARGET_TYPE,
+      targetId: step.id,
+      runId: run.id,
+      stepId: step.id,
+      subjectType: "AgentRun",
+      subjectId: run.id,
+    });
+
+    if (!enforcement.permitted) {
+      await recordExecutionRefusal({
+        userId,
+        actionId: tool.name,
+        registry: "tool",
+        decision: enforcement.decision,
+        disposition: enforcement.disposition,
+        reasons: enforcement.reasons,
+        grantId: enforcement.grantId,
+        classificationHash: enforcement.classificationHash,
+        argumentsHash,
+        runId: run.id,
+        stepId: step.id,
+        subjectType: "AgentRun",
+        subjectId: run.id,
+      });
+
+      // REFUSE means no approval could make this runnable — a DENY, an action
+      // with no classification, or the gate failing to reach a verdict. Parking
+      // would invite a person to authorize something that can never happen, so
+      // the run fails with the reason on the step.
+      if (enforcement.disposition === "REFUSE") {
+        return await failRun(
+          userId,
+          run.id,
+          step.id,
+          `Policy refused "${tool.name}": ${enforcement.reasons.join(", ")}.`
+        );
+      }
+
+      // AWAIT_APPROVAL. A human approving these exact arguments makes this
+      // runnable, so the step waits in the same state P4-C1/C2 established and
+      // the existing approval endpoint serves it unchanged.
+      return await parkForApproval(userId, run.id, step, tool, argumentsHash, enforcement.reasons);
     }
 
     await db.agentStep.update({
@@ -213,19 +281,21 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       },
     });
 
-    // THE POLICY GATE (P2), in shadow mode. This is the narrowest boundary that
-    // covers everything: `tool.execute()` below is the ONLY site in VOX that
-    // runs a registered tool, so chat requests, orchestrated capability plans,
-    // supervisor-driven runs and direct agent runs all converge here and are all
-    // observed by this one call.
+    // THE POLICY GATE'S RECORD. `tool.execute()` below is the ONLY site in VOX
+    // that runs a registered tool, so chat requests, orchestrated capability
+    // plans, supervisor-driven runs and direct agent runs all converge here and
+    // are all described by this one call.
     //
-    // It observes and records. It cannot stop this step — the function returns
-    // void, so there is nothing to branch on — and it cannot throw. A HOLD is
-    // written to the event log and the tool runs anyway; enforcement is P4.
+    // [P4-C3] It is now recorded AFTER enforcement has permitted the step, not
+    // before. The payload's `executionContinued: true` was a shadow-mode
+    // assertion that nothing was ever stopped; now that things are stopped, the
+    // only way that field stays true is for this record to be written on the
+    // path where execution genuinely continues. A refused step gets
+    // `policy.execution_refused` instead, which says the opposite and means it.
     //
-    // Placed outside the retry loop below: one attempt to run a step is one
-    // decision, and recording it per retry would inflate the shadow HOLD rate
-    // this phase exists to measure.
+    // The recorder itself is unchanged and still returns void — it observes for
+    // the boundaries that do not enforce, `runResearch()` above all. Enforcement
+    // is a separate function returning a value, so the two cannot be confused.
     await recordShadowPolicyEvaluation({
       userId,
       registry: "tool",
@@ -234,125 +304,6 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       subjectType: "AgentRun",
       subjectId: run.id,
     });
-
-    // ---- [P4-C1 / P4-C2] THE APPROVAL GATE ----
-    //
-    // Runs the REAL matching semantics against the user's REAL live grants and
-    // records what enforcement would have done.
-    //
-    // [P4-C2] Real grants now exist: `POST /api/agents/[id]/steps/[stepId]/approve`
-    // mints them when a person approves specific finalized arguments, so an
-    // approved step reports `wouldAuthorize: true` here and names the grant.
-    //
-    // TWO THINGS ARE STILL TRUE OF THIS BLOCK, AND THEY ARE DIFFERENT THINGS.
-    //
-    //   1. IT DOES NOT BLOCK. An unapproved HOLD still executes, exactly as in
-    //      P4-C1. Turning that into refusal is a later phase, and doing it as a
-    //      side effect of adding an approval button would have converted every
-    //      classified HOLD into a hard block without anyone deciding to.
-    //
-    //   2. IT CANNOT MINT. The executor reaching a boundary is not a human
-    //      saying yes, so the grant constructor is not imported into this module
-    //      and never will be — a grant the executor made would be VOX approving
-    //      itself, and the whole binding would be authorizing its own output.
-    //
-    // WHAT CHANGED IS CONSUMPTION. A matching grant is spent here, exactly once,
-    // because that is what makes an approval single-use rather than a standing
-    // permission: the person approved ONE invocation, this is that invocation,
-    // and after it the grant authorizes nothing. Consumption is not enforcement
-    // — spending a grant does not decide whether the step runs — so this closes
-    // the approved lifecycle without flipping the block on.
-    //
-    // Placed outside the retry loop below: one attempt to run a step is one
-    // decision, so a retried step spends one approval, not two.
-    //
-    // Never throws. A gate that can break the thing it observes is not a safety
-    // feature; the classification lookup, the match, the consumption and the
-    // event writes are all inside the catch.
-    try {
-      const classified = hashRegisteredClassification("tool", tool.name);
-      // Only actions the policy would hold or refuse need an approval at all.
-      // An ALLOW needs none, so evaluating one would manufacture a refusal for
-      // ordinary work and drown the signal this phase exists to collect.
-      if (classified && classified.snapshot.decision !== "ALLOW") {
-        const shadow = await evaluateApprovalForExecution({
-          userId,
-          registry: "tool",
-          actionId: tool.name,
-          argumentsHash,
-          classificationHash: classified.hash,
-          capability: tool.capability,
-          requiredLevel: tool.requiredLevel,
-          // [P4-C2] The step binding. Grants minted by the human approval act
-          // carry targetType/targetId, and a grant with a target only matches an
-          // execution that names the same one. Omitting these here would have
-          // reported WRONG_TARGET for every genuine approval — the shadow record
-          // would then have been measuring its own blind spot rather than what
-          // enforcement would do.
-          targetType: STEP_APPROVAL_TARGET_TYPE,
-          targetId: step.id,
-          runId: run.id,
-          stepId: step.id,
-        });
-
-        // [P4-C2] SPEND THE APPROVAL. Only on a match — a near miss, a wrong
-        // hash, a grant for another step and the no-grant case all leave every
-        // grant untouched, so a failed match can never burn an approval a person
-        // gave for something else.
-        //
-        // The compare-and-swap inside `consumeApprovalGrant` is what makes this
-        // exactly-once under concurrency: two executions that both matched the
-        // same grant produce one `consumed: true` and one refusal.
-        //
-        // `consumeApprovalGrant` writes the canonical `policy.approval_consumed`
-        // event itself, against the grant. Nothing is re-recorded here — a second
-        // event of the same type would double-count every spend for anyone
-        // querying the audit log by type. The step-side view of the same fact
-        // rides on the shadow record below, which already carries the run, the
-        // step and the grant id.
-        let consumption: ApprovalConsumption | null = null;
-        if (shadow.wouldAuthorize && shadow.grantId) {
-          consumption = await consumeApprovalGrant(userId, shadow.grantId);
-        }
-
-        await recordEvent({
-          userId,
-          type: "policy.approval_shadow_evaluated",
-          subjectType: "AgentRun",
-          subjectId: run.id,
-          consequential: false,
-          payload: {
-            stepId: step.id,
-            actionId: tool.name,
-            registry: "tool",
-            policyDecision: classified.snapshot.decision,
-            argumentsHash,
-            classificationHash: classified.hash,
-            wouldAuthorize: shadow.wouldAuthorize,
-            grantId: shadow.grantId,
-            candidatesConsidered: shadow.candidatesConsidered,
-            reasons: shadow.reasons,
-            // Whether the matched approval was actually spent on this execution,
-            // and why not when it was matched but could not be spent —
-            // ALREADY_CONSUMED, EXPIRED or NOT_FOUND. A grant that was already
-            // spent is the single-use rule working, not an error.
-            grantConsumed: consumption?.consumed ?? false,
-            consumptionRefusal: consumption && !consumption.consumed ? consumption.reason : null,
-            // The two facts that keep this record honest about what it is: the
-            // step ran either way, and the gate did not decide that.
-            enforced: false,
-            executionContinued: true,
-          },
-        });
-      }
-    } catch (error) {
-      logger.error("policy.approval_shadow_failed", {
-        runId: run.id,
-        stepId: step.id,
-        tool: tool.name,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
 
     let lastError: string | null = null;
     let succeeded = false;
@@ -401,6 +352,63 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
   });
   await recordEvent({ userId, type: "agent.run.completed", subjectType: "AgentRun", subjectId: run.id, consequential: true });
   return completed;
+}
+
+/**
+ * [P4-C3] Parks a step that policy will not let run without a human's approval.
+ *
+ * Deliberately the SAME state the capability pause uses — `WAITING_FOR_PERMISSION`
+ * on both the step and the run. Two different things are being waited on ("may
+ * VOX do this kind of thing" and "do I approve this exact invocation"), but they
+ * are waited on identically, so `getPendingStepApproval()`, the P3 pending-approval
+ * projection and the approval endpoint all serve this step with no change at all.
+ * Inventing a second waiting state would have meant teaching every one of those
+ * about it, for no gain.
+ *
+ * `reasons` names why the current approval situation is insufficient — NO_GRANT
+ * for "nobody has approved this", ARGUMENTS_CHANGED for "an approval exists but
+ * the action moved underneath it", ALREADY_CONSUMED for "that approval was
+ * already spent". That distinction is what the pending-approval read surface
+ * needs in order to tell a person which of those they are looking at.
+ */
+async function parkForApproval(
+  userId: string,
+  runId: string,
+  step: AgentStep,
+  tool: { name: string; capability: string; requiredLevel: AgentStep["requiredLevel"] },
+  argumentsHash: string,
+  reasons: string[]
+) {
+  await db.agentStep.update({
+    where: { id: step.id },
+    data: { status: "WAITING_FOR_PERMISSION", capability: tool.capability, requiredLevel: tool.requiredLevel },
+  });
+  const waiting = await db.agentRun.update({
+    where: { id: runId },
+    data: { status: "WAITING_FOR_PERMISSION", currentStep: step.order },
+    include: { steps: { orderBy: { order: "asc" } } },
+  });
+  // The same pending-approval REQUEST event the capability pause records, so a
+  // reader does not have to know which gate stopped the step to find out what is
+  // waiting and against which arguments. `blockedOn` says which one it was.
+  await recordEvent({
+    userId,
+    type: "agent.step.waiting_for_permission",
+    subjectType: "AgentRun",
+    subjectId: runId,
+    payload: {
+      step: step.order,
+      stepId: step.id,
+      tool: tool.name,
+      capability: tool.capability,
+      requiredLevel: tool.requiredLevel,
+      argumentsHash,
+      argumentsFinalized: true,
+      blockedOn: "APPROVAL",
+      approvalReasons: reasons,
+    },
+  });
+  return waiting;
 }
 
 async function advance(runId: string, completedOrder: number) {

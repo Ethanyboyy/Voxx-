@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 import { driveRequest, wantsRefinement } from "@/lib/capabilities/orchestrator";
 import { getRunTrace } from "@/lib/capabilities/trace";
 import { executeRun } from "@/lib/agents/executor";
@@ -218,6 +218,10 @@ describe("TEST A — passes first review", () => {
     scoreQueue = [92];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     expect(trace.status).toBe("COMPLETED");
@@ -236,6 +240,10 @@ describe("TEST B — iterates once, then passes", () => {
     scoreQueue = [64, 91];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     expect(trace.status).toBe("COMPLETED");
@@ -262,6 +270,10 @@ describe("TEST C — several iterations before passing", () => {
     scoreQueue = [55, 70, 88];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     expect(imageCalls).toBe(3);
@@ -279,6 +291,10 @@ describe("TEST D — the ceiling holds", () => {
     scoreQueue = [40, 50, 60, 70, 75];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     // The configured ceiling is 3. Exactly three, not four.
@@ -303,6 +319,10 @@ describe("TEST E — stalling stops the loop", () => {
     scoreQueue = [60, 61, 62];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     // Two generations, not three: the ceiling was never the binding constraint.
@@ -320,6 +340,10 @@ describe("TEST F — provider failure is honest", () => {
     failGenerationOn = 2;
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     // Attempt 1 succeeded and was kept; attempt 2 threw.
@@ -337,6 +361,10 @@ describe("TEST F — provider failure is honest", () => {
     reviewUnavailable = true;
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     // One generation, then it stops — a result nothing could judge is not a
@@ -366,6 +394,8 @@ describe("TEST G — resume does not repeat attempts", () => {
     await grantPermission(id, "media.image.generate", "ACT");
     await grantPermission(id, "qa.visual_review", "ACT");
     await executeRun(id, runId);
+    // [P4-C3] Holding the capability is not approving the invocation.
+    await approveAndResume(id, runId);
 
     const trace = await getRunTrace(id, { runId });
     expect(trace.status).toBe("COMPLETED");
@@ -386,6 +416,10 @@ describe("TEST H — the trace reconstructs the loop", () => {
     scoreQueue = [52, 68, 84];
 
     const result = await driveRequest({ userId: id, request: REFINE_REQUEST });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     // Every attempt, in order, with its real score.
@@ -426,6 +460,10 @@ describe("the full sentence from the brief", () => {
       subjectId: suit.id,
     });
 
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
     const tools = trace.steps.map((s) => s.toolName);
 
@@ -453,6 +491,10 @@ describe("the full sentence from the brief", () => {
     // No refinement verb, no stated bar: VOX should not spend three calls
     // improving something nobody asked it to improve.
     const result = await driveRequest({ userId: id, request: "Generate a concept image of the mask." });
+    // [P4-C3] Generation, review, selection and the Lab write are HOLD
+    // actions, so the run parks for a human at each. The subject here is the
+    // refinement loop, so the approvals come from the real approval service.
+    await approveAndResume(id, result.runId!);
     const trace = await getRunTrace(id, { runId: result.runId! });
 
     expect(trace.steps.map((s) => s.toolName)).not.toContain("media.image.refine");

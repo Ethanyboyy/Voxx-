@@ -1,33 +1,39 @@
 # The Policy Gate — P1 + P2
 
-**Status: shadow mode. The gate observes and records. It blocks nothing.**
+**Status: ENFORCING at the agent-step boundary (P4-C3). A `HOLD` no longer runs
+without a human's approval of that exact execution.** Non-executor boundaries
+(notably `runResearch()` reached directly through `POST /api/research`) remain
+shadow-only — see the P4-C3 section.
 
 **Patched at P2.1** after an adversarial audit reproduced defects in the original
 P1/P2 work: a wrong classification on the only money-touching tool (A-1),
 runtime-mutable policy metadata (A-2), and research ingress that was both
 under-classified (A-3) and partly invisible to the gate (A-5). All four are
-corrected below and marked **[P2.1]**. Nothing was enforced; the gate still
-blocks nothing.
+corrected below and marked **[P2.1]**. Nothing was enforced at the time; the
+executor began enforcing at P4-C3.
 
 **[P4-A] Financial semantics resolved.** The open question P2.1 left at
 `FINANCIAL + IRREVERSIBLE` is answered below (§4). One field was added,
-`externalSystemOfRecord`, and one matrix cell relaxed. **Enforcement is still
-off** — P4-A changed what a verdict *is*, not what happens after one.
+`externalSystemOfRecord`, and one matrix cell relaxed. P4-A changed what a
+verdict *is*, not what happens after one; P4-C3 is what acts on it.
 
-**[P4-C2] A human can now approve a specific pending action** — finalized
-arguments, bound by hash, one step, and spent on exactly one invocation (see the
-P4-C2 section). That is the *consent* half of enforcement. The *blocking* half is
-still absent: **enforcement remains off**, and an unapproved `HOLD` still
-executes. Consuming a grant is not enforcing one.
+**[P4-C2] A human can approve a specific pending action** — finalized arguments,
+bound by hash, one step, spent on exactly one invocation (see the P4-C2 section).
+That is the *consent* half of enforcement.
+
+**[P4-C3] The *blocking* half now exists.** At the agent-step boundary a `HOLD`
+with no matching, unconsumed, human-issued approval does not reach the tool: the
+step parks and waits for one. `DENY` and unclassified actions fail outright.
 
 **Vocabulary, used strictly throughout:** *classified* = a static table entry
-exists. *Shadow-evaluated* = a decision was computed and recorded. *Approved* = a
-human consented to one exact invocation. *Enforced* = execution was prevented.
-**Nothing in VOX is enforced by the gate.**
+exists. *Shadow-evaluated* = a decision was computed and recorded, and nothing
+was prevented. *Approved* = a human consented to one exact invocation.
+*Enforced* = execution was actually prevented. Since P4-C3 the executor enforces;
+the other boundaries still only shadow-evaluate.
 
 This document describes what was built in P1 (classification metadata) and P2
-(the Policy Gate, shadow-only), and — just as importantly — what was found and
-deliberately *not* fixed. Enforcement is P4 and does not exist yet.
+(the Policy Gate), what enforcement now does (P4-C3), and — just as importantly —
+what was found and deliberately *not* fixed.
 
 ---
 
@@ -64,7 +70,9 @@ modules, with no field in common.
 | `src/lib/policy/classification.ts` | P1. Bounded vocabularies, the static per-action tables, and the derived task profile. |
 | `src/lib/policy/gate.ts` | P2. The policy matrix, `evaluatePolicy()` (pure), and `recordShadowPolicyEvaluation()` (records, never blocks). |
 | `src/lib/policy/canonical.ts` | **[P4-B]** Canonical serialization + SHA-256. The contract the argument hash rests on. |
-| `src/lib/policy/approvals.ts` | **[P4-B]** `ApprovalGrant` lifecycle: create, match, consume. **Unenforced.** |
+| `src/lib/policy/approvals.ts` | **[P4-B]** `ApprovalGrant` lifecycle: create, match, consume. |
+| `src/lib/policy/step-approvals.ts` | **[P4-C2]** The human approval act — the only caller of the grant constructor. |
+| `src/lib/policy/enforcement.ts` | **[P4-C3]** `enforceStepExecution()` — the one function that turns a decision into a refusal. |
 | `tests/policy-gate.test.ts` | 57 tests over the matrix, determinism, model independence, economic authority, failure behaviour, boundary coverage, and **[P2.1]** runtime immutability, corrected classifications and single-evaluation coverage. |
 
 Three existing files carry a gate call: `src/lib/agents/executor.ts`,
@@ -847,13 +855,111 @@ public `404 NOT_FOUND` with an identical body (`refusal.ts`). Reported precisely
 `STEP_NOT_IN_RUN` would confirm that a guessed step id belongs to *someone's*
 run. The precise reason is still recorded server-side.
 
-### Still missing, and why
+## P4-C3 — enforcement
 
-**Nothing blocks.** `evaluatePolicy()` produces `HOLD` for every `ACT` and
-`FINANCIAL` action and for irreversible writes, and all of them still execute.
-Turning that into refusal — and pairing it with consumption — is the next phase.
-Doing it as a side effect of adding an approval button would have converted every
-classified `HOLD` into a hard block without anyone deciding to.
+**The `HOLD` now blocks.** At the agent-step boundary a policy decision is a
+refusal unless a valid, matching, unconsumed human approval exists for that exact
+execution.
+
+### Three things, kept apart
+
+| | Question | Answered by |
+|---|---|---|
+| Policy decision | What does this action do, and can it be taken back? | `evaluatePolicy()` → ALLOW / HOLD / DENY |
+| Approval evaluation | Does a human's grant match this exact execution? | `matchesApproval()` → matched / not |
+| **Enforcement** | **Does this execution proceed?** | **`enforceStepExecution()` → permitted / refused** |
+
+They are not synonyms, and collapsing them is how a gate becomes decorative. A
+grant that *would* match is not permission; the executor still has to be handed a
+value it must branch on. That is why `enforceStepExecution()` returns a
+discriminated union while `recordShadowPolicyEvaluation()` still returns `void` —
+one decides, the other observes, and the signatures say which is which.
+
+### The decision procedure
+
+`src/lib/policy/enforcement.ts`, in order:
+
+1. Look the action up in the **frozen registry**. Never the caller's description
+   of it.
+2. Take the decision from that classification's own snapshot — the same snapshot
+   a grant binds its `classificationHash` to. A policy amendment therefore
+   invalidates every approval taken under the old matrix, with no migration.
+3. `ALLOW` → proceed, no approval needed. P4-C3 is not "everything needs a human".
+4. `DENY` → refuse outright and solicit nothing. There is no authorization path.
+5. `HOLD` → require a live grant matching on user, registry, action, arguments,
+   classification, capability, required level, amplification, target and expiry.
+6. **Only then** consume, through the existing compare-and-swap.
+7. A consumption that loses the race **refuses**. It does not fall through.
+
+**Fail-closed.** Shadow mode could afford to swallow its own errors; an enforcer
+that swallows one has let the action through. Every failure path returns a
+refusal, including the catch-all — "I could not determine whether this is
+allowed" and "this is allowed" are not the same answer.
+
+### Two dispositions
+
+| Disposition | When | What happens |
+|---|---|---|
+| `AWAIT_APPROVAL` | A human approving these arguments would make it runnable — `NO_GRANT`, `ARGUMENTS_CHANGED`, `ALREADY_CONSUMED`, any mismatch | The step parks at `WAITING_FOR_PERMISSION`, run resumable, no error |
+| `REFUSE` | Nothing a human can approve helps — `POLICY_DENIED`, `UNCLASSIFIED_ACTION`, `ENFORCEMENT_ERROR` | `failRun()` with the reason |
+
+Parking uses the **same state as the capability pause**, so
+`getPendingStepApproval()`, the P3 projection and the approval endpoint all serve
+it unchanged. The `agent.step.waiting_for_permission` event now carries
+`blockedOn: "CAPABILITY" | "APPROVAL"` and, for the second, the reasons — which
+is how a surface distinguishes *waiting for a human* from *a human approved and
+the action then changed*. Rejection is a third state already: the run is
+`CANCELLED`.
+
+**Refusal reasons reuse the existing vocabulary** — `ApprovalMismatchReason` and
+`ApprovalConsumptionFailure` verbatim from `approvals.ts`. Only the three
+conditions approval matching cannot express are new.
+
+### Where the executor changed
+
+The gate moved **above** the `RUNNING` transition and now returns a value:
+
+```
+resolve → parse → safeParse → persist finalized input → hash
+       → checkCapability          (park on failure)
+       → enforceStepExecution     (park or fail on refusal)   ← P4-C3
+       → RUNNING → shadow record → tool.execute()
+```
+
+Re-validation is by construction, not by convention: `executeRun()` reloads the
+run and its steps from the database on every call, re-parses `step.input`,
+re-resolves references, re-validates through the tool's schema, recomputes the
+hash and re-reads the classification. An approval from five minutes ago
+authorizes *this* execution or nothing.
+
+`policy.shadow_evaluated` is now recorded **after** enforcement permits, so its
+`executionContinued: true` is true rather than an assertion of a phase that has
+ended. A refused step records `policy.execution_refused` instead —
+`consequential: true`, because refusing to act is something VOX did.
+
+### What is NOT enforced
+
+**Only the executor enforces.** `tool.execute()` is the single site that runs a
+registered tool, so every chat request, orchestrated plan, supervisor run and
+agent run converges there. But two paths reach effects without an `AgentStep`:
+
+- `runResearch()` via `POST /api/research` — still shadow-only. Grants bind to an
+  `AgentStep`, and this path has none, so enforcing there would make the route
+  permanently unusable rather than safe.
+- `approveProposal()` in `src/lib/cognition/proposals.ts` — has its own
+  `enforceCapability()` gate and does not pass through the policy gate.
+
+So the honest answer to *"can a HOLD action execute without an approval"* is
+**no through the executor, yes through those two routes**. Closing them needs a
+target type that is not an agent step, which is a later phase, not a flag.
+
+### Consequence worth stating plainly
+
+Every `ACT`, every `FINANCIAL` action and every irreversible write now stops for
+a person. Image generation, visual review, artifact selection, Lab writes,
+workspace writes, research and expense recording all park mid-run. Autonomous
+multi-step work is no longer autonomous past its first consequential action —
+which is what the policy has said since P2, now actually applied.
 
 ## [P2.1] Findings still open
 

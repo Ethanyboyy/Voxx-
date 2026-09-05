@@ -11,7 +11,7 @@ import { recordResearchExperience } from "@/lib/research/learning";
 import { listMemoriesByProvenance } from "@/lib/memory/service";
 import { grantPermission } from "@/lib/permissions/service";
 import { executeRun } from "@/lib/agents/executor";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 
 /**
  * The question this feature exists to answer: "what evidence do I have
@@ -331,7 +331,11 @@ describe("Unscoped work behaves exactly as before", () => {
       },
     });
 
-    const finished = await executeRun(user.id, run.id);
+    // [P4-C3] research.run is WRITE + PARTIALLY_REVERSIBLE — a HOLD — so it
+    // parks for a human. This test is about objective threading, so the
+    // approval is supplied through the real service.
+    await executeRun(user.id, run.id);
+    const finished = await approveAndResume(user.id, run.id);
     expect(finished.status).toBe("COMPLETED");
 
     const items = await db.researchItem.findMany({ where: { userId: user.id, query: "tool-driven research query" } });

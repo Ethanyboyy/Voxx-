@@ -543,8 +543,9 @@ describe("P4-C2 — the approval reaches the executor's gate", () => {
     // grant names the step, and the argument hashes agree.
     expect(forStep[0].wouldAuthorize).toBe(true);
     expect(forStep[0].argumentsHash).toBe(pending.pending.argumentsHash);
-    // ...and nothing was enforced. P4-C2 adds the approval act, not the block.
-    expect(forStep[0].enforced).toBe(false);
+    // [P4-C3] ...and the approval is what let it run: the gate enforced, and
+    // the execution continued because a human had said yes to these arguments.
+    expect(forStep[0].enforced).toBe(true);
     expect(forStep[0].executionContinued).toBe(true);
   });
 
@@ -589,7 +590,8 @@ describe("P4-C2 — the approval reaches the executor's gate", () => {
     expect(shadow[0].grantId).toBe(approved.grant.id);
     expect(shadow[0].grantConsumed).toBe(true);
     // Consumption is not enforcement: the gate still did not decide this ran.
-    expect(shadow[0].enforced).toBe(false);
+    // [P4-C3] The gate now decides, and says so.
+    expect(shadow[0].enforced).toBe(true);
     expect(shadow[0].executionContinued).toBe(true);
   });
 
@@ -932,9 +934,13 @@ describe("P4-C2 — structural guarantees", () => {
     // resume, execute — is unrepresentable because the constructor is not in
     // scope, not because the code currently chooses not to call it.
     expect(source).not.toContain("createApprovalGrant");
-    // Spending is a different act and IS the executor's: it records that the
-    // invocation a human already approved has happened.
-    expect(source).toContain("consumeApprovalGrant");
+    // [P4-C3] Spending moved to `src/lib/policy/enforcement.ts`, with the
+    // decision it belongs to. The executor branches on that decision; it does
+    // not make or spend authorizations itself.
+    expect(source).not.toContain("consumeApprovalGrant");
+    const enforcement = await readFile("src/lib/policy/enforcement.ts", "utf8");
+    expect(enforcement).not.toContain("createApprovalGrant");
+    expect(enforcement).toContain("consumeApprovalGrant");
   });
 
   it("step-approvals.ts is the only caller of createApprovalGrant in src/", async () => {

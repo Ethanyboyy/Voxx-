@@ -174,8 +174,8 @@ export function StepApprovalPanel({
       </p>
 
       <p className="text-xs text-muted">
-        Approving records consent to these exact arguments, once. It does not grant the capability — that is the
-        separate permission above — and an approval expires if it is not used.
+        This step will not run until you approve it. Your approval covers these exact arguments, once — if they
+        change, it stops again. It does not grant the capability; that is the separate permission above.
       </p>
 
       {message ? <p className="text-xs text-foreground">{message}</p> : null}

@@ -174,20 +174,30 @@ describe("P4-C1 — the executor NEVER creates an ApprovalGrant", () => {
     // function is not in scope. A future edit that adds it fails this test.
     expect(source).not.toContain("createApprovalGrant");
 
-    // [P4-C2] `consumeApprovalGrant` is no longer on this list, and the two are
-    // not symmetric. MINTING is the executor claiming a human said yes, and must
-    // stay impossible. SPENDING is the executor recording that the invocation a
-    // human already approved has now happened — which is what makes an approval
-    // single-use rather than a standing permission. The asymmetry is the point.
+    // [P4-C3] Consumption moved OUT of the executor and into
+    // `src/lib/policy/enforcement.ts`, together with the decision it belongs
+    // to — spending an approval and permitting an execution are one act, and
+    // splitting them across two files is how they drift apart.
+    expect(source).not.toContain("consumeApprovalGrant");
+  });
+
+  it("the enforcement module spends approvals but cannot mint them", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile("src/lib/policy/enforcement.ts", "utf8");
+    // The asymmetry, now pinned where the decision actually lives. MINTING is a
+    // machine claiming a human said yes, and stays impossible outside
+    // `step-approvals.ts`. SPENDING is recording that the invocation a human
+    // already approved has happened, and is what makes an approval single-use.
+    expect(source).not.toContain("createApprovalGrant");
     expect(source).toContain("consumeApprovalGrant");
   });
 });
 
-describe("P4-C1 — the approval gate runs in shadow mode", () => {
-  it("evaluates a HOLD action and records a shadow refusal, without blocking", async () => {
+describe("P4-C3 — the approval gate now enforces", () => {
+  it("evaluates a HOLD action and REFUSES it when no approval exists", async () => {
     const user = await createTestUser();
-    // Grant the capability so the step does NOT park — this isolates the
-    // approval gate from the permission gate.
+    // Grant the capability so the step does NOT park on the permission gate —
+    // this isolates the approval gate from it.
     await grantPermission(user.id, "research.web", "ANALYZE");
     const run = await startAgentRun({
       userId: user.id,
@@ -195,9 +205,12 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
       steps: [{ description: "Research.", toolName: "research.run", input: { query: "shadow gate" } }],
     });
 
-    // research.run is WRITE/PARTIALLY_REVERSIBLE → HOLD. It STILL EXECUTED.
-    expect(run.status).toBe("COMPLETED");
-    expect(run.steps[0].status).toBe("COMPLETED");
+    // research.run is WRITE/PARTIALLY_REVERSIBLE → HOLD. Until P4-C3 it ran
+    // anyway; this assertion is the contract change, and the whole point of the
+    // phase. The user holds the capability and the step still does not run.
+    expect(run.status).toBe("WAITING_FOR_PERMISSION");
+    expect(run.steps[0].status).toBe("WAITING_FOR_PERMISSION");
+    expect(await db.researchItem.count({ where: { userId: user.id } })).toBe(0);
 
     const events = await shadowApprovalEvents(user.id);
     expect(events).toHaveLength(1);
@@ -205,14 +218,13 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
 
     expect(payload.actionId).toBe("research.run");
     expect(payload.policyDecision).toBe("HOLD");
-    // No human approval exists in VOX yet, so there is no grant to find.
     expect(payload.wouldAuthorize).toBe(false);
     expect(payload.reasons).toEqual(["NO_GRANT"]);
     expect(payload.grantId).toBeNull();
     expect(payload.candidatesConsidered).toBe(0);
-    // ...and the record says plainly that nothing was prevented.
-    expect(payload.enforced).toBe(false);
-    expect(payload.executionContinued).toBe(true);
+    // ...and the record now says plainly that something WAS prevented.
+    expect(payload.enforced).toBe(true);
+    expect(payload.executionContinued).toBe(false);
   });
 
   it("binds the shadow evaluation to the FINALIZED arguments and the real classification", async () => {
@@ -341,17 +353,22 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
     expect(stored.consumedAt).toBeNull();
   });
 
-  it("never lets a gate failure break execution", async () => {
+  it("[P4-C3] refuses cleanly rather than crashing the run", async () => {
     const user = await createTestUser();
     await grantPermission(user.id, "research.web", "ANALYZE");
-    // Exercised for real above; this pins the contract that the surrounding
-    // try/catch exists and that a HOLD reaches COMPLETED regardless.
+    // The shadow-mode version of this test asserted a HOLD reached COMPLETED.
+    // That contract is gone. What survives it is the reason it existed: the gate
+    // must not be able to break the run it decides about. So a refusal is a
+    // clean, resumable WAITING_FOR_PERMISSION — not FAILED, and not an
+    // exception escaping into the executor's error path.
     const run = await startAgentRun({
       userId: user.id,
       objective: "Look something up.",
       steps: [{ description: "Research.", toolName: "research.run", input: { query: "resilience" } }],
     });
-    expect(run.status).toBe("COMPLETED");
+    expect(run.status).toBe("WAITING_FOR_PERMISSION");
+    expect(run.error).toBeNull();
+    expect(run.steps[0].error).toBeNull();
   });
 });
 

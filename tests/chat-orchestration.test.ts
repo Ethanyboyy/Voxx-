@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 import { POST as chatPost } from "@/app/api/chat/route";
 import { createConversation, getConversation } from "@/lib/chat/service";
 import { decideChatAction, describeRunOutcome } from "@/lib/chat/action";
@@ -137,10 +137,26 @@ async function sendChat(conversationId: string, message: string) {
 }
 
 /** sendChat, then wait for the backgrounded run — the common case in tests
- * that assert on what the run produced. */
-async function sendChatAndSettle(conversationId: string, message: string) {
+ * that assert on what the run produced.
+ *
+ * [P4-C3] `approve` defaults to true. Image generation, review, selection and
+ * the Lab write are all HOLD actions, so since enforcement a chat-driven run
+ * parks at each one instead of running it. These tests are about CHAT reaching
+ * the orchestrator, not about the gate, so the human half of the loop is played
+ * through the real approval service — see `approveAndResume` in ./helpers, which
+ * has no test-only bypass in it. Pass `approve: false` where the parked state is
+ * the thing being asserted. */
+async function sendChatAndSettle(conversationId: string, message: string, { approve = true } = {}) {
   const result = await sendChat(conversationId, message);
-  if (result.runId) await settle(result.runId);
+  if (!result.runId) return result;
+  await settle(result.runId);
+  if (approve) {
+    const run = await db.agentRun.findUnique({ where: { id: result.runId }, select: { userId: true } });
+    if (run) {
+      await approveAndResume(run.userId, result.runId);
+      await settle(result.runId);
+    }
+  }
   return result;
 }
 
@@ -178,6 +194,27 @@ async function outcomeText(userId: string, conversationId: string): Promise<stri
   const conversation = await getConversation(userId, conversationId);
   const assistant = [...(conversation?.messages ?? [])].reverse().find((m) => m.role === "ASSISTANT");
   return assistant?.content ?? "";
+}
+
+/**
+ * What VOX says about the run AS IT STANDS NOW — the same `describeRunOutcome`
+ * the route uses, over a freshly read trace.
+ *
+ * [P4-C3] Needed because the persisted assistant message is written exactly
+ * once, by the route's `onSettled`, when the run first reaches a terminal or
+ * waiting state. A run that then parks for approval, gets approved, and
+ * finishes leaves that message saying "I've stopped and need your approval".
+ *
+ * That staleness is NOT new and not caused by enforcement — the same thing has
+ * always happened to a run parked for a missing capability and resumed from the
+ * Agents page. Enforcement just makes multi-settle runs the normal case rather
+ * than the exception, so it is now visible in these tests. Closing it is a chat
+ * surface change and deliberately out of scope here; these assertions therefore
+ * check what VOX would say about the finished run, which is what they were
+ * written to check.
+ */
+async function currentOutcomeText(userId: string, runId: string): Promise<string> {
+  return describeRunOutcome(await getRunTrace(userId, { runId }));
 }
 
 beforeEach(() => {
@@ -254,7 +291,7 @@ describe("B — an executable request becomes a real run", () => {
 
     // The outcome is in the REWRITTEN message, because the response returned
     // before the run finished. The link travelled as the run_started frame.
-    expect(await outcomeText(user.id, conversationId)).toContain("Done");
+    expect(await currentOutcomeText(user.id, runId!)).toContain("Done");
     expect(events.some((e) => e.type === "run_started" && e.runId === runId)).toBe(true);
   });
 
@@ -292,7 +329,7 @@ describe("C — chat reaches the existing refinement loop", () => {
 
     const trace = await getRunTrace(user.id, { runId: runId! });
     expect(trace.iterations[0]?.attempts.map((a) => a.score)).toEqual([61, 91]);
-    expect(await outcomeText(user.id, conversationId)).toContain("2 attempt(s)");
+    expect(await currentOutcomeText(user.id, runId!)).toContain("2 attempt(s)");
     expect(chatModelCalls).toBe(0);
   });
 });
@@ -325,7 +362,7 @@ describe("D — the full request, end to end from chat", () => {
     // One batch of three, then two refinement attempts.
     expect(imageCalls).toBe(3);
     expect(chatModelCalls).toBe(0);
-    expect(await outcomeText(user.id, conversationId)).toContain("Done");
+    expect(await currentOutcomeText(user.id, runId!)).toContain("Done");
   });
 
   it("attaches to the Lab when the request names a Lab subject", async () => {
@@ -362,7 +399,7 @@ describe("E — provider failure is reported honestly", () => {
     const trace = await getRunTrace(user.id, { runId: runId! });
     expect(trace.providerCalls.some((c) => c.status === "FAILED")).toBe(true);
     // No sentence claims the work succeeded.
-    const text = await outcomeText(user.id, conversationId);
+    const text = await currentOutcomeText(user.id, runId!);
     expect(text).not.toMatch(/\bDone —/);
     expect(text.toLowerCase()).toMatch(/didn't work|none passed|kept the strongest/);
   });
@@ -390,6 +427,8 @@ describe("F — permissions still gate execution", () => {
     const { runId } = await sendChatAndSettle(
       conversationId,
       "Recall the suit decisions, then generate a concept image of the suit and improve it until it matches.",
+      // The parked state is the subject here, so do not play the human.
+      { approve: false },
     );
 
     expect(imageCalls).toBe(0);
@@ -412,6 +451,8 @@ describe("G — a run started from chat resumes like any other", () => {
     const { runId } = await sendChatAndSettle(
       conversationId,
       "Recall the suit decisions, then generate a concept image of the suit and improve it until it matches.",
+      // The parked state is the subject here, so do not play the human.
+      { approve: false },
     );
     expect((await getRunTrace(user.id, { runId: runId! })).status).toBe("WAITING_FOR_PERMISSION");
 
@@ -426,6 +467,11 @@ describe("G — a run started from chat resumes like any other", () => {
     // not a separate species.
     const { resumeRun } = await import("@/lib/capabilities/orchestrator");
     await resumeRun(user.id, runId!);
+    // [P4-C3] The grant answers "may VOX do this kind of thing". The step still
+    // holds until someone answers "do I approve THIS invocation" — resume is
+    // explicitly not that answer, which is the property under test here.
+    expect((await getRunTrace(user.id, { runId: runId! })).status).toBe("WAITING_FOR_PERMISSION");
+    await approveAndResume(user.id, runId!);
 
     const after = await getRunTrace(user.id, { runId: runId! });
     expect(after.status).toBe("COMPLETED");
@@ -470,7 +516,7 @@ describe("H — cost accounting", () => {
 
     const trace = await getRunTrace(user.id, { runId: runId! });
     expect(trace.costUsd).toBeGreaterThan(0);
-    const text = await outcomeText(user.id, conversationId);
+    const text = await currentOutcomeText(user.id, runId!);
     expect(text).toContain("provider call(s)");
     // The figure in the message is the ledger's figure.
     expect(text).toContain(`$${trace.costUsd!.toFixed(4)}`);
@@ -499,6 +545,8 @@ describe("the composed reply never overstates", () => {
     const { runId } = await sendChatAndSettle(
       conversationId,
       "Recall the suit decisions, then generate a concept image of the suit and improve it until it matches.",
+      // The parked state is the subject here, so do not play the human.
+      { approve: false },
     );
 
     if (!runId) return; // routed to nothing at all; the other branch covers that
@@ -511,9 +559,12 @@ describe("the composed reply never overstates", () => {
   it("renders as plain text — the bubble does not parse markdown", async () => {
     const { user, conversationId } = await setup(ALL_GRANTS);
     scoreQueue = [90];
-    await sendChatAndSettle(conversationId, "Generate a concept image of the suit and improve it until it matches.");
+    const { runId } = await sendChatAndSettle(
+      conversationId,
+      "Generate a concept image of the suit and improve it until it matches.",
+    );
     // Markdown syntax would appear literally to the reader.
-    const text = await outcomeText(user.id, conversationId);
+    const text = await currentOutcomeText(user.id, runId!);
     expect(text).not.toMatch(/\]\(/);
     expect(text).not.toContain("**");
   });
@@ -523,6 +574,8 @@ describe("the composed reply never overstates", () => {
     const { runId } = await sendChatAndSettle(
       conversationId,
       "Recall the suit decisions, then generate a concept image of the suit and improve it until it matches.",
+      // The parked state is the subject here, so do not play the human.
+      { approve: false },
     );
 
     const trace = await getRunTrace(user.id, { runId: runId! });
@@ -558,6 +611,12 @@ describe("BRAIN-021 — the response returns before the work finishes", () => {
     expect(["PLANNING", "RUNNING"]).toContain(atReturn!.status);
 
     await settle(runId!);
+    // [P4-C3] It ran until the first HOLD, then stopped for a human. The
+    // approvals are supplied through the real service so the rest of the loop
+    // — the thing this test is about — can be observed.
+    const { userId } = (await db.agentRun.findUniqueOrThrow({ where: { id: runId! }, select: { userId: true } }));
+    await approveAndResume(userId, runId!);
+    await settle(runId!);
     expect((await db.agentRun.findUnique({ where: { id: runId! } }))!.status).toBe("COMPLETED");
     // It really did keep working after the response closed.
     expect(imageCalls).toBe(3);
@@ -592,12 +651,23 @@ describe("BRAIN-021 — the response returns before the work finishes", () => {
     expect(assistants).toHaveLength(1);
     expect(assistants[0].id).toBe(assistant!.id);
     // The point is that the SAME row was rewritten with the run's real
-    // account of itself — not that it succeeded. These scores never pass, so
-    // the outcome is honestly a ceiling stop, and the message says so.
+    // account of itself — not that it succeeded.
     expect(assistants[0].content).not.toBe(assistant!.content);
-    expect(assistants[0].content).toContain("attempts");
-    expect(assistants[0].content).toContain("provider call(s)");
     expect(JSON.parse(assistants[0].meta ?? "{}").pending).toBeUndefined();
+    // [P4-C3] And that account is now the approval stop, because generation
+    // holds for a human before it runs. The message reports what actually
+    // happened rather than the loop it never reached.
+    expect(assistants[0].content).toContain("approval");
+
+    // Once the human approves, the loop runs and VOX's account of the run says
+    // so. Read from the live trace: the persisted message is written once, by
+    // the route's onSettled, and a run resumed later does not rewrite it — see
+    // `currentOutcomeText`.
+    await approveAndResume(user.id, runId!);
+    await settle(runId!);
+    const finished = await currentOutcomeText(user.id, runId!);
+    expect(finished).toContain("attempts");
+    expect(finished).toContain("provider call(s)");
   });
 
   it("keeps running after the client goes away", async () => {
@@ -610,6 +680,10 @@ describe("BRAIN-021 — the response returns before the work finishes", () => {
     );
     // The response object is discarded here — the client has effectively gone.
     // Nothing cancels the run, because execution was never attached to it.
+    await settle(runId!);
+    // [P4-C3] Approvals supplied through the real service; the subject is that
+    // nothing cancelled the run when the client went away.
+    await approveAndResume(user.id, runId!);
     await settle(runId!);
 
     const trace = await getRunTrace(user.id, { runId: runId! });
@@ -635,6 +709,8 @@ describe("BRAIN-021 — the response returns before the work finishes", () => {
     expect(a.runId).toBe(runId);
     expect(b.runId).toBe(runId);
 
+    await settle(runId!);
+    await approveAndResume(user.id, runId!);
     await settle(runId!);
 
     // Reading is not executing: three attempts total, not six.
@@ -689,6 +765,8 @@ describe("BRAIN-021 — the response returns before the work finishes", () => {
     const { runId } = await sendChatAndSettle(
       conversationId,
       "Recall the suit decisions, then generate a concept image of the suit and improve it until it matches.",
+      // The parked state is the subject here, so do not play the human.
+      { approve: false },
     );
     expect((await getRunTrace(user.id, { runId: runId! })).status).toBe("WAITING_FOR_PERMISSION");
 

@@ -14,7 +14,7 @@ import { getBudgetSummary, recordOpportunitySpend } from "@/lib/economic/service
 import { grantPermission } from "@/lib/permissions/service";
 import { startSupervisorRun, beginSupervisorExecution, setAutonomyMode, getAutonomyMode } from "@/lib/supervisor/service";
 import { getBrainGraph } from "@/lib/brain/graph";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
 
 function baseOpportunity(overrides: Partial<OpportunityDTO> = {}): OpportunityDTO {
@@ -192,7 +192,15 @@ describe("Economic Engine: security — economic.record_expense requires BOTH ca
       },
     });
     const { executeRun } = await import("@/lib/agents/executor");
-    return executeRun(userId, run.id);
+    const first = await executeRun(userId, run.id);
+    // [P4-C3] economic.record_expense is FINANCIAL, so the policy gate holds it
+    // and it no longer executes without a human's approval. These tests are
+    // about the BUDGET CEILING, which is a second and independent guard, so the
+    // approval is supplied here through the real endpoint's own service — see
+    // `approveAndResume`. The tests below still prove the ceiling stops a spend
+    // that a human explicitly approved, which is the stronger claim.
+    if (first.status !== "WAITING_FOR_PERMISSION") return first;
+    return approveAndResume(userId, run.id);
   }
 
   it("without the economic.spend capability granted, the run pauses at WAITING_FOR_PERMISSION — no expense is recorded", async () => {
@@ -377,7 +385,12 @@ describe("Cross-domain: Opportunity -> Objective -> SupervisorRun -> AgentRun ->
 
     const { executeRun } = await import("@/lib/agents/executor");
     const { applyAgentRunOutcome } = await import("@/lib/supervisor/service");
-    const executed = await executeRun(userId, run.id);
+    const parked = await executeRun(userId, run.id);
+    // [P4-C3] The spend step is FINANCIAL, so it holds for a human before it
+    // reaches the ledger. This pipeline test is about what happens AFTER the
+    // spend, so the approval is supplied through the real service.
+    expect(parked.status).toBe("WAITING_FOR_PERMISSION");
+    const executed = await approveAndResume(userId, run.id);
     expect(executed.status).toBe("COMPLETED");
     const outcome = await applyAgentRunOutcome(userId, supRun.id, executed);
     expect(outcome.status).toBe("COMPLETED");

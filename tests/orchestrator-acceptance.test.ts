@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser } from "./helpers";
+import { createTestUser, approveAndResume } from "./helpers";
 import { driveRequest, resumeRun, cancelRun, requestedVariations } from "@/lib/capabilities/orchestrator";
 import { getRunTrace } from "@/lib/capabilities/trace";
 import { executeRun } from "@/lib/agents/executor";
@@ -134,6 +134,12 @@ describe("acceptance 1 — concepts, comparison, selection, Lab", () => {
     });
 
     expect(result.runId).toBeTruthy();
+    // [P4-C3] Image generation, review, selection and the Lab write are all
+    // HOLD actions, so the run now parks for a human at each. This test is
+    // about the WORKFLOW, so the approvals are supplied through the real
+    // approval service; acceptance 2 below is where the refusal itself is the
+    // subject.
+    await approveAndResume(userId, result.runId!);
     const trace = await getRunTrace(userId, { runId: result.runId! });
 
     // 4. AgentRun persists, 5. steps persist.
@@ -213,6 +219,10 @@ describe("acceptance 2 — permission pause and resume", () => {
     await grantPermission(gated, "media.image.generate", "ACT");
     await grantPermission(gated, "qa.visual_review", "ACT");
     await resumeRun(gated, result.runId!);
+    // [P4-C3] The capability is now held, and the step still holds — because
+    // holding the capability and approving THIS invocation are two different
+    // questions. Supplying the second is what finishes the run.
+    await approveAndResume(gated, result.runId!);
 
     const after = await getRunTrace(gated, { runId: result.runId! });
     expect(after.status).toBe("COMPLETED");
@@ -260,6 +270,9 @@ describe("acceptance 3 — resume from persisted state alone", () => {
     await grantPermission(restarted, "qa.visual_review", "ACT");
     // Driving the EXISTING executor directly, the way a recovery sweep would.
     await executeRun(restarted, runId);
+    // [P4-C3] A recovery sweep is not a human, so it cannot approve the held
+    // steps for itself; the approvals come from the real service.
+    await approveAndResume(restarted, runId);
 
     const after = await getRunTrace(restarted, { runId });
     expect(after.status).toBe("COMPLETED");
