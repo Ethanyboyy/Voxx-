@@ -68,6 +68,21 @@ export const DEFAULT_APPROVAL_TTL_MS = 15 * 60 * 1000;
 export const MAX_APPROVAL_TTL_MS = 60 * 60 * 1000;
 
 /**
+ * [P4-C2] The `targetType` that ties a grant to one agent step.
+ *
+ * It lives here rather than in `src/lib/policy/step-approvals.ts` — where it is
+ * re-exported and where it is actually used to build grants — purely to keep the
+ * import graph acyclic: the executor needs the string to look up step-bound
+ * grants, and step-approvals reaches into `@/lib/agents/service`, which reaches
+ * back into the executor.
+ *
+ * `AgentStep.id` is the identity because it is stable across the executor's
+ * retries: the same logical step keeps the same row, so a grant bound to it
+ * cannot drift onto a different call.
+ */
+export const STEP_APPROVAL_TARGET_TYPE = "AgentStep";
+
+/**
  * The classification snapshot a grant binds to.
  *
  * Every field of `ActionClassification` is included, not a chosen subset: each
@@ -333,7 +348,11 @@ export type ApprovalConsumption =
  * only to say WHICH condition failed, and the refusal has already happened
  * atomically above whatever it reports.
  *
- * NOT CALLED FROM THE EXECUTOR. P4-C will be what calls this.
+ * [P4-C2] The executor calls this, once per execution of an approved step, and
+ * it is the ONLY caller. Note the asymmetry with `createApprovalGrant`, which
+ * the executor must never reach: minting is the executor claiming a human said
+ * yes, while spending is recording that the invocation a human already approved
+ * has now happened.
  */
 export async function consumeApprovalGrant(
   userId: string,

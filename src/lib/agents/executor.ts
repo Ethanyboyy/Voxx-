@@ -3,7 +3,14 @@ import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
 import { recordShadowPolicyEvaluation, withPolicyBoundary } from "@/lib/policy/gate";
-import { evaluateApprovalForExecution, hashArguments, hashRegisteredClassification } from "@/lib/policy/approvals";
+import {
+  evaluateApprovalForExecution,
+  consumeApprovalGrant,
+  hashArguments,
+  hashRegisteredClassification,
+  STEP_APPROVAL_TARGET_TYPE,
+  type ApprovalConsumption,
+} from "@/lib/policy/approvals";
 import { logger } from "@/lib/observability/logger";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
@@ -228,21 +235,40 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       subjectId: run.id,
     });
 
-    // ---- [P4-C1] THE APPROVAL GATE, IN SHADOW MODE ----
+    // ---- [P4-C1 / P4-C2] THE APPROVAL GATE ----
     //
     // Runs the REAL matching semantics against the user's REAL live grants and
-    // records what enforcement would have done. It does not block, and it does
-    // not consume: spending a human's approval on an execution that is not
-    // actually being gated by it would destroy the one thing P4-C2 needs intact.
+    // records what enforcement would have done.
     //
-    // Today every HOLD action reports NO_GRANT, and that is the honest reading
-    // rather than a bug — there is no human approval act in VOX yet, so there is
-    // nothing for a grant to have come from. This measures the refusal surface
-    // that P4-C2's endpoint will have to serve before anything starts blocking.
+    // [P4-C2] Real grants now exist: `POST /api/agents/[id]/steps/[stepId]/approve`
+    // mints them when a person approves specific finalized arguments, so an
+    // approved step reports `wouldAuthorize: true` here and names the grant.
+    //
+    // TWO THINGS ARE STILL TRUE OF THIS BLOCK, AND THEY ARE DIFFERENT THINGS.
+    //
+    //   1. IT DOES NOT BLOCK. An unapproved HOLD still executes, exactly as in
+    //      P4-C1. Turning that into refusal is a later phase, and doing it as a
+    //      side effect of adding an approval button would have converted every
+    //      classified HOLD into a hard block without anyone deciding to.
+    //
+    //   2. IT CANNOT MINT. The executor reaching a boundary is not a human
+    //      saying yes, so the grant constructor is not imported into this module
+    //      and never will be — a grant the executor made would be VOX approving
+    //      itself, and the whole binding would be authorizing its own output.
+    //
+    // WHAT CHANGED IS CONSUMPTION. A matching grant is spent here, exactly once,
+    // because that is what makes an approval single-use rather than a standing
+    // permission: the person approved ONE invocation, this is that invocation,
+    // and after it the grant authorizes nothing. Consumption is not enforcement
+    // — spending a grant does not decide whether the step runs — so this closes
+    // the approved lifecycle without flipping the block on.
+    //
+    // Placed outside the retry loop below: one attempt to run a step is one
+    // decision, so a retried step spends one approval, not two.
     //
     // Never throws. A gate that can break the thing it observes is not a safety
-    // feature; the classification lookup, the match and the event write are all
-    // inside the catch.
+    // feature; the classification lookup, the match, the consumption and the
+    // event writes are all inside the catch.
     try {
       const classified = hashRegisteredClassification("tool", tool.name);
       // Only actions the policy would hold or refuse need an approval at all.
@@ -257,9 +283,38 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
           classificationHash: classified.hash,
           capability: tool.capability,
           requiredLevel: tool.requiredLevel,
+          // [P4-C2] The step binding. Grants minted by the human approval act
+          // carry targetType/targetId, and a grant with a target only matches an
+          // execution that names the same one. Omitting these here would have
+          // reported WRONG_TARGET for every genuine approval — the shadow record
+          // would then have been measuring its own blind spot rather than what
+          // enforcement would do.
+          targetType: STEP_APPROVAL_TARGET_TYPE,
+          targetId: step.id,
           runId: run.id,
           stepId: step.id,
         });
+
+        // [P4-C2] SPEND THE APPROVAL. Only on a match — a near miss, a wrong
+        // hash, a grant for another step and the no-grant case all leave every
+        // grant untouched, so a failed match can never burn an approval a person
+        // gave for something else.
+        //
+        // The compare-and-swap inside `consumeApprovalGrant` is what makes this
+        // exactly-once under concurrency: two executions that both matched the
+        // same grant produce one `consumed: true` and one refusal.
+        //
+        // `consumeApprovalGrant` writes the canonical `policy.approval_consumed`
+        // event itself, against the grant. Nothing is re-recorded here — a second
+        // event of the same type would double-count every spend for anyone
+        // querying the audit log by type. The step-side view of the same fact
+        // rides on the shadow record below, which already carries the run, the
+        // step and the grant id.
+        let consumption: ApprovalConsumption | null = null;
+        if (shadow.wouldAuthorize && shadow.grantId) {
+          consumption = await consumeApprovalGrant(userId, shadow.grantId);
+        }
+
         await recordEvent({
           userId,
           type: "policy.approval_shadow_evaluated",
@@ -277,7 +332,14 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
             grantId: shadow.grantId,
             candidatesConsidered: shadow.candidatesConsidered,
             reasons: shadow.reasons,
-            // The two facts that keep this record honest about what it is.
+            // Whether the matched approval was actually spent on this execution,
+            // and why not when it was matched but could not be spent —
+            // ALREADY_CONSUMED, EXPIRED or NOT_FOUND. A grant that was already
+            // spent is the single-use rule working, not an error.
+            grantConsumed: consumption?.consumed ?? false,
+            consumptionRefusal: consumption && !consumption.consumed ? consumption.reason : null,
+            // The two facts that keep this record honest about what it is: the
+            // step ran either way, and the gate did not decide that.
             enforced: false,
             executionContinued: true,
           },

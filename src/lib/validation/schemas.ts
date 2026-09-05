@@ -507,3 +507,22 @@ export const updateNotificationPreferenceSchema = z.object({
   quietHoursEnd: z.number().int().min(0).max(23).nullable().optional(),
   minPriority: notificationPrioritySchema.optional(),
 });
+
+/**
+ * [P4-C2] The ENTIRE body of a human approval.
+ *
+ * One field, deliberately. A caller cannot name the tool, the arguments, the
+ * capability, the required level, the policy decision or the target — all of
+ * those are read from the persisted `AgentStep` and the frozen classification
+ * registry, so an approval can never redefine the action it approves.
+ *
+ * `strictObject` rather than the default strip: an attempt to smuggle
+ * `capability` or `actionId` alongside the hash is a loud 400, not a silently
+ * discarded field.
+ */
+export const approveAgentStepSchema = z.strictObject({
+  /** Lowercase hex SHA-256 — an assertion about WHICH arguments were approved, never a source of them. */
+  argumentsHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/, "Expected a lowercase hex SHA-256 digest."),
+});

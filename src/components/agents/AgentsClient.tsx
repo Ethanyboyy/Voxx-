@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StateIndicator } from "@/components/ui/StateIndicator";
+import { StepApprovalPanel } from "@/components/agents/StepApprovalPanel";
 import { VoxCore, type VoxCoreState } from "@/components/vox/VoxCore";
 import { VoxErrorPanel } from "@/components/vox/VoxErrorPanel";
 import { useEventStream } from "@/lib/events/useEventStream";
@@ -486,6 +487,20 @@ export function AgentsClient({
                         >
                           Grant &amp; resume
                         </Button>
+
+                        {/*
+                          [P4-C2] Two different questions, deliberately kept apart.
+                          "Grant & resume" above answers "may VOX do this KIND of
+                          thing" — a capability. The panel below answers "do I
+                          approve THIS action with THESE arguments" — one
+                          invocation. Collapsing them into one button would let a
+                          capability grant stand in for consent to a specific act.
+                        */}
+                        <StepApprovalPanel
+                          runId={run.id}
+                          stepId={blocked.id}
+                          onRejected={() => void refreshRun(run.id)}
+                        />
                       </div>
                     ) : null}
 

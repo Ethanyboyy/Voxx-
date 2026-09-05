@@ -173,7 +173,13 @@ describe("P4-C1 — the executor NEVER creates an ApprovalGrant", () => {
     // Structural, not behavioural: the executor cannot mint a grant because the
     // function is not in scope. A future edit that adds it fails this test.
     expect(source).not.toContain("createApprovalGrant");
-    expect(source).not.toContain("consumeApprovalGrant");
+
+    // [P4-C2] `consumeApprovalGrant` is no longer on this list, and the two are
+    // not symmetric. MINTING is the executor claiming a human said yes, and must
+    // stay impossible. SPENDING is the executor recording that the invocation a
+    // human already approved has now happened — which is what makes an approval
+    // single-use rather than a standing permission. The asymmetry is the point.
+    expect(source).toContain("consumeApprovalGrant");
   });
 });
 
@@ -241,7 +247,7 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
     expect(await shadowApprovalEvents(user.id)).toEqual([]);
   });
 
-  it("consumes nothing — a shadow evaluation must not spend a human's approval", async () => {
+  it("spends nothing when the arguments differ from the ones approved", async () => {
     const user = await createTestUser();
     await grantPermission(user.id, "research.web", "ANALYZE");
 
@@ -268,12 +274,13 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
     expect(payload.reasons).toContain("ARGUMENTS_CHANGED");
     expect(payload.candidatesConsidered).toBe(1);
 
-    // The grant is untouched: shadow mode reads, it never spends.
+    // The grant is untouched. Only a MATCH spends one, so a person's approval
+    // for one set of arguments cannot be burned by an execution of another.
     const stored = await db.approvalGrant.findUniqueOrThrow({ where: { id: grant.id } });
     expect(stored.consumedAt).toBeNull();
   });
 
-  it("reports wouldAuthorize when a matching grant genuinely exists — and still does not consume it", async () => {
+  it("reports wouldAuthorize when a matching grant genuinely exists, and spends it", async () => {
     const user = await createTestUser();
     await grantPermission(user.id, "research.web", "ANALYZE");
     const { createApprovalGrant } = await import("@/lib/policy/approvals");
@@ -297,9 +304,39 @@ describe("P4-C1 — the approval gate runs in shadow mode", () => {
     expect(payload.wouldAuthorize).toBe(true);
     expect(payload.grantId).toBe(grant.id);
 
-    // Even a MATCHING grant is not spent: consumption belongs to P4-C2, where
-    // it is paired with actually blocking. Spending it here would burn a real
-    // approval on an execution nothing gated.
+    // [P4-C2] A matching grant IS spent. It authorized one invocation, that
+    // invocation happened, and it now authorizes nothing further. Note the
+    // gate still did not decide whether the step ran — consumption and
+    // enforcement are separate, and only the first of them is wired.
+    expect(payload.grantConsumed).toBe(true);
+    const stored = await db.approvalGrant.findUniqueOrThrow({ where: { id: grant.id } });
+    expect(stored.consumedAt).not.toBeNull();
+  });
+
+  it("leaves a non-matching grant untouched — a failed match never burns an approval", async () => {
+    const user = await createTestUser();
+    await grantPermission(user.id, "research.web", "ANALYZE");
+    const { createApprovalGrant } = await import("@/lib/policy/approvals");
+    const grant = await createApprovalGrant({
+      userId: user.id,
+      registry: "tool",
+      actionId: "research.run",
+      parsedArguments: { query: "the approved query" },
+      policyDecision: "HOLD",
+      capability: "research.web",
+      requiredLevel: "ANALYZE",
+    });
+
+    // A DIFFERENT query, so the argument hashes disagree.
+    await startAgentRun({
+      userId: user.id,
+      objective: "Look something else up.",
+      steps: [{ description: "Research.", toolName: "research.run", input: { query: "a different query" } }],
+    });
+
+    const payload = payloadOf((await shadowApprovalEvents(user.id))[0]);
+    expect(payload.wouldAuthorize).toBe(false);
+    expect(payload.grantConsumed).toBe(false);
     const stored = await db.approvalGrant.findUniqueOrThrow({ where: { id: grant.id } });
     expect(stored.consumedAt).toBeNull();
   });

@@ -14,9 +14,16 @@ blocks nothing.
 `externalSystemOfRecord`, and one matrix cell relaxed. **Enforcement is still
 off** — P4-A changed what a verdict *is*, not what happens after one.
 
+**[P4-C2] A human can now approve a specific pending action** — finalized
+arguments, bound by hash, one step, and spent on exactly one invocation (see the
+P4-C2 section). That is the *consent* half of enforcement. The *blocking* half is
+still absent: **enforcement remains off**, and an unapproved `HOLD` still
+executes. Consuming a grant is not enforcing one.
+
 **Vocabulary, used strictly throughout:** *classified* = a static table entry
-exists. *Shadow-evaluated* = a decision was computed and recorded. *Enforced* =
-execution was prevented. **Nothing in VOX is enforced by the gate.**
+exists. *Shadow-evaluated* = a decision was computed and recorded. *Approved* = a
+human consented to one exact invocation. *Enforced* = execution was prevented.
+**Nothing in VOX is enforced by the gate.**
 
 This document describes what was built in P1 (classification metadata) and P2
 (the Policy Gate, shadow-only), and — just as importantly — what was found and
@@ -685,14 +692,168 @@ Today every `HOLD` reports `NO_GRANT`. That is the honest reading, not a bug:
 there is no human approval act in VOX yet, so there is nothing a grant could
 have come from. This measures the refusal surface P4-C2 will have to serve.
 
+## P4-C2 — the human approval act
+
+**Enforcement is still OFF.** An unapproved `HOLD` still executes, exactly as in
+P4-C1. What P4-C2 adds is the thing enforcement was missing: a place where a
+person is shown the exact finalized arguments and consents to *those*.
+
+### The invariant
+
+> An `ApprovalGrant` exists **if and only if** an authorized human explicitly
+> approved the exact finalized arguments represented by the pending action.
+
+Everything below is a consequence of it.
+
+### Why it is a new route, not a flag on resume
+
+Every pre-existing approval-ish route takes **no request body**:
+`POST /api/agents/[id]/approve` and `POST /api/capabilities/runs/[id]/resume` are
+resumes, and `resumeAgentRun()` is four lines that re-enter the executor. A
+resume says *try again*; an approval says *I consent to this action with these
+arguments*. Folding the second into the first would make retrying
+indistinguishable from authorizing, so approval got its own surface:
+
+| Route | Method | Meaning |
+| --- | --- | --- |
+| `/api/agents/[id]/steps/[stepId]/approve` | `GET` | What is pending. Creates nothing. |
+| `/api/agents/[id]/steps/[stepId]/approve` | `POST` | **The approval act.** |
+| `/api/agents/[id]/steps/[stepId]/reject` | `POST` | The explicit *no*. Creates nothing. |
+
+None of these is reachable by *viewing*, *polling*, *resuming*, *retrying*, or
+*starting a run*. Only the `POST` to `approve` creates a grant.
+
+### The client asserts a hash, and only a hash
+
+`approveAgentStepSchema` is one field — `argumentsHash`, a lowercase hex SHA-256
+— and it is a `z.strictObject`, so a body carrying `actionId`, `capability`,
+`requiredLevel`, `policyDecision` or `parsedArguments` is a **400**, not a
+silently stripped field. A caller that could name its own capability could
+approve one thing and authorize another.
+
+Everything the grant records is read server-side from the persisted `AgentStep`
+and the frozen classification registry: the action (`step.toolName` → `getTool`),
+the arguments (`step.input` → `tool.inputSchema.safeParse`), the classification
+(`hashRegisteredClassification`), the capability and required level (the tool's
+own), and the target (the step's id).
+
+**The submitted hash is a claim, not evidence.** It says *"I approve the
+arguments this hash stands for."* The server recomputes the canonical hash from
+`AgentStep.input` — the representation P4-C1 finalized before the pause — and
+refuses on disagreement. That is what makes *the human saw A, the action became
+B* impossible; a test rewrites the step's input between the read and the approval
+and asserts `HASH_MISMATCH` with no grant created.
+
+There is no second hashing algorithm: `hashArguments` from
+`src/lib/policy/canonical.ts`, the same one the executor and `matchesApproval`
+use.
+
+### One resolution, shared by the read and the write
+
+`resolvePendingStep()` in `src/lib/policy/step-approvals.ts` is called by both
+`getPendingStepApproval()` (what a person is shown) and `approveAgentStep()`
+(what the approval is checked against). Two computations could disagree; one
+cannot. It refuses, in order, on: run not owned, step missing, **step not in the
+named run**, step not `WAITING_FOR_PERMISSION`, no tool, unknown action,
+un-parseable input, **arguments not finalized**, arguments not valid for the
+tool.
+
+The `STEP_NOT_IN_RUN` check is load-bearing: without it, anyone who learned a
+step id could approve it by pairing it with a run of their own.
+
+### Approving is not granting
+
+A grant records consent to **one invocation**. It does not confer the capability;
+`checkCapability()` remains the only authority on that. A step can be approved
+and still park for permission — two different questions asked of the same person
+at different moments, and the UI keeps them as two controls rather than one.
+
+### Rejection
+
+`rejectAgentStep()` records `policy.approval_rejected` (reason
+`DECLINED_BY_HUMAN`) and cancels the run through the existing `cancelAgentRun()`.
+It never reaches the grant constructor. It exists so that *declined* and *not yet
+looked at* are different states.
+
+### The audit trail
+
+Three distinct event types, so no one has to infer intent from a state change:
+
+- `policy.approval_approved` — **a human acted**. Carries `stepId`, `grantId`,
+  `actionId`, both hashes, capability and required level. `consequential: true`.
+- `policy.approval_rejected` — a refusal. Either `HASH_MISMATCH` (with both the
+  submitted and canonical hashes) or `DECLINED_BY_HUMAN`.
+- `policy.approval_consumed` — the approval was spent on one invocation. Written
+  by `consumeApprovalGrant` itself, subject-linked to the grant. The executor
+  does **not** re-record it; a second event of the same type would double-count
+  every spend for anyone querying by type.
+- `policy.approval_shadow_evaluated` — what enforcement *would* do, on the run's
+  own timeline. Now also carries `grantConsumed` and `consumptionRefusal`, so the
+  step-side view of a spend is there without a duplicate event.
+
+The approval **request** is the existing `agent.step.waiting_for_permission`
+event, which P4-C1 extended with `stepId`, `argumentsHash` and
+`argumentsFinalized: true`. No new event was added for it — that record already
+says exactly what is pending and against which arguments.
+
+### What changed in the executor
+
+**The step binding.** The shadow evaluation now passes `targetType: "AgentStep"`
+and `targetId: step.id`. Grants minted by the approval act carry a target, and
+`matchesApproval` requires an exact match when a grant has one — so without this,
+every genuine approval would have reported `WRONG_TARGET` and the shadow record
+would have been measuring its own blind spot. An approved step now reports
+`wouldAuthorize: true` and names the grant.
+
+**Consumption.** A matching grant is now spent, exactly once per execution of the
+step, via `consumeApprovalGrant`. That is what makes an approval *single-use*
+rather than a standing permission: the person approved one invocation, this is
+that invocation, and afterwards the grant authorizes nothing. The call sits
+outside the retry loop, so a retried step spends one approval rather than one per
+attempt, and only a **match** spends — a wrong hash, a grant for another step and
+the no-grant case all leave every grant untouched, so a failed match can never
+burn an approval given for something else.
+
+Consumption is **not** enforcement. Spending a grant does not decide whether the
+step runs; an unapproved `HOLD` still executes. The shadow record says both
+things in the same payload: `grantConsumed`, alongside `enforced: false` and
+`executionContinued: true`.
+
+**Minting remains impossible, and the asymmetry is the point.**
+`createApprovalGrant` is not imported into the executor and never will be — a
+grant the executor made would be VOX approving itself. Spending is the opposite
+act: recording that an invocation a human already approved has happened. Three
+tests pin this: two read the executor's own source (constructor absent, consumer
+present), and a third walks all of `src/` asserting
+`src/lib/policy/step-approvals.ts` is the **only** caller of
+`createApprovalGrant(` outside its own definition.
+
+### The UI is not the authorization
+
+`src/components/agents/StepApprovalPanel.tsx` fetches the pending action from
+`GET .../approve` rather than reading the run object beside it, so what is
+rendered is the server's own canonical computation. It shows the finalized
+arguments (never the template), the hash, the action, the capability and the
+policy decision, and submits `{ argumentsHash }` alone.
+
+An attacker who skips the component entirely gains nothing, which is the point of
+putting the check on the server rather than in the button. The HTTP tests call
+the route handlers directly with hand-built `Request`s for exactly that reason.
+
+### No existence oracle
+
+`RUN_NOT_FOUND`, `STEP_NOT_FOUND` and `STEP_NOT_IN_RUN` all surface as one
+public `404 NOT_FOUND` with an identical body (`refusal.ts`). Reported precisely,
+`STEP_NOT_IN_RUN` would confirm that a guessed step id belongs to *someone's*
+run. The precise reason is still recorded server-side.
+
 ### Still missing, and why
 
-**P4-C2 — the human approval act — is not implemented.** There is still no
-endpoint, service or surface where a person is shown finalized arguments and
-asserts consent to *those* arguments. Every existing approval-ish route takes no
-request body: `POST /api/agents/[id]/approve` and
-`POST /api/capabilities/runs/[id]/resume` are resumes, and the latter says so in
-its own docstring. Until that exists, enforcement would be theatre.
+**Nothing blocks.** `evaluatePolicy()` produces `HOLD` for every `ACT` and
+`FINANCIAL` action and for irreversible writes, and all of them still execute.
+Turning that into refusal — and pairing it with consumption — is the next phase.
+Doing it as a side effect of adding an approval button would have converted every
+classified `HOLD` into a hard block without anyone deciding to.
 
 ## [P2.1] Findings still open
 
@@ -701,7 +862,9 @@ security findings below and was not intended to. **P4-A** resolved the financial
 semantics question only — no security finding, and no enforcement. **P4-B** built
 the approval primitive; it resolves nothing until P4-C enforces it. **P4-C1**
 finalized arguments before the permission boundary and wired the approval gate in
-shadow — it resolves no finding either, and enforcement remains off.
+shadow — it resolves no finding either, and enforcement remains off. **P4-C2**
+added the human approval act and its server-side binding; it too resolves no
+finding below, because nothing yet blocks.
 
 **Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
 enforcement), **H-1** (composition → arbitrary code execution), **H-4**
