@@ -3,6 +3,8 @@ import { checkCapability } from "@/lib/permissions/service";
 import { recordEvent } from "@/lib/observability/events";
 import { getTool } from "@/lib/tools/registry";
 import { recordShadowPolicyEvaluation, withPolicyBoundary } from "@/lib/policy/gate";
+import { evaluateApprovalForExecution, hashArguments, hashRegisteredClassification } from "@/lib/policy/approvals";
+import { logger } from "@/lib/observability/logger";
 import type { ToolExecutionContext } from "@/lib/tools/types";
 import { hasStepReference, resolveStepReferences } from "@/lib/agents/references";
 import type { AgentRun, AgentStep } from "@/generated/prisma/client";
@@ -96,24 +98,24 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       );
     }
 
-    const check = await checkCapability(userId, tool.capability, tool.requiredLevel);
-    if (!check.allowed) {
-      await db.agentStep.update({ where: { id: step.id }, data: { status: "WAITING_FOR_PERMISSION", capability: tool.capability, requiredLevel: tool.requiredLevel } });
-      const waiting = await db.agentRun.update({
-        where: { id: run.id },
-        data: { status: "WAITING_FOR_PERMISSION", currentStep: step.order },
-        include: { steps: { orderBy: { order: "asc" } } },
-      });
-      await recordEvent({
-        userId,
-        type: "agent.step.waiting_for_permission",
-        subjectType: "AgentRun",
-        subjectId: run.id,
-        payload: { step: step.order, tool: tool.name, capability: tool.capability, requiredLevel: tool.requiredLevel },
-      });
-      return waiting;
-    }
-
+    // ---- [P4-C1] FINALIZE THE ARGUMENTS BEFORE THE PERMISSION BOUNDARY ----
+    //
+    // This block used to sit BELOW `checkCapability()`, and that ordering was a
+    // real defect. A step parked at WAITING_FOR_PERMISSION still held its
+    // authored template — `{{step0.output}}` — in `step.input`, so what a human
+    // was shown while deciding was not what would eventually run. References
+    // resolved later, at execution time, against state that may have moved.
+    //
+    // Resolving first makes the arguments FINAL before anyone is asked about
+    // them, and persisting them makes that finalization authoritative: on
+    // resume, `hasStepReference()` is false, resolution is a no-op, and the
+    // executor cannot re-resolve the same logical step into different values.
+    //
+    // One consequence is deliberate. A step whose input is malformed or whose
+    // references cannot resolve now FAILS instead of parking for a permission.
+    // That is the honest outcome — no grant of any capability could make such a
+    // step runnable, so parking it invited a person to authorize something that
+    // was never going to happen.
     let input: unknown;
     try {
       input = step.input ? JSON.parse(step.input) : {};
@@ -149,6 +151,51 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       return await failRun(userId, run.id, step.id, `Invalid input for tool "${tool.name}": ${parsedInput.error.message}`);
     }
 
+    // The finalized arguments, written down before anything is asked of a human.
+    // `parsedInput.data` rather than `input` is what gets hashed below, because
+    // it is what `tool.execute()` actually receives — zod may strip unknown keys
+    // and apply defaults, and a hash of the pre-parse shape would bind something
+    // subtly different from what runs.
+    if (resolvedInputJson) {
+      await db.agentStep.update({ where: { id: step.id }, data: { input: resolvedInputJson } });
+    }
+    const argumentsHash = hashArguments(parsedInput.data);
+
+    const check = await checkCapability(userId, tool.capability, tool.requiredLevel);
+    if (!check.allowed) {
+      await db.agentStep.update({ where: { id: step.id }, data: { status: "WAITING_FOR_PERMISSION", capability: tool.capability, requiredLevel: tool.requiredLevel } });
+      const waiting = await db.agentRun.update({
+        where: { id: run.id },
+        data: { status: "WAITING_FOR_PERMISSION", currentStep: step.order },
+        include: { steps: { orderBy: { order: "asc" } } },
+      });
+      // [P4-C1] The pending approval REQUEST — deliberately NOT an ApprovalGrant.
+      //
+      // A grant means a human said yes. The executor reaching a boundary is not
+      // a human saying anything, so the executor must never mint one; if it
+      // could, the grant would be VOX approving itself and the whole
+      // argument-binding apparatus would be authorizing its own output. So this
+      // records the request instead, carrying the three things P4-C2's approval
+      // endpoint needs to verify consent against something real: the step's
+      // stable identity and the hash of the now-final arguments.
+      await recordEvent({
+        userId,
+        type: "agent.step.waiting_for_permission",
+        subjectType: "AgentRun",
+        subjectId: run.id,
+        payload: {
+          step: step.order,
+          stepId: step.id,
+          tool: tool.name,
+          capability: tool.capability,
+          requiredLevel: tool.requiredLevel,
+          argumentsHash,
+          argumentsFinalized: true,
+        },
+      });
+      return waiting;
+    }
+
     await db.agentStep.update({
       where: { id: step.id },
       data: {
@@ -156,7 +203,6 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
         startedAt: new Date(),
         capability: tool.capability,
         requiredLevel: tool.requiredLevel,
-        ...(resolvedInputJson ? { input: resolvedInputJson } : {}),
       },
     });
 
@@ -181,6 +227,70 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       subjectType: "AgentRun",
       subjectId: run.id,
     });
+
+    // ---- [P4-C1] THE APPROVAL GATE, IN SHADOW MODE ----
+    //
+    // Runs the REAL matching semantics against the user's REAL live grants and
+    // records what enforcement would have done. It does not block, and it does
+    // not consume: spending a human's approval on an execution that is not
+    // actually being gated by it would destroy the one thing P4-C2 needs intact.
+    //
+    // Today every HOLD action reports NO_GRANT, and that is the honest reading
+    // rather than a bug — there is no human approval act in VOX yet, so there is
+    // nothing for a grant to have come from. This measures the refusal surface
+    // that P4-C2's endpoint will have to serve before anything starts blocking.
+    //
+    // Never throws. A gate that can break the thing it observes is not a safety
+    // feature; the classification lookup, the match and the event write are all
+    // inside the catch.
+    try {
+      const classified = hashRegisteredClassification("tool", tool.name);
+      // Only actions the policy would hold or refuse need an approval at all.
+      // An ALLOW needs none, so evaluating one would manufacture a refusal for
+      // ordinary work and drown the signal this phase exists to collect.
+      if (classified && classified.snapshot.decision !== "ALLOW") {
+        const shadow = await evaluateApprovalForExecution({
+          userId,
+          registry: "tool",
+          actionId: tool.name,
+          argumentsHash,
+          classificationHash: classified.hash,
+          capability: tool.capability,
+          requiredLevel: tool.requiredLevel,
+          runId: run.id,
+          stepId: step.id,
+        });
+        await recordEvent({
+          userId,
+          type: "policy.approval_shadow_evaluated",
+          subjectType: "AgentRun",
+          subjectId: run.id,
+          consequential: false,
+          payload: {
+            stepId: step.id,
+            actionId: tool.name,
+            registry: "tool",
+            policyDecision: classified.snapshot.decision,
+            argumentsHash,
+            classificationHash: classified.hash,
+            wouldAuthorize: shadow.wouldAuthorize,
+            grantId: shadow.grantId,
+            candidatesConsidered: shadow.candidatesConsidered,
+            reasons: shadow.reasons,
+            // The two facts that keep this record honest about what it is.
+            enforced: false,
+            executionContinued: true,
+          },
+        });
+      }
+    } catch (error) {
+      logger.error("policy.approval_shadow_failed", {
+        runId: run.id,
+        stepId: step.id,
+        tool: tool.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     let lastError: string | null = null;
     let succeeded = false;

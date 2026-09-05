@@ -375,6 +375,70 @@ export async function consumeApprovalGrant(
   return { consumed: true, grant };
 }
 
+export interface ApprovalShadowInput extends ApprovalMatchInput {
+  /** Descriptive-only, for the audit record. */
+  runId?: string;
+  stepId?: string;
+}
+
+export interface ApprovalShadowResult {
+  /** Whether a live grant authorizes this exact execution. */
+  wouldAuthorize: boolean;
+  /** The grant that matched, if one did. */
+  grantId: string | null;
+  /** How many live grants for this action were considered. */
+  candidatesConsidered: number;
+  /**
+   * Why authorization failed. `NO_GRANT` when the user holds none for this
+   * action at all; otherwise the mismatch reasons of the closest candidate.
+   */
+  reasons: (ApprovalMismatchReason | "NO_GRANT")[];
+}
+
+/**
+ * [P4-C1] What enforcement WOULD do, without doing any of it.
+ *
+ * Runs the real matching semantics against the user's real live grants, and
+ * **deliberately does not consume anything**. Consuming here would spend a
+ * human's approval on an execution that is not being gated by it, which would
+ * destroy the very thing P4-C2 needs intact.
+ *
+ * So this reads and compares. It is the observation half of the gate; the
+ * enforcing half — consume-then-execute — is P4-C2's, and until a human
+ * approval act exists there is nothing honest for it to enforce against.
+ */
+export async function evaluateApprovalForExecution(input: ApprovalShadowInput): Promise<ApprovalShadowResult> {
+  const now = input.now ?? new Date();
+  const candidates = await db.approvalGrant.findMany({
+    where: {
+      userId: input.userId,
+      registry: input.registry,
+      actionId: input.actionId,
+      consumedAt: null,
+      expiresAt: { gt: now },
+    },
+    orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+  });
+
+  let closest: ApprovalMismatchReason[] | null = null;
+  for (const grant of candidates) {
+    const result = matchesApproval(grant, { ...input, now });
+    if (result.matches) {
+      return { wouldAuthorize: true, grantId: grant.id, candidatesConsidered: candidates.length, reasons: [] };
+    }
+    // Fewest mismatches = the nearest miss, which is the most useful thing to
+    // report to whoever is reading why an approval did not apply.
+    if (closest === null || result.reasons.length < closest.length) closest = result.reasons;
+  }
+
+  return {
+    wouldAuthorize: false,
+    grantId: null,
+    candidatesConsidered: candidates.length,
+    reasons: closest ?? ["NO_GRANT"],
+  };
+}
+
 /**
  * A user's live grants — unconsumed and unexpired.
  *

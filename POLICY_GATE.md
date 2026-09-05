@@ -623,12 +623,85 @@ which is executor control flow — **P4-C**. So P4-B ships the complete, tested
 primitive and stops, rather than hacking a creation call into a pause that cannot
 yet supply what a grant needs.
 
+## P4-C1 — argument finalization, and the approval gate in shadow
+
+**Enforcement is still OFF.** Nothing blocks. What changed is *when* arguments
+become final, and that the approval gate now runs for real without acting.
+
+### The defect this closes
+
+The executor reached `checkCapability()` — the pause — **before** resolving
+`{{stepN.output}}` references. So a step parked at `WAITING_FOR_PERMISSION` still
+held its authored *template*, and references resolved later, at execution time,
+against state that may have moved. What a person saw while deciding was not what
+would run.
+
+The lifecycle is now:
+
+```
+parse → resolve references → safeParse → PERSIST finalized input → checkCapability → park
+```
+
+Persisting is what makes it stick. On resume `hasStepReference()` is false,
+resolution is a no-op, and the executor **cannot** re-resolve the same logical
+step into different values. A test mutates the upstream step's output after
+parking and asserts the finalized arguments are unchanged.
+
+One consequence is deliberate: a step whose input is malformed or whose
+references cannot resolve now **fails** instead of parking. No grant of any
+capability could make such a step runnable, so parking it invited a person to
+authorize something that was never going to happen.
+
+### The executor may never mint a grant
+
+This is the invariant P4-C1 exists to protect, and it is why full P4-C was not
+implemented. A grant means *a human said yes*. If the executor could create one
+on reaching a boundary, the grant would be VOX approving itself, and the entire
+argument-binding apparatus would be authorizing its own output — enforcement
+that looks real and checks nothing.
+
+So the boundary records a **pending request**, not a grant: the existing
+`agent.step.waiting_for_permission` event, extended with `stepId` and the
+`argumentsHash` of the now-final arguments. Those are the two things P4-C2's
+approval endpoint needs to verify consent against something real.
+
+`createApprovalGrant` and `consumeApprovalGrant` have **no production callers**.
+A test reads the executor's own source and asserts neither name appears in it,
+so a future edit that adds one fails.
+
+### The gate, in shadow
+
+Before execution, for any action the policy would `HOLD` or `DENY`, the executor
+runs the real matching semantics (`evaluateApprovalForExecution`) against the
+user's real live grants and records `policy.approval_shadow_evaluated` with
+`wouldAuthorize`, the mismatch reasons, and `enforced: false`.
+
+**It does not consume, even on a match.** Spending a human's approval on an
+execution nothing is gating would destroy the one thing P4-C2 needs intact.
+`ALLOW` actions are skipped entirely — manufacturing refusals for ordinary work
+would drown the signal this phase exists to collect.
+
+Today every `HOLD` reports `NO_GRANT`. That is the honest reading, not a bug:
+there is no human approval act in VOX yet, so there is nothing a grant could
+have come from. This measures the refusal surface P4-C2 will have to serve.
+
+### Still missing, and why
+
+**P4-C2 — the human approval act — is not implemented.** There is still no
+endpoint, service or surface where a person is shown finalized arguments and
+asserts consent to *those* arguments. Every existing approval-ish route takes no
+request body: `POST /api/agents/[id]/approve` and
+`POST /api/capabilities/runs/[id]/resume` are resumes, and the latter says so in
+its own docstring. Until that exists, enforcement would be theatre.
+
 ## [P2.1] Findings still open
 
 Corrected in P2.1: **A-1**, **A-2**, **A-3**, **A-5**. P3 resolved none of the
 security findings below and was not intended to. **P4-A** resolved the financial
 semantics question only — no security finding, and no enforcement. **P4-B** built
-the approval primitive; it resolves nothing until P4-C enforces it.
+the approval primitive; it resolves nothing until P4-C enforces it. **P4-C1**
+finalized arguments before the permission boundary and wired the approval gate in
+shadow — it resolves no finding either, and enforcement remains off.
 
 **Not fixed, none of them:** **C-1** (taint), **C-2** (no blast-radius
 enforcement), **H-1** (composition → arbitrary code execution), **H-4**
