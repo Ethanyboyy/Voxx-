@@ -65,82 +65,88 @@ enum AutonomyMode {
 }
 
 model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  passwordHash String
-  name         String?
+  id                    String       @id @default(uuid())
+  email                 String       @unique
+  passwordHash          String
+  name                  String?
   /// Global default for how the Supervisor is allowed to authorize new
   /// agents it creates — never grants more than Permission/capability would.
-  autonomyMode AutonomyMode @default(AUTONOMOUS_APPROVAL_GATES)
+  autonomyMode          AutonomyMode @default(AUTONOMOUS_APPROVAL_GATES)
   /// The economic decision/control layer's spending ceiling: the maximum
   /// amountUsd the economic.record_expense tool may execute WITHOUT the
   /// step still separately pausing for approval — see
   /// src/lib/economic/policy.ts#evaluateSpendPolicy(). Defaults to 0 (no
   /// autonomous spend at all) — this is a decision layer only; it is never
   /// wired to a real payment method in this milestone.
-  maxAutonomousSpendUsd Float @default(0)
+  maxAutonomousSpendUsd Float        @default(0)
   /// GLOBAL ECONOMIC HALT. When set, no economic execution may begin and no
   /// autonomous spend may occur, full stop. Enforced in service code —
   /// evaluateSpendPolicy() denies, recordOpportunitySpend() throws, and
   /// runEconomicTick() records a HALTED tick without evaluating anything — so
   /// hiding the UI control would not re-enable spending. Null means running.
-  economicHaltedAt   DateTime?
-  economicHaltReason String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  economicHaltedAt      DateTime?
+  economicHaltReason    String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  sessions        Session[]
-  conversations   Conversation[]
-  memories        Memory[]
-  memoryRelations MemoryRelation[]
-  observations    Observation[]
-  hypotheses      Hypothesis[]
-  patterns        Pattern[]
-  goals           Goal[]
-  projects        Project[]
-  tasks           Task[]
-  decisions       Decision[]
-  ideas           Idea[]
-  experiments     Experiment[]
-  researchItems   ResearchItem[]
-  knowledgeNodes  KnowledgeNode[]
-  knowledgeEdges  KnowledgeConnection[]
-  permissions     Permission[]
-  connections     Connection[]
-  events          Event[]
-  proposals       Proposal[]
-  agentRuns             AgentRun[]
-  agents                Agent[]
-  notifications         Notification[]
+  sessions               Session[]
+  conversations          Conversation[]
+  memories               Memory[]
+  memoryRelations        MemoryRelation[]
+  observations           Observation[]
+  hypotheses             Hypothesis[]
+  patterns               Pattern[]
+  goals                  Goal[]
+  projects               Project[]
+  tasks                  Task[]
+  decisions              Decision[]
+  ideas                  Idea[]
+  experiments            Experiment[]
+  researchItems          ResearchItem[]
+  knowledgeNodes         KnowledgeNode[]
+  knowledgeEdges         KnowledgeConnection[]
+  permissions            Permission[]
+  connections            Connection[]
+  events                 Event[]
+  proposals              Proposal[]
+  agentRuns              AgentRun[]
+  agents                 Agent[]
+  notifications          Notification[]
   notificationPreference NotificationPreference?
-  objectives            Objective[]
-  opportunities         Opportunity[]
-  economicAssets        EconomicAsset[]
-  brainGroups           BrainGroup[]
-  brainViews            BrainView[]
-  supervisorRuns        SupervisorRun[]
-  outcomes              Outcome[]
-  economicTicks         EconomicTick[]
+  objectives             Objective[]
+  opportunities          Opportunity[]
+  economicAssets         EconomicAsset[]
+  brainGroups            BrainGroup[]
+  brainViews             BrainView[]
+  supervisorRuns         SupervisorRun[]
+  outcomes               Outcome[]
+  economicTicks          EconomicTick[]
 
-  labProjects         LabProject[]
-  labSuits            LabSuit[]
-  labGadgets          LabGadget[]
-  labWebProfiles      LabWebProfile[]
-  labSimulations      LabSimulation[]
-  labScenarios        LabScenario[]
-  labExperiments      LabExperiment[]
-  labTrainingSessions LabTrainingSession[]
-  labTutorialProgress LabTutorialProgress[]
-  labDesignNotes      LabDesignNote[]
-  labResearchItems    LabResearchItem[]
-  labRequirements     LabRequirement[]
+  // [P4-F] Volara runtime.
+  agentStateTransitions AgentStateTransition[]
+  agentMessages         AgentMessage[]
+  strategies            Strategy[]
+  capitalAllocations    CapitalAllocation[]
+
+  labProjects             LabProject[]
+  labSuits                LabSuit[]
+  labGadgets              LabGadget[]
+  labWebProfiles          LabWebProfile[]
+  labSimulations          LabSimulation[]
+  labScenarios            LabScenario[]
+  labExperiments          LabExperiment[]
+  labTrainingSessions     LabTrainingSession[]
+  labTutorialProgress     LabTutorialProgress[]
+  labDesignNotes          LabDesignNote[]
+  labResearchItems        LabResearchItem[]
+  labRequirements         LabRequirement[]
   labEngineeringQuestions LabEngineeringQuestion[]
-  labDecisions        LabDecision[]
-  labResearchLinks    LabResearchLink[]
+  labDecisions            LabDecision[]
+  labResearchLinks        LabResearchLink[]
 
-  artifacts           Artifact[]
-  capabilityRuns      CapabilityRun[]
-  approvalGrants      ApprovalGrant[]
+  artifacts      Artifact[]
+  capabilityRuns CapabilityRun[]
+  approvalGrants ApprovalGrant[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -454,17 +460,17 @@ enum TaskDifficulty {
 }
 
 model Task {
-  id          String       @id @default(uuid())
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId   String?
-  title       String
-  description String?
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  dueDate     DateTime?
-  completedAt DateTime?
+  id               String          @id @default(uuid())
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId        String?
+  title            String
+  description      String?
+  status           TaskStatus      @default(TODO)
+  priority         TaskPriority    @default(MEDIUM)
+  dueDate          DateTime?
+  completedAt      DateTime?
   // All four below are optional and unset (null) until the user provides
   // them — never inferred or defaulted to a fabricated value. The Brain's
   // task-neuron detail panel shows "not set" rather than guessing.
@@ -472,8 +478,8 @@ model Task {
   estimatedMinutes Int?
   pros             String? // JSON string[]
   cons             String? // JSON string[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   knowledgeNode KnowledgeNode?
 }
@@ -611,8 +617,8 @@ model Experiment {
 
   /// The Opportunity this experiment tests. This is the Opportunity ->
   /// Objective -> Experiment chain, not a new one.
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  opportunityId String?
+  opportunity     Opportunity?   @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId   String?
   /// Where this experiment's real money lands. P&L for an experiment is read
   /// from this asset's own EconomicRevenue/EconomicExpense rows — there is no
   /// separate experiment ledger.
@@ -620,24 +626,24 @@ model Experiment {
   economicAssetId String?
 
   /// Capital the experiment needs deployed to run at all.
-  requiredCapitalUsd Float?
+  requiredCapitalUsd   Float?
   /// HARD CONSTRAINT. Net loss at which the experiment is killed, no
   /// exceptions and no override — see decide.ts. Must be > 0 to be executable.
-  maxLossUsd         Float?
+  maxLossUsd           Float?
   /// Human-readable statement of what success means.
-  successMetric      String?
+  successMetric        String?
   /// Human-readable statement of what failure means.
-  failureMetric      String?
+  failureMetric        String?
   /// HARD CONSTRAINT. The date by which the contract must have proven itself.
-  deadlineAt         DateTime?
-  scaleCriteria      String?
+  deadlineAt           DateTime?
+  scaleCriteria        String?
   /// Net profit (USD, this experiment's own ledger) at or above which the
   /// decision layer returns SCALE.
-  scaleAtNetUsd      Float?
-  killCriteria       String?
+  scaleAtNetUsd        Float?
+  killCriteria         String?
   /// Net (USD) at or below which the decision layer returns KILL. Typically
   /// negative. Independent of maxLossUsd — either firing is sufficient.
-  killAtNetUsd       Float?
+  killAtNetUsd         Float?
   /// PROJECTED, never realized. Kept structurally apart from the ledger so it
   /// can never be summed into profit — see pnl.ts.
   expectedReturnUsd    Float?
@@ -647,8 +653,8 @@ model Experiment {
   /// to execute. Informational and required-for-readiness — never auto-granted.
   requiredCapabilities String?
 
-  executionStatus ExperimentExecutionStatus @default(DRAFT)
-  outcome         ExperimentOutcome         @default(PENDING)
+  executionStatus    ExperimentExecutionStatus @default(DRAFT)
+  outcome            ExperimentOutcome         @default(PENDING)
   /// The last deterministic decision and the single constraint that produced
   /// it, so the audit trail survives even if the Event log is pruned.
   lastDecision       String?
@@ -673,16 +679,16 @@ model ExperimentResult {
 // ---------------------------------------------------------------------------
 
 model ResearchItem {
-  id          String     @id @default(uuid())
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  query       String
-  provider    String
-  title       String?
-  sourceUrl   String?
-  summary     String?
-  relevance   Float?
-  confidence  Confidence @default(MEDIUM)
+  id            String       @id @default(uuid())
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  query         String
+  provider      String
+  title         String?
+  sourceUrl     String?
+  summary       String?
+  relevance     Float?
+  confidence    Confidence   @default(MEDIUM)
   /// Set when this research was run in the context of a specific Opportunity
   /// (e.g. from the Brain workspace) — null for general/unscoped research.
   opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
@@ -692,11 +698,11 @@ model ResearchItem {
   /// merely-recent history. Null for unscoped research.
   objective     Objective?   @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
   objectiveId   String?
-  retrievedAt DateTime   @default(now())
-  createdAt   DateTime   @default(now())
+  retrievedAt   DateTime     @default(now())
+  createdAt     DateTime     @default(now())
 
-  memorySources MemorySource[]
-  knowledgeNode KnowledgeNode?
+  memorySources    MemorySource[]
+  knowledgeNode    KnowledgeNode?
   labResearchLinks LabResearchLink[]
 }
 
@@ -731,28 +737,28 @@ model KnowledgeNode {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  memoryId       String?       @unique
-  memory         Memory?       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
-  projectId      String?       @unique
-  project        Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  goalId         String?       @unique
-  goal           Goal?         @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  taskId         String?       @unique
-  task           Task?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  decisionId     String?       @unique
-  decision       Decision?     @relation(fields: [decisionId], references: [id], onDelete: Cascade)
-  ideaId         String?       @unique
-  idea           Idea?         @relation(fields: [ideaId], references: [id], onDelete: Cascade)
-  experimentId   String?       @unique
-  experiment     Experiment?   @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  researchItemId String?       @unique
-  researchItem   ResearchItem? @relation(fields: [researchItemId], references: [id], onDelete: Cascade)
+  memoryId        String?        @unique
+  memory          Memory?        @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  projectId       String?        @unique
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  goalId          String?        @unique
+  goal            Goal?          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  taskId          String?        @unique
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  decisionId      String?        @unique
+  decision        Decision?      @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  ideaId          String?        @unique
+  idea            Idea?          @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  experimentId    String?        @unique
+  experiment      Experiment?    @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  researchItemId  String?        @unique
+  researchItem    ResearchItem?  @relation(fields: [researchItemId], references: [id], onDelete: Cascade)
   /// Objectives are the entry point of the autonomous loop, so they are what
   /// autonomously-created graph edges hang off: when a supervised run
   /// finishes, its objective and the EXPERIENCE memory recording the result
   /// are linked here (src/lib/supervisor/service.ts#linkOutcomeIntoGraph).
-  objectiveId    String?       @unique
-  objective      Objective?    @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  objectiveId     String?        @unique
+  objective       Objective?     @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
   /// Lab work is a first-class source of knowledge, not a separate app: a
   /// completed experiment or simulation run links its recorded result into
   /// the same graph the supervisor writes to, so what the Lab measured is
@@ -1041,31 +1047,482 @@ model Agent {
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
+  // ==========================================================================
+  // [P4-F] VOLARA RUNTIME IDENTITY
+  //
+  // These extend the EXISTING agent identity rather than introducing a parallel
+  // "runtime agent" entity: an Agent already is the persistent thing that has a
+  // name, instructions and a capability allowlist, so the state it is in belongs
+  // on the same row. Every field is nullable or inertly defaulted, so agents
+  // created before P4-F behave exactly as they did.
+  //
+  // NOTHING HERE IS AUTHORIZATION. `allowedCapabilities` remains the only
+  // capability surface, and it is a restriction layered on top of the user's
+  // Permission rows, never a source of privilege. No code under src/lib/volara/
+  // writes `allowedCapabilities`, `allowedTools`, `autonomyMode` or
+  // `maxRequestCents` — see VOLARA_RUNTIME.md §7 and tests/volara-authority.test.ts.
+  //
+  // NO ECONOMIC TOTALS LIVE HERE. Capital, revenue, expenses, profit, ROI, win
+  // rate, exposure and cycle time are DERIVED at read time from the authoritative
+  // ledger (src/lib/volara/metrics.ts). A denormalized balance column would be a
+  // second source of financial truth, and the P4-F brief forbids competing
+  // balances for exactly the reason the pre-cents ledger drifted.
+  // ==========================================================================
+
+  /// Behavioural role in the Volara society. A role is what an agent DOES,
+  /// never what it is allowed to do: two agents with different roles and the
+  /// same `allowedCapabilities` can perform exactly the same actions.
+  role                AgentRole?
+  /// JSON object of identity/personality configuration (tone, focus, stated
+  /// biases). Read only when composing an agent's own reasoning inputs — never
+  /// by anything that decides, classifies, authorizes or accounts.
+  persona             String?
+  runtimeState        AgentRuntimeState @default(IDLE)
+  /// Health as the runtime observes it, not as the agent reports it.
+  health              AgentHealth       @default(UNKNOWN)
+  /// Whether this agent's cycle is scheduled and how much initiative its
+  /// propose stage takes. NO mode removes an approval requirement — autonomy
+  /// and authority are separate axes (VOLARA_RUNTIME.md §11).
+  autonomyMode        AutonomyMode      @default(SUPERVISED)
+  /// Optional JSON string[] further restricting which TOOL names this agent's
+  /// runs may use, below what its capabilities already allow. Null means no
+  /// extra restriction (the pre-P4-F behaviour); a list restricts to exactly
+  /// those tools. Finer-grained than `allowedCapabilities`, never wider.
+  allowedTools        String?
+  /// What this agent is currently working towards, as real foreign keys rather
+  /// than prose — so the observer can show why without parsing text.
+  currentObjective    Objective?        @relation("AgentCurrentObjective", fields: [currentObjectiveId], references: [id], onDelete: SetNull)
+  currentObjectiveId  String?
+  /// The AgentRun this agent is currently driving, if any. Deliberately a
+  /// plain id and not a relation: AgentRun already points at Agent, and a
+  /// second relation in the other direction would need a disambiguating name
+  /// for no gain.
+  currentRunId        String?
+  /// The loop stage now executing, e.g. "observe" / "analyze" / "authorize".
+  currentStage        String?
+  /// The agent's own stated confidence in its current line of work, 0-1, or
+  /// null when it has no basis for one. Never used by the governor, the policy
+  /// gate or any accounting — a self-reported number must not move money.
+  confidence          Float?
+  /// Last time the runtime completed a stage for this agent. Real liveness,
+  /// written only by the loop — not a decorative pulse.
+  heartbeatAt         DateTime?
+  lastActivityAt      DateTime?
+  /// Earliest time this agent should be scheduled again. Backoff after a
+  /// failure sets it; the scheduler honours it.
+  nextWakeAt          DateTime?
+  cycleCount          Int               @default(0)
+  /// Reset to 0 on any successful cycle. At MAX_CONSECUTIVE_FAILURES the agent
+  /// suspends itself and stops being scheduled until a human resumes it.
+  consecutiveFailures Int               @default(0)
+  failureCount        Int               @default(0)
+  suspendedAt         DateTime?
+  suspendedReason     String?
+  /// Compare-and-swap lease over a single cycle. A second concurrent cycle for
+  /// the same agent loses the CAS and does nothing — this is what makes a
+  /// double-fired heartbeat harmless rather than a double execution.
+  leaseId             String?
+  leaseExpiresAt      DateTime?
+  /// The largest capital request, in cents, this agent may put to a human in
+  /// one allocation. Zero — the honest default — means it may request none.
+  /// Only a human raises it.
+  maxRequestCents     Int               @default(0)
+
   runs           AgentRun[]
   supervisorRuns SupervisorRun[]
+
+  stateTransitions        AgentStateTransition[]
+  sentMessages            AgentMessage[]         @relation("AgentMessageFrom")
+  receivedMessages        AgentMessage[]         @relation("AgentMessageTo")
+  capitalAllocations      CapitalAllocation[]
+  ownedStrategies         Strategy[]             @relation("StrategyOwner")
+  discoveredOpportunities Opportunity[]          @relation("OpportunityDiscoveredByAgent")
+
+  @@index([userId, runtimeState])
+  @@index([userId, role])
+}
+
+/// [P4-F] What an agent DOES in the Volara society.
+///
+/// Deliberately NOT a permission. The five seeded Volara agents differ in role
+/// and in nothing else that matters to authorization; a SCOUT and an OPERATOR
+/// with identical `allowedCapabilities` can perform identical actions. Roles
+/// are seeded configuration (src/lib/volara/roster.ts), not hardcoded prompts.
+enum AgentRole {
+  /// Surfaces unexamined rows in the shared Opportunity Ledger.
+  SCOUT
+  /// Challenges recorded economics that are incomplete or self-inconsistent.
+  /// Never fills a missing number in — an unknown stays unknown.
+  ANALYST
+  /// Drafts Strategy rows. A draft is a proposal; only a human activates one.
+  STRATEGIST
+  /// Requests capital for opportunities an ACTIVE strategy admits.
+  OPERATOR
+  /// Re-derives treasury conservation and allocation legality and reports what
+  /// does not reconcile.
+  AUDITOR
+}
+
+/// [P4-F] The agent lifecycle, as an explicit machine rather than an implied
+/// one. Legal transitions live in src/lib/volara/state.ts and every actual
+/// transition writes an AgentStateTransition row — a status column alone can
+/// say where an agent is but not that it got there legally.
+enum AgentRuntimeState {
+  IDLE
+  THINKING
+  RESEARCHING
+  EVALUATING
+  PROPOSING
+  /// The agent produced something consequential and handed it to the EXISTING
+  /// approval path. It is waiting on a HUMAN, not on itself.
+  WAITING_FOR_AUTHORIZATION
+  EXECUTING
+  REPORTING
+  LEARNING
+  /// Stopped by a human, reversibly.
+  PAUSED
+  /// A cycle threw. Contained to this agent — see runSociety().
+  FAILED
+  /// Stopped by the runtime after repeated failure or a refused escalation.
+  /// No cycle may leave this state; only a human resume can.
+  SUSPENDED
+}
+
+/// [P4-F] Health as the RUNTIME observes it, from heartbeats and failure
+/// counters — never from anything an agent says about itself.
+enum AgentHealth {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  STALLED
+  UNHEALTHY
+}
+
+/// [P4-F] One recorded lifecycle transition. Append-only in practice: nothing
+/// in the codebase updates or deletes these rows, which is what makes the
+/// lifecycle auditable rather than merely current.
+model AgentStateTransition {
+  id            String            @id @default(uuid())
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  agent         Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId       String
+  fromState     AgentRuntimeState
+  toState       AgentRuntimeState
+  /// A short machine code (e.g. "CYCLE_START", "CAPITAL_REQUESTED",
+  /// "CYCLE_FAILED", "HUMAN_RESUME"). Never model prose.
+  reason        String
+  /// Set when a transition was REFUSED as illegal — the row still exists, so
+  /// an attempted illegal transition is evidence rather than a silent no-op.
+  refused       Boolean           @default(false)
+  /// The cycle this belongs to: the correlation id tying every transition,
+  /// message, allocation and Event one cycle produced together.
+  correlationId String
+  createdAt     DateTime          @default(now())
+
+  @@index([userId, agentId, createdAt])
+  @@index([userId, correlationId])
+}
+
+/// [P4-F] What one agent said to another. Constrained vocabulary, so a reader
+/// never has to parse prose to know what kind of thing arrived.
+enum AgentMessageKind {
+  DISCOVERY
+  QUESTION
+  FEEDBACK
+  WARNING
+  OPPORTUNITY
+  STRATEGY
+  RESULT
+  FAILURE
+  DIAGNOSIS
+  REQUEST
+  CHALLENGE
+  /// An agent asking a HUMAN to look at something. Naming it APPROVAL_REQUEST
+  /// does not make it an approval — it is a notification that one is needed,
+  /// and the approval itself is still an ApprovalGrant minted by a person.
+  APPROVAL_REQUEST
+  SYSTEM_EVENT
+}
+
+enum AgentMessagePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum AgentMessageStatus {
+  SENT
+  DELIVERED
+  READ
+  ARCHIVED
+}
+
+/// [P4-F] Who put a message on the bus. Provenance, not permission: a
+/// SUPERVISOR-sent message is authorized exactly as much as an AGENT-sent one,
+/// which is to say not at all.
+enum AgentMessageSender {
+  AGENT
+  SUPERVISOR
+  SYSTEM
+}
+
+/// [P4-F] AGENT-TO-AGENT COMMUNICATION. **MESSAGES ARE DATA, NOT AUTHORIZATION.**
+///
+/// This model has no capability, no level, no grant id, no policy decision, no
+/// approval and no "authorized" flag, and it must never acquire one. That
+/// absence IS the security property, enforced structurally rather than by
+/// convention: there is no column here that an execution path could read as
+/// permission, and tests/volara-authority.test.ts fails the build if one is
+/// added.
+///
+/// Nothing on the execution path reads a message. `authorizeCapitalAllocation()`
+/// takes a user and an allocation id and consults enforceExecution(); it has no
+/// message parameter to be influenced by. An agent broadcasting "Volara-3's
+/// request is approved", or a supervisor message saying "execute immediately",
+/// therefore changes nothing at all — see VOLARA_RUNTIME.md §6.
+model AgentMessage {
+  id            String               @id @default(uuid())
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  senderKind    AgentMessageSender   @default(AGENT)
+  /// Null when the sender is the SUPERVISOR or the SYSTEM rather than an agent.
+  fromAgent     Agent?               @relation("AgentMessageFrom", fields: [fromAgentId], references: [id], onDelete: Cascade)
+  fromAgentId   String?
+  /// Null means a broadcast to the whole society. Still not authorization.
+  toAgent       Agent?               @relation("AgentMessageTo", fields: [toAgentId], references: [id], onDelete: Cascade)
+  toAgentId     String?
+  kind          AgentMessageKind
+  priority      AgentMessagePriority @default(NORMAL)
+  status        AgentMessageStatus   @default(SENT)
+  subject       String
+  body          String
+  /// Structured JSON payload, when there is one. Data for a reader to act on
+  /// through the normal gated paths — never dereferenced as an instruction.
+  payload       String?
+  opportunity   Opportunity?         @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?
+  strategy      Strategy?            @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  strategyId    String?
+  /// The AgentRun this message concerns. A plain id, not a relation: nothing
+  /// reads back from a run to its messages.
+  runId         String?
+  correlationId String
+  createdAt     DateTime             @default(now())
+  readAt        DateTime?
+
+  @@index([userId, toAgentId, createdAt])
+  @@index([userId, fromAgentId, createdAt])
+  @@index([userId, correlationId])
+  @@index([userId, kind, createdAt])
+}
+
+/// [P4-F] Lifecycle of a shared Strategy.
+///
+/// ACTIVE is reachable only through an explicit human act: an agent may draft
+/// and propose, never activate. KILLED is terminal and deliberately distinct
+/// from PAUSED — a killed strategy has been judged, a paused one has not.
+enum StrategyStatus {
+  DRAFT
+  PROPOSED
+  /// A human said this strategy may be pursued. Still not a capital grant:
+  /// every allocation under it is separately approved.
+  ACTIVE
+  TESTING
+  MEASURING
+  PAUSED
+  KILLED
+  COMPLETED
+  /// Cloned from a strategy with recorded evidence — see replicatedFromId.
+  REPLICATED
+}
+
+/// [P4-F] A standing, reusable rule set that BOUNDS what agents may put forward.
+///
+/// Distinct from Objective (the user's goal) on purpose: an objective says what
+/// is wanted, a strategy says what the society may propose in pursuit of it.
+/// `maxCapitalCents` is a CAP, never a grant — it can only ever make the Capital
+/// Governor refuse more, never approve more, and it is checked alongside (never
+/// instead of) the account spend ceiling.
+///
+/// Results are NOT stored here. Revenue, expenses, profit and ROI for a strategy
+/// are derived from the authoritative ledger through its allocations and their
+/// opportunities' EconomicAssets — a `actualProfit` column would be a second
+/// financial truth, which §7/§25 of the P4-F brief forbid.
+model Strategy {
+  id                    String         @id @default(uuid())
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String
+  /// The agent that owns it, when an agent drafted it. Null for human-authored.
+  ownerAgent            Agent?         @relation("StrategyOwner", fields: [ownerAgentId], references: [id], onDelete: SetNull)
+  ownerAgentId          String?
+  /// The opportunity this strategy is for, when it is specific to one.
+  opportunity           Opportunity?   @relation("StrategyOpportunity", fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId         String?
+  name                  String
+  /// What the author believes and why they believe it. Free text, and read by
+  /// nothing that decides anything.
+  hypothesis            String
+  /// How it is supposed to work, concretely.
+  mechanism             String?
+  /// JSON string[] of stated assumptions — inspectable rather than blended
+  /// into prose, so a challenging agent can name the one it disputes.
+  assumptions           String         @default("[]")
+  /// JSON string[] of {type, text} evidence entries, same shape as
+  /// Opportunity.evidence, so provenance stays visible per claim.
+  evidence              String?
+  /// JSON string[] of agent ids participating beyond the owner. Not a
+  /// permission list: participation confers nothing.
+  participatingAgentIds String         @default("[]")
+  /// JSON snapshot of the intended execution plan. Never read back to drive
+  /// execution — a plan is a document, the executor is the engine.
+  executionPlan         String?
+  status                StrategyStatus @default(DRAFT)
+  /// Ceiling, in cents, on the sum of live allocations under this strategy.
+  maxCapitalCents       Int            @default(0)
+  /// Honest estimates, null rather than guessed. None of them can approve
+  /// anything; the governor reads them only to REFUSE more often.
+  expectedReturnCents   Int?
+  expectedDurationDays  Int?
+  probabilityOfSuccess  Float?
+  maxLossCents          Int?
+  risk                  RiskLevel?
+  /// JSON string[] of Opportunity.category values this strategy admits. An
+  /// empty list admits nothing — the fail-closed default.
+  targetCategories      String         @default("[]")
+  /// Why it was killed or how it ended. Set by the transition, not by an agent
+  /// asserting an outcome.
+  outcomeReason         String?
+  /// JSON string[] of lessons. Promotion into durable Memory is a separate,
+  /// explicit act and lands as an INFERENCE at LOW confidence — never silently
+  /// upgraded (CLAUDE.md rule 3).
+  lessons               String         @default("[]")
+  /// Set when this strategy was cloned from another with recorded evidence.
+  replicatedFrom        Strategy?      @relation("StrategyReplication", fields: [replicatedFromId], references: [id], onDelete: SetNull)
+  replicatedFromId      String?
+  replicas              Strategy[]     @relation("StrategyReplication")
+  /// The human act that makes ACTIVE mean anything. An agent cannot write it.
+  activatedByHumanAt    DateTime?
+  killedAt              DateTime?
+  correlationId         String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  allocations   CapitalAllocation[]
+  messages      AgentMessage[]
+  opportunities Opportunity[]       @relation("OpportunityStrategy")
+  runs          AgentRun[]
+
+  @@index([userId, status])
+  @@index([userId, ownerAgentId])
+}
+
+/// [P4-F] Where a capital request got to.
+enum CapitalAllocationStatus {
+  /// An agent asked. This is the ONLY status an agent can produce.
+  REQUESTED
+  /// A human approved it through the existing ApprovalGrant path AND the
+  /// governor's atomic guard accepted it. Reserves capital.
+  APPROVED
+  REJECTED
+  /// Reservation returned unspent. Frees capital; can never create any.
+  RELEASED
+  /// Reservation spent down through the existing recordPolicySpend() path.
+  CONSUMED
+  EXPIRED
+}
+
+/// [P4-F] A capital RESERVATION — money set aside and not yet spent.
+///
+/// EconomicExpense cannot express this: an expense is money already gone. The
+/// P4-F brief lists CapitalRequest and CapitalAllocation as separate candidate
+/// entities; they are one row here with one status, because a request and its
+/// decision are the same fact at two times, and splitting them creates two
+/// places for that fact to disagree.
+///
+/// AN APPROVED ALLOCATION IS NOT PERMISSION TO SPEND. Actual spending still runs
+/// through recordPolicySpend(), which re-checks the halt and the cumulative
+/// ceiling in its own atomic statement. This is a second, tighter constraint
+/// layered over that one, never a replacement for it.
+model CapitalAllocation {
+  id               String                  @id @default(uuid())
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  agent            Agent                   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId          String
+  opportunity      Opportunity?            @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId    String?
+  strategy         Strategy?               @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  strategyId       String?
+  /// Integer cents, matching the economic ledger's representation. No Float
+  /// mirror, on purpose: two representations of one amount is how the
+  /// pre-cents ledger drifted.
+  requestedCents   Int
+  /// What the governor and the human actually allowed, which may be less than
+  /// was requested. Zero until a decision is made.
+  approvedCents    Int                     @default(0)
+  /// Of `approvedCents`, how much has actually been spent through
+  /// recordPolicySpend(). Derived-checked by the auditor; never exceeds it.
+  consumedCents    Int                     @default(0)
+  status           CapitalAllocationStatus @default(REQUESTED)
+  /// The requesting agent's stated reason. Free text; read by nothing that decides.
+  rationale        String
+  /// The Capital Governor's verdict at request time: "PASS" or a refusal code.
+  /// A PASS means only "well-formed enough to put to a human" — never approval.
+  governorVerdict  String?
+  /// JSON string[] of the governor's reason codes, request and decision alike.
+  governorReasons  String?
+  /// JSON: the DECISION RECORD the brief requires — why requested, why
+  /// approved/rejected, how much, what policy allowed it, what risk was
+  /// accepted, what happens next. Written from real values at decision time.
+  decisionRecord   String?
+  /// JSON snapshot of the derived treasury position at decision time, so the
+  /// decision stays inspectable after the position moves.
+  positionSnapshot String?
+  /// The single-use ApprovalGrant actually spent to approve this. Null for
+  /// everything not APPROVED — its presence is invariant V1.
+  approvalGrantId  String?
+  /// The one-step AgentRun created to put this request through the EXISTING
+  /// approval path, and its step.
+  runId            String?
+  stepId           String?
+  correlationId    String
+  /// Collapses a duplicate request from a re-fired cycle onto one row. This is
+  /// the idempotency guarantee for capital allocation.
+  idempotencyKey   String                  @unique
+  requestedAt      DateTime                @default(now())
+  decidedAt        DateTime?
+  releasedAt       DateTime?
+  expiresAt        DateTime
+
+  @@index([userId, status])
+  @@index([userId, agentId, requestedAt])
+  @@index([userId, strategyId, status])
+  @@index([userId, correlationId])
 }
 
 model AgentRun {
-  id          String         @id @default(uuid())
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId   String?
-  agent       Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  agentId     String?
+  id              String         @id @default(uuid())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId       String?
+  agent           Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentId         String?
   /// Set when this run was started by a SupervisorRun rather than directly
   /// from the Agent UI — lets the Supervisor find/monitor "its" run and lets
   /// the Brain graph draw Objective -> SupervisorRun -> AgentRun.
   supervisorRun   SupervisorRun? @relation(fields: [supervisorRunId], references: [id], onDelete: SetNull)
   supervisorRunId String?
-  objective   String
-  status      AgentRunStatus @default(PLANNING)
+  objective       String
+  status          AgentRunStatus @default(PLANNING)
   /// Index into `steps` (order value) the executor is currently on / paused at.
-  currentStep Int            @default(0)
+  currentStep     Int            @default(0)
   /// Final synthesized outcome once COMPLETED.
-  result      String?
+  result          String?
   /// Failure reason once FAILED.
-  error       String?
+  error           String?
   /// Correlation to the capability trace, matching CapabilityRun.traceId.
   ///
   /// Without this a restarted process can find the run but not the provider
@@ -1073,16 +1530,25 @@ model AgentRun {
   /// link existed in memory and in tool arguments but nowhere queryable.
   /// Nullable because runs started directly from the Agents form are not
   /// capability-routed and legitimately have no trace.
-  traceId     String?
+  traceId         String?
   /// The routed CapabilityPlan this run was built from, as JSON.
   ///
   /// A snapshot, not a source of truth for execution — the AgentSteps are
   /// that. It is kept so the workspace can still show WHY each stage exists
   /// after a restart, which the steps alone do not record.
-  plan        String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  completedAt DateTime?
+  plan            String?
+  /// [P4-F] The Volara Strategy this run is executing, when it is executing
+  /// one. This is the strategy → run link in the traceability chain; nothing
+  /// reads it back to decide anything, and a run without one is unchanged.
+  strategy        Strategy?      @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  strategyId      String?
+  /// [P4-F] The Volara cycle that started this run. Shares the value with the
+  /// cycle's transitions, messages and allocations, which is what makes
+  /// forensic reconstruction a single query rather than a join hunt.
+  correlationId   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  completedAt     DateTime?
 
   steps AgentStep[]
 
@@ -1145,39 +1611,39 @@ enum ObjectiveStatus {
 }
 
 model Objective {
-  id          String          @id @default(uuid())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  title       String
-  description String?
+  id                  String          @id @default(uuid())
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  title               String
+  description         String?
   /// Free-text strategy notes — human- or VOX-authored, never fabricated progress.
-  strategy    String?
+  strategy            String?
   /// JSON string[] of explicit assumptions the strategy depends on.
-  assumptions String?
+  assumptions         String?
   /// JSON string[] of what "success" concretely means for this objective —
   /// e.g. ["An Etsy listing exists and is published", "It has at least 3
   /// photos"]. Verification checks evidence against these, one at a time
   /// (src/lib/objectives/verification.ts). Null/empty means success was
   /// never defined, in which case verification honestly returns UNVERIFIED
   /// rather than guessing at what the user meant.
-  successCriteria String?
+  successCriteria     String?
   /// Optional numeric target, e.g. 25000. Null when the objective isn't a number to hit.
-  targetValue Float?
+  targetValue         Float?
   /// Unit for targetValue, e.g. "USD". Null unless targetValue is set.
-  targetUnit  String?
+  targetUnit          String?
   /// Optional numeric progress toward targetValue. Only ever set by explicit
   /// user input via updateObjective() — never inferred or auto-incremented.
-  currentValue Float?
-  targetDate  DateTime?
-  status      ObjectiveStatus @default(ACTIVE)
+  currentValue        Float?
+  targetDate          DateTime?
+  status              ObjectiveStatus @default(ACTIVE)
   /// Set when this Objective was created specifically to validate/pursue an
   /// Opportunity (Economic Engine) — e.g. "Validate whether this can
   /// acquire a paying customer within budget." Null for ordinary objectives.
   /// Distinct from Opportunity.objectiveId (an Opportunity's own parent).
-  sourceOpportunity   Opportunity? @relation("OpportunitySourcesObjectives", fields: [sourceOpportunityId], references: [id], onDelete: SetNull)
+  sourceOpportunity   Opportunity?    @relation("OpportunitySourcesObjectives", fields: [sourceOpportunityId], references: [id], onDelete: SetNull)
   sourceOpportunityId String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   opportunities  Opportunity[]
   supervisorRuns SupervisorRun[]
@@ -1190,6 +1656,8 @@ model Objective {
   researchItems  ResearchItem[]
   labExperiments LabExperiment[]
   labSimulations LabSimulation[]
+  /// [P4-F] Volara agents currently working towards this objective.
+  agents         Agent[]         @relation("AgentCurrentObjective")
 }
 
 /// IDEA/EVALUATING/ACTIVE/PAUSED/COMPLETED/REJECTED are the original
@@ -1226,76 +1694,131 @@ enum RiskLevel {
 }
 
 model Opportunity {
-  id          String            @id @default(uuid())
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  objective   Objective         @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  objectiveId String
-  title       String
-  description String?
+  id             String            @id @default(uuid())
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  objective      Objective         @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  objectiveId    String
+  title          String
+  description    String?
   /// Honest estimate only — left null rather than guessed when there's no basis.
   estimatedValue Float?
-  effort      EffortLevel?
-  confidence  Confidence        @default(LOW)
-  risk        RiskLevel?
+  effort         EffortLevel?
+  confidence     Confidence        @default(LOW)
+  risk           RiskLevel?
   /// The single concrete next step, in the user's or VOX's own words — not a status label.
-  nextAction  String?
+  nextAction     String?
   /// JSON string[] of {type: "FACT"|"SOURCED"|"ESTIMATE"|"ASSUMPTION"|"UNKNOWN", text}
   /// — reasoning/evidence behind the estimate, so it stays inspectable and
   /// every claim's provenance is visible rather than blended into prose.
-  evidence    String?
-  status      OpportunityStatus @default(IDEA)
+  evidence       String?
+  status         OpportunityStatus @default(IDEA)
   /// Set once this opportunity has been promoted into a real Project (Brain
   /// workspace "Create Project" action) — null until that happens.
-  project     Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId   String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   // --- Economic Engine: structured opportunity intelligence (all optional —
   // never fabricated when unknown; a null field means "not yet known", not zero). ---
   /// Free-text category (e.g. "micro-saas", "lead-generation") — deliberately
   /// not an enum, since real opportunity categories are open-ended and this
   /// mirrors EconomicAssetCategory only loosely once promoted.
-  category                 String?
+  category                   String?
   /// Where this was discovered — "user", "vox.research", a specific tool name, etc.
-  source                   String?
-  discoveredAt             DateTime  @default(now())
-  estimatedStartupCost     Float?
+  source                     String?
+  discoveredAt               DateTime   @default(now())
+  estimatedStartupCost       Float?
   /// Recurring, e.g. per month — distinct from the one-time startup cost.
-  estimatedOperatingCost   Float?
+  estimatedOperatingCost     Float?
   /// 0-1 fraction of revenue retained as margin, when estimable.
-  estimatedMargin          Float?
+  estimatedMargin            Float?
   estimatedTimeToRevenueDays Int?
-  complexity               RiskLevel?
-  competition              RiskLevel?
+  complexity                 RiskLevel?
+  competition                RiskLevel?
   /// How much upside scales with effort — reuses RiskLevel purely as a
   /// LOW/MEDIUM/HIGH magnitude scale, not as a risk judgment.
-  scalability              RiskLevel?
-  requiredHumanInvolvement RiskLevel?
+  scalability                RiskLevel?
+  requiredHumanInvolvement   RiskLevel?
   /// JSON string[] of Tool Registry capability keys this opportunity would
   /// likely need if pursued — informational only, never auto-granted.
-  requiredCapabilities     String?
+  requiredCapabilities       String?
   /// JSON string[] — free-text dependencies (e.g. "needs a payment processor").
-  dependencies             String?
+  dependencies               String?
   /// VOX's or the user's own explanation for the ranking — free text, never
   /// a fabricated "AI confidence" claim.
-  rationale                String?
+  rationale                  String?
   /// Cached snapshot of scoreOpportunity()/explainOpportunityScore()'s last
   /// computed output, refreshed on read — so the UI never shows a stale
   /// number without also being able to recompute and compare live.
-  scoreSnapshot            Float?
-  scoreBreakdown           String?
+  scoreSnapshot              Float?
+  scoreBreakdown             String?
 
-  researchItems ResearchItem[]
-  economicAsset EconomicAsset?
+  // ==========================================================================
+  // [P4-F] SHARED OPPORTUNITY LEDGER additions.
+  //
+  // Opportunity IS the shared ledger — it is not re-created here. The fields
+  // above already cover title, description, source, evidence, requiredCapabilities,
+  // dependencies, scalability, competition, risk, category and the estimate set.
+  // Only what nothing above could express is added.
+  //
+  // NO `actualRevenue` / `actualExpenses` / `actualProfit` / `outcome` COLUMNS.
+  // Realized economics are DERIVED from this row's EconomicAsset and its
+  // Revenue/Expense ledger entries (src/lib/volara/metrics.ts). An agent writing
+  // an "actual profit" number would be exactly the "mark it successful without
+  // economic evidence" the P4-F brief forbids; deriving it makes that
+  // impossible rather than merely disallowed.
+  // ==========================================================================
+  /// The Volara agent that surfaced this row, when one did. Null for anything
+  /// a human or an earlier pipeline recorded.
+  discoveredByAgent     Agent?    @relation("OpportunityDiscoveredByAgent", fields: [discoveredByAgentId], references: [id], onDelete: SetNull)
+  discoveredByAgentId   String?
+  /// The strategy this opportunity is being pursued under, when one is active.
+  strategy              Strategy? @relation("OpportunityStrategy", fields: [strategyId], references: [id], onDelete: SetNull)
+  strategyId            String?
+  /// JSON string[] of agent ids that have contributed to this row (discovered
+  /// it, challenged it, validated it). NOT a permission list — participation
+  /// confers nothing at all.
+  participatingAgentIds String    @default("[]")
+  /// Cents-denominated honest estimates, null rather than guessed. The Float
+  /// `estimated*` fields above remain the human-facing pipeline estimates;
+  /// these are the ones the Capital Governor reads, and it reads them only to
+  /// REFUSE more often — none of them can approve anything.
+  requiredCapitalCents  Int?
+  expectedRevenueCents  Int?
+  expectedProfitCents   Int?
+  /// 0-1, and only ever set from a recorded basis. Null means "no basis", which
+  /// the governor treats as the most conservative case, not as 1.
+  probabilityOfSuccess  Float?
+  /// Worst realistic loss, in cents. The governor refuses when this exceeds
+  /// what the strategy and the treasury can absorb.
+  maxLossCents          Int?
+  /// What is actually at stake beyond money, in the author's words.
+  downside              String?
+  timeToPayoutDays      Int?
+  /// JSON string[] of Tool Registry tool names a pursuit would likely need.
+  /// Informational, exactly like `requiredCapabilities` above — never granted.
+  requiredTools         String?
+  /// The most recent policy decision recorded against pursuing this row
+  /// ("ALLOW" / "HOLD" / "DENY"). A cached observation for the observer, never
+  /// read as authorization: enforceExecution() re-decides at execution time.
+  policyStatus          String?
+  correlationId         String?
+
+  researchItems      ResearchItem[]
+  economicAsset      EconomicAsset?
+  capitalAllocations CapitalAllocation[]
+  messages           AgentMessage[]
+  /// Strategies written specifically for this opportunity.
+  strategies         Strategy[]          @relation("StrategyOpportunity")
   /// Objectives created specifically to validate/pursue this opportunity —
   /// see Objective.sourceOpportunityId below. Distinct from `objective`
   /// above (this opportunity's own parent Objective).
-  sourcedObjectives Objective[] @relation("OpportunitySourcesObjectives")
+  sourcedObjectives  Objective[]         @relation("OpportunitySourcesObjectives")
   /// Economic experiments testing this opportunity — see the contract fields
   /// on Experiment. Extends the existing chain rather than forking it.
-  experiments       Experiment[]
+  experiments        Experiment[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1324,30 +1847,30 @@ enum SupervisorRunStatus {
 /// `iterations`/`maxIterations` for the one bounded recovery mechanism
 /// (re-plan-and-retry after a failed run).
 model SupervisorRun {
-  id          String              @id @default(uuid())
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  objective   Objective           @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
-  objectiveId String
+  id            String              @id @default(uuid())
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  objective     Objective           @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  objectiveId   String
   /// The Agent selected/created to carry out the current plan. Selection is
   /// capability-based (src/lib/supervisor/service.ts#selectOrCreateAgent) —
   /// never a hardcoded "if research then researchAgent" mapping.
-  agent       Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  agentId     String?
-  status      SupervisorRunStatus @default(PLANNING)
+  agent         Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentId       String?
+  status        SupervisorRunStatus @default(PLANNING)
   /// JSON snapshot of the planner's PlanStep[] output for this attempt —
   /// inspectable, not a hidden chain-of-thought transcript.
-  plan        String?
+  plan          String?
   /// Number of replan-and-retry cycles used so far (bounded by maxIterations).
-  iterations    Int      @default(0)
-  maxIterations Int      @default(2)
+  iterations    Int                 @default(0)
+  maxIterations Int                 @default(2)
   /// Final synthesized outcome once COMPLETED — copied from the driving AgentRun.result.
-  result      String?
+  result        String?
   /// Failure/decline reason once FAILED or CANCELLED.
-  error       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
+  error         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  completedAt   DateTime?
 
   agentRuns AgentRun[]
   outcome   Outcome?
@@ -1382,30 +1905,30 @@ enum VerificationStatus {
 /// verified. Outcome.summary must say so explicitly rather than let
 /// "COMPLETED" be read as "succeeded" (see src/lib/supervisor/service.ts).
 model Outcome {
-  id              String        @id @default(uuid())
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId          String
-  supervisorRun   SupervisorRun @relation(fields: [supervisorRunId], references: [id], onDelete: Cascade)
-  supervisorRunId String        @unique
-  status          OutcomeStatus @default(UNKNOWN)
+  id               String             @id @default(uuid())
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  supervisorRun    SupervisorRun      @relation(fields: [supervisorRunId], references: [id], onDelete: Cascade)
+  supervisorRunId  String             @unique
+  status           OutcomeStatus      @default(UNKNOWN)
   /// Whether the OBJECTIVE was achieved, as distinct from `status` (whether
   /// execution completed). Defaults to UNVERIFIED and only moves off it when
   /// real evidence supports the change.
-  verification    VerificationStatus @default(UNVERIFIED)
-  summary         String
-  expectedResult  String?
-  observedResult  String?
-  variance        String?
-  costUsd         Float?
+  verification     VerificationStatus @default(UNVERIFIED)
+  summary          String
+  expectedResult   String?
+  observedResult   String?
+  variance         String?
+  costUsd          Float?
   timeSpentMinutes Int?
   /// Only ever populated from real evidence tied to this run — never a
   /// fabricated interpretation. Null when there's nothing yet to learn.
-  lessons         String?
-  confidence      Confidence    @default(LOW)
+  lessons          String?
+  confidence       Confidence         @default(LOW)
   /// JSON string[] — same {type, text} evidence-item convention as
   /// Opportunity.evidence.
-  evidence        String?
-  createdAt       DateTime      @default(now())
+  evidence         String?
+  createdAt        DateTime           @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -1462,7 +1985,7 @@ model EconomicAsset {
   opportunityId String?               @unique
   name          String
   category      EconomicAssetCategory
-  status        EconomicAssetStatus  @default(IDEA)
+  status        EconomicAssetStatus   @default(IDEA)
   description   String?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
@@ -1497,39 +2020,39 @@ enum LedgerProvenance {
 }
 
 model EconomicRevenue {
-  id         String           @id @default(uuid())
-  asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  assetId    String
+  id          String           @id @default(uuid())
+  asset       EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId     String
   /// LEGACY, display-only. Kept in step with amountCents by the single
   /// validated conversion in src/lib/economic/money.ts. See the migration plan
   /// in that file's header for how and when this column goes away.
-  amountUsd  Float
+  amountUsd   Float
   /// CANONICAL. Integer cents. Every sum, ceiling comparison and P&L figure is
   /// computed from this column, because a Float ledger makes a boundary
   /// comparison a coin flip exactly where a spend limit has to be exact.
-  amountCents Int             @default(0)
-  source     String?
-  provenance LedgerProvenance @default(USER_RECORDED)
-  occurredAt DateTime
-  notes      String?
-  createdAt  DateTime         @default(now())
+  amountCents Int              @default(0)
+  source      String?
+  provenance  LedgerProvenance @default(USER_RECORDED)
+  occurredAt  DateTime
+  notes       String?
+  createdAt   DateTime         @default(now())
 
   @@index([assetId, occurredAt])
 }
 
 model EconomicExpense {
-  id         String           @id @default(uuid())
-  asset      EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  assetId    String
+  id          String           @id @default(uuid())
+  asset       EconomicAsset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId     String
   /// LEGACY, display-only — see EconomicRevenue.amountUsd.
-  amountUsd  Float
+  amountUsd   Float
   /// CANONICAL. Integer cents; the column the spend ceiling is enforced against.
-  amountCents Int             @default(0)
-  category   String?
-  provenance LedgerProvenance @default(USER_RECORDED)
-  occurredAt DateTime
-  notes      String?
-  createdAt  DateTime         @default(now())
+  amountCents Int              @default(0)
+  category    String?
+  provenance  LedgerProvenance @default(USER_RECORDED)
+  occurredAt  DateTime
+  notes       String?
+  createdAt   DateTime         @default(now())
 
   @@index([assetId, occurredAt])
   /// The index the atomic spend guard reads. Its WHERE clause sums this
@@ -1564,9 +2087,9 @@ enum EconomicTickStatus {
 }
 
 model EconomicTick {
-  id     String @id @default(uuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
+  id             String             @id @default(uuid())
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
   /// Deterministic time-bucket key. The @@unique below IS the idempotency
   /// mechanism: a duplicate tick for the same bucket cannot insert, so a
   /// double-fired cron or a retried request can never evaluate twice.
@@ -1674,14 +2197,14 @@ model BrainGroup {
 /// state) the user can return to by name, e.g. "My Main Objective". Purely a
 /// snapshot of UI state the user already controls — never a new data source.
 model BrainView {
-  id          String   @id @default(uuid())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  name        String
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  name      String
   /// JSON blob: { perspective, density, pinnedIds, viewport, attentionObjectiveId }
-  state       String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  state     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, name])
 }
@@ -1882,18 +2405,18 @@ enum LabRealityStatus {
 }
 
 model LabSuit {
-  id          String          @id @default(uuid())
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  project     LabProject?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId   String?
-  codename    String
-  designation String          @default("MK-I")
+  id               String              @id @default(uuid())
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  project          LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId        String?
+  codename         String
+  designation      String              @default("MK-I")
   /// Intended-use archetype, e.g. "Stealth", "Combat", "Recon", "Utility", "Experimental".
-  archetype   String
-  description String?
-  colorPrimary   String       @default("#a855f7")
-  colorSecondary String       @default("#0a0616")
+  archetype        String
+  description      String?
+  colorPrimary     String              @default("#a855f7")
+  colorSecondary   String              @default("#0a0616")
   /// Design-parameter vocabulary driving the 3D holographic render — see
   /// LabSilhouette etc. above. All default to a sensible baseline so
   /// existing rows created before this field remain renderable.
@@ -1904,27 +2427,27 @@ model LabSuit {
   maskLensStyle    LabMaskLensStyle    @default(ANGULAR)
   /// Buildability/reality status — see LabRealityStatus. Independent of
   /// `status` (workflow state) and never inferred from it.
-  realityStatus LabRealityStatus @default(CONCEPT)
+  realityStatus    LabRealityStatus    @default(CONCEPT)
   /// Path (under /public/models/suits/) to a real .glb/.gltf asset, e.g.
   /// "/models/suits/mk-vii.glb". Null by default — every suit renders via
   /// the procedural SuitRig visualization until a real 3D scan/model file is
   /// actually placed on disk and this is set. Never fabricated or assumed;
   /// see /public/models/suits/README.md.
-  modelUrl    String?
-  status      LabDesignStatus @default(ACTIVE)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  modelUrl         String?
+  status           LabDesignStatus     @default(ACTIVE)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
-  versions        LabSuitVersion[] @relation("SuitVersions")
-  currentVersion   LabSuitVersion? @relation("SuitCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
-  currentVersionId String?         @unique
-  components      LabComponent[]
-  simulations     LabSimulation[]
-  experiments     LabExperiment[]
-  requirements    LabRequirement[]
+  versions             LabSuitVersion[]         @relation("SuitVersions")
+  currentVersion       LabSuitVersion?          @relation("SuitCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId     String?                  @unique
+  components           LabComponent[]
+  simulations          LabSimulation[]
+  experiments          LabExperiment[]
+  requirements         LabRequirement[]
   engineeringQuestions LabEngineeringQuestion[]
-  decisions       LabDecision[]
-  images          LabSuitImage[]
+  decisions            LabDecision[]
+  images               LabSuitImage[]
 }
 
 enum LabSuitImageKind {
@@ -1962,46 +2485,46 @@ model LabSuitImage {
 /// without doubling the component-tree storage. Documented simplification;
 /// see NEXT DEVELOPMENT FRONTIER in the build report.
 model LabSuitVersion {
-  id         String    @id @default(uuid())
-  suit       LabSuit   @relation("SuitVersions", fields: [suitId], references: [id], onDelete: Cascade)
-  suitId     String
-  label      String
-  note       String?
-  archived   Boolean   @default(false)
-  parent     LabSuitVersion?  @relation("SuitVersionLineage", fields: [parentId], references: [id], onDelete: SetNull)
-  parentId   String?
-  children   LabSuitVersion[] @relation("SuitVersionLineage")
-  createdAt  DateTime  @default(now())
+  id        String           @id @default(uuid())
+  suit      LabSuit          @relation("SuitVersions", fields: [suitId], references: [id], onDelete: Cascade)
+  suitId    String
+  label     String
+  note      String?
+  archived  Boolean          @default(false)
+  parent    LabSuitVersion?  @relation("SuitVersionLineage", fields: [parentId], references: [id], onDelete: SetNull)
+  parentId  String?
+  children  LabSuitVersion[] @relation("SuitVersionLineage")
+  createdAt DateTime         @default(now())
 
-  stats        LabSuitStats?
+  stats         LabSuitStats?
   currentOfSuit LabSuit?      @relation("SuitCurrentVersion")
 
   @@unique([suitId, label])
 }
 
 model LabSuitStats {
-  id             String         @id @default(uuid())
-  version        LabSuitVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  versionId      String         @unique
-  stealth                  Int   // 0-100
-  durability               Int   // 0-100
-  mobility                 Int   // 0-100
-  stretchiness             Int   // 0-100
-  weightKg                 Float
-  thermalLoadC             Float
-  protection               Int   // 0-100
-  environmentalResistance  Int   // 0-100
-  manufacturingComplexity  Int   // 0-100
-  estimatedBuildHours      Float
-  estimatedCostUsd         Float
-  flexibility              Int   // 0-100
-  impactResistance         Int   // 0-100
-  visibility               Int   // 0-100 (higher = more visible/less stealthy)
-  noiseProfile             Int   // 0-100 (higher = louder)
-  sensorCapacity           Int   // 0-100
-  energyRequirementW       Float
-  maintenanceComplexity    Int   // 0-100
-  confidence               LabConfidence @default(ESTIMATED)
+  id                      String         @id @default(uuid())
+  version                 LabSuitVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId               String         @unique
+  stealth                 Int // 0-100
+  durability              Int // 0-100
+  mobility                Int // 0-100
+  stretchiness            Int // 0-100
+  weightKg                Float
+  thermalLoadC            Float
+  protection              Int // 0-100
+  environmentalResistance Int // 0-100
+  manufacturingComplexity Int // 0-100
+  estimatedBuildHours     Float
+  estimatedCostUsd        Float
+  flexibility             Int // 0-100
+  impactResistance        Int // 0-100
+  visibility              Int // 0-100 (higher = more visible/less stealthy)
+  noiseProfile            Int // 0-100 (higher = louder)
+  sensorCapacity          Int // 0-100
+  energyRequirementW      Float
+  maintenanceComplexity   Int // 0-100
+  confidence              LabConfidence  @default(ESTIMATED)
 }
 
 // ---------------------------------------------------------------------------
@@ -2030,22 +2553,22 @@ enum LabRiskLevel {
 }
 
 model LabComponent {
-  id          String        @id @default(uuid())
-  parent      LabComponent? @relation("ComponentTree", fields: [parentId], references: [id], onDelete: Cascade)
-  parentId    String?
-  children    LabComponent[] @relation("ComponentTree")
-  suit        LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
-  suitId      String?
-  gadget      LabGadget?    @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
-  gadgetId    String?
-  name        String
-  description String?
-  material    LabMaterial?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
-  materialId  String?
-  massKg      Float?
-  notes       String?
-  confidence  LabConfidence @default(ESTIMATED)
-  order       Int           @default(0)
+  id            String           @id @default(uuid())
+  parent        LabComponent?    @relation("ComponentTree", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId      String?
+  children      LabComponent[]   @relation("ComponentTree")
+  suit          LabSuit?         @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId        String?
+  gadget        LabGadget?       @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
+  gadgetId      String?
+  name          String
+  description   String?
+  material      LabMaterial?     @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  materialId    String?
+  massKg        Float?
+  notes         String?
+  confidence    LabConfidence    @default(ESTIMATED)
+  order         Int              @default(0)
   /// Body region this component belongs to — null for gadget components and
   /// any suit component not yet classified. See LabSubsystem.
   subsystem     LabSubsystem?
@@ -2056,27 +2579,27 @@ model LabComponent {
   /// the parent suit's own LabRealityStatus. A suit can be BUILDABLE
   /// overall while one experimental subsystem is still CONCEPT.
   realityStatus LabRealityStatus @default(CONCEPT)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
-  dependsOn    LabComponentDependency[] @relation("ComponentDependsOn")
-  dependedOnBy LabComponentDependency[] @relation("ComponentDependedOnBy")
-  experiments  LabExperiment[]
+  dependsOn     LabComponentDependency[] @relation("ComponentDependsOn")
+  dependedOnBy  LabComponentDependency[] @relation("ComponentDependedOnBy")
+  experiments   LabExperiment[]
   researchItems LabResearchItem[]
-  requirements LabRequirement[]
+  requirements  LabRequirement[]
 }
 
 /// A component's dependency on another component (e.g. "HUD" depends on
 /// "Power Core"). Directional, many-to-many via join rows rather than a
 /// self-relation array, since Prisma/SQLite has no native array-of-FK type.
 model LabComponentDependency {
-  id           String       @id @default(uuid())
-  component    LabComponent @relation("ComponentDependsOn", fields: [componentId], references: [id], onDelete: Cascade)
-  componentId  String
-  dependsOn    LabComponent @relation("ComponentDependedOnBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
-  dependsOnId  String
-  note         String?
-  createdAt    DateTime     @default(now())
+  id          String       @id @default(uuid())
+  component   LabComponent @relation("ComponentDependsOn", fields: [componentId], references: [id], onDelete: Cascade)
+  componentId String
+  dependsOn   LabComponent @relation("ComponentDependedOnBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
+  dependsOnId String
+  note        String?
+  createdAt   DateTime     @default(now())
 
   @@unique([componentId, dependsOnId])
 }
@@ -2098,9 +2621,9 @@ model LabGadget {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  versions         LabGadgetVersion[] @relation("GadgetVersions")
-  currentVersion   LabGadgetVersion?  @relation("GadgetCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
-  currentVersionId String?            @unique
+  versions         LabGadgetVersion[]    @relation("GadgetVersions")
+  currentVersion   LabGadgetVersion?     @relation("GadgetCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId String?               @unique
   components       LabComponent[]
   simulationLinks  LabSimulationGadget[]
 }
@@ -2114,16 +2637,16 @@ model LabGadgetVersion {
   archived  Boolean   @default(false)
   createdAt DateTime  @default(now())
 
-  stats          LabGadgetStats?
-  currentOfGadget LabGadget?     @relation("GadgetCurrentVersion")
+  stats           LabGadgetStats?
+  currentOfGadget LabGadget?      @relation("GadgetCurrentVersion")
 
   @@unique([gadgetId, label])
 }
 
 model LabGadgetStats {
-  id                      String         @id @default(uuid())
+  id                      String           @id @default(uuid())
   version                 LabGadgetVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  versionId               String         @unique
+  versionId               String           @unique
   massKg                  Float
   powerRequirementW       Float
   batteryLifeHours        Float
@@ -2133,7 +2656,7 @@ model LabGadgetStats {
   manufacturingComplexity Int // 0-100
   estimatedCostUsd        Float
   reliability             Int // 0-100
-  confidence              LabConfidence @default(ESTIMATED)
+  confidence              LabConfidence    @default(ESTIMATED)
 }
 
 // ---------------------------------------------------------------------------
@@ -2141,21 +2664,21 @@ model LabGadgetStats {
 // ---------------------------------------------------------------------------
 
 model LabMaterial {
-  id                       String        @id @default(uuid())
+  id                     String        @id @default(uuid())
   /// Null for the shared seed catalog; set for a user-authored custom material.
-  userId                   String?
-  name                     String
-  category                 String
-  densityGCm3              Float
-  tensileStrengthMpa       Float
-  elasticityPercent        Float
-  abrasionResistance       Int   // 0-100
-  temperatureResistanceC   Float
-  moistureResistance       Int   // 0-100
-  costPerKgUsd             Float
-  notes                    String?
-  confidence               LabConfidence @default(ESTIMATED)
-  createdAt                DateTime      @default(now())
+  userId                 String?
+  name                   String
+  category               String
+  densityGCm3            Float
+  tensileStrengthMpa     Float
+  elasticityPercent      Float
+  abrasionResistance     Int // 0-100
+  temperatureResistanceC Float
+  moistureResistance     Int // 0-100
+  costPerKgUsd           Float
+  notes                  String?
+  confidence             LabConfidence @default(ESTIMATED)
+  createdAt              DateTime      @default(now())
 
   components LabComponent[]
 }
@@ -2176,10 +2699,10 @@ model LabWebProfile {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  material   LabWebMaterial?
-  deployment LabWebDeployment?
-  attachment LabWebAttachment?
-  loadModels LabWebLoadModel[]
+  material    LabWebMaterial?
+  deployment  LabWebDeployment?
+  attachment  LabWebAttachment?
+  loadModels  LabWebLoadModel[]
   simulations LabSimulation[]
 }
 
@@ -2212,16 +2735,16 @@ model LabWebDeployment {
 }
 
 model LabWebAttachment {
-  id                              String        @id @default(uuid())
-  profile                         LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId                       String        @unique
-  attachmentType                  String
-  theoreticalHoldingStrengthN     Float
-  environmentalAssumptions        String
-  geometry                        String
-  structuralAssumptions           String
-  estimatedFailureProbabilityPct  Float
-  confidence                      LabConfidence @default(HYPOTHETICAL)
+  id                             String        @id @default(uuid())
+  profile                        LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId                      String        @unique
+  attachmentType                 String
+  theoreticalHoldingStrengthN    Float
+  environmentalAssumptions       String
+  geometry                       String
+  structuralAssumptions          String
+  estimatedFailureProbabilityPct Float
+  confidence                     LabConfidence @default(HYPOTHETICAL)
 }
 
 /// A single theoretical load calculation for a web profile under an assumed
@@ -2229,22 +2752,22 @@ model LabWebAttachment {
 /// design as validated for real human load-bearing use (see SECURITY.md-style
 /// framing in ARCHITECTURE.md for the Web Lab).
 model LabWebLoadModel {
-  id               String        @id @default(uuid())
-  profile          LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId        String
-  label            String
-  userMassKg       Float
-  equipmentMassKg  Float
-  swingRadiusM     Float
-  velocityMs       Float
-  staticLoadN      Float
-  dynamicLoadN     Float
-  accelerationMs2  Float
-  forceN           Float
-  tensionN         Float
-  safetyMarginPct  Float
-  confidence       LabConfidence @default(HYPOTHETICAL)
-  createdAt        DateTime      @default(now())
+  id              String        @id @default(uuid())
+  profile         LabWebProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId       String
+  label           String
+  userMassKg      Float
+  equipmentMassKg Float
+  swingRadiusM    Float
+  velocityMs      Float
+  staticLoadN     Float
+  dynamicLoadN    Float
+  accelerationMs2 Float
+  forceN          Float
+  tensionN        Float
+  safetyMarginPct Float
+  confidence      LabConfidence @default(HYPOTHETICAL)
+  createdAt       DateTime      @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -2252,58 +2775,58 @@ model LabWebLoadModel {
 // ---------------------------------------------------------------------------
 
 model LabScenario {
-  id              String                   @id @default(uuid())
+  id            String                   @id @default(uuid())
   /// Null for seed scenarios; set for a user-generated custom scenario
   /// (Scenario Generator).
-  user            User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId          String?
-  name            String
-  environment     LabScenarioEnvironment
-  objectiveType   LabScenarioObjectiveType
-  difficulty      LabDifficulty
-  description     String?
-  timeOfDay       String   @default("day")
-  precipitation   String   @default("none")
-  windMs          Float    @default(0)
-  temperatureC    Float    @default(18)
-  fogPercent      Int      @default(0)
-  gravityMs2      Float    @default(9.81)
-  surfaceType     String   @default("concrete")
-  elevationM      Float    @default(0)
-  obstacleCount   Int      @default(0)
-  isCustom        Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  user          User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String?
+  name          String
+  environment   LabScenarioEnvironment
+  objectiveType LabScenarioObjectiveType
+  difficulty    LabDifficulty
+  description   String?
+  timeOfDay     String                   @default("day")
+  precipitation String                   @default("none")
+  windMs        Float                    @default(0)
+  temperatureC  Float                    @default(18)
+  fogPercent    Int                      @default(0)
+  gravityMs2    Float                    @default(9.81)
+  surfaceType   String                   @default("concrete")
+  elevationM    Float                    @default(0)
+  obstacleCount Int                      @default(0)
+  isCustom      Boolean                  @default(false)
+  createdAt     DateTime                 @default(now())
 
   simulations      LabSimulation[]
   trainingSessions LabTrainingSession[]
 }
 
 model LabSimulation {
-  id                    String       @id @default(uuid())
-  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId                String
-  project               LabProject?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId             String?
-  name                  String
-  scenario              LabScenario  @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
-  scenarioId            String
-  suit                  LabSuit?     @relation(fields: [suitId], references: [id], onDelete: SetNull)
-  suitId                String?
-  webProfile            LabWebProfile? @relation(fields: [webProfileId], references: [id], onDelete: SetNull)
-  webProfileId          String?
+  id             String         @id @default(uuid())
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  project        LabProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId      String?
+  name           String
+  scenario       LabScenario    @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
+  scenarioId     String
+  suit           LabSuit?       @relation(fields: [suitId], references: [id], onDelete: SetNull)
+  suitId         String?
+  webProfile     LabWebProfile? @relation(fields: [webProfileId], references: [id], onDelete: SetNull)
+  webProfileId   String?
   /// Set when this simulation is being run in pursuit of a specific
   /// Objective — see Objective.researchItems for the rationale. A simulated
   /// result stays a model output no matter which objective it serves.
-  objective             Objective?   @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
-  objectiveId           String?
-  userMassKg            Float        @default(75)
-  reactionTimeMs         Float       @default(250)
-  skillLevel             Int         @default(50) // 0-100
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  objective      Objective?     @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  objectiveId    String?
+  userMassKg     Float          @default(75)
+  reactionTimeMs Float          @default(250)
+  skillLevel     Int            @default(50) // 0-100
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  gadgets LabSimulationGadget[]
-  runs    LabSimulationRun[]
+  gadgets       LabSimulationGadget[]
+  runs          LabSimulationRun[]
   /// Set once a simulation RUN completes and its measured telemetry is
   /// written back as an OBSERVATION memory — see
   /// src/lib/lab/learning.ts#recordSimulationRunExperience. The node exists
@@ -2327,26 +2850,26 @@ model LabSimulationGadget {
 /// which is the documented case where JSON is preferable to one row per
 /// sample (see CLAUDE.md project layout notes).
 model LabSimulationRun {
-  id                 String               @id @default(uuid())
-  simulation         LabSimulation        @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(uuid())
+  simulation         LabSimulation       @relation(fields: [simulationId], references: [id], onDelete: Cascade)
   simulationId       String
-  status             LabSimulationStatus  @default(DRAFT)
+  status             LabSimulationStatus @default(DRAFT)
   seed               Int
   durationS          Float
-  telemetry          String               // JSON array of samples
+  telemetry          String // JSON array of samples
   peakVelocityMs     Float?
   peakForceN         Float?
   peakThermalLoadC   Float?
   fatigueEstimatePct Float?
-  warnings           String?              // JSON string[]
+  warnings           String? // JSON string[]
   /// JSON array of {category, explanation, suggestion} — structured failure
   /// analysis (never just "simulation failed"), populated whenever the run's
   /// modeled thresholds are exceeded. Empty array when nothing failed.
   failureAnalysis    String?
   summary            String?
-  startedAt          DateTime             @default(now())
+  startedAt          DateTime            @default(now())
   completedAt        DateTime?
-  createdAt          DateTime             @default(now())
+  createdAt          DateTime            @default(now())
 
   experiments LabExperiment[]
 }
@@ -2356,10 +2879,10 @@ model LabSimulationRun {
 // ---------------------------------------------------------------------------
 
 model LabExperiment {
-  id               String               @id @default(uuid())
-  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String              @id @default(uuid())
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId           String
-  project          LabProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project          LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   projectId        String?
   code             String
   title            String
@@ -2370,29 +2893,29 @@ model LabExperiment {
   equipmentNotes   String?
   environmentNotes String?
   expectedOutcome  String?
-  status           LabExperimentStatus  @default(PLANNED)
-  suit             LabSuit?             @relation(fields: [suitId], references: [id], onDelete: SetNull)
+  status           LabExperimentStatus @default(PLANNED)
+  suit             LabSuit?            @relation(fields: [suitId], references: [id], onDelete: SetNull)
   suitId           String?
   /// Optional: the specific subsystem/component this experiment targets,
   /// rather than "the suit generally". Null is valid (whole-suit
   /// experiments still make sense).
-  component        LabComponent?        @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  component        LabComponent?       @relation(fields: [componentId], references: [id], onDelete: SetNull)
   componentId      String?
-  simulationRun    LabSimulationRun?    @relation(fields: [simulationRunId], references: [id], onDelete: SetNull)
+  simulationRun    LabSimulationRun?   @relation(fields: [simulationRunId], references: [id], onDelete: SetNull)
   simulationRunId  String?
-  confidence       LabConfidence        @default(HYPOTHETICAL)
+  confidence       LabConfidence       @default(HYPOTHETICAL)
   /// Set when this experiment is being run in pursuit of a specific
   /// Objective — see Objective.researchItems for the rationale. Named
   /// `linkedObjective` because `objective` above is already this
   /// experiment's own free-text aim, which is a different thing entirely.
-  linkedObjective  Objective?           @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  linkedObjective  Objective?          @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
   objectiveId      String?
   nextIteration    String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
-  results LabExperimentResult[]
-  requirements LabRequirement[]
+  results       LabExperimentResult[]
+  requirements  LabRequirement[]
   /// Set once a result is recorded against this experiment — see
   /// src/lib/lab/learning.ts#recordExperimentResultExperience.
   knowledgeNode KnowledgeNode?
@@ -2415,40 +2938,40 @@ model LabExperimentResult {
 // ---------------------------------------------------------------------------
 
 model LabTrainingModule {
-  id                     String              @id @default(uuid())
-  name                   String
-  category               LabTrainingCategory
-  difficulty             LabDifficulty
-  description            String
-  objective              String
+  id                      String              @id @default(uuid())
+  name                    String
+  category                LabTrainingCategory
+  difficulty              LabDifficulty
+  description             String
+  objective               String
   durationMinutesEstimate Int
-  createdAt              DateTime            @default(now())
+  createdAt               DateTime            @default(now())
 
   sessions LabTrainingSession[]
 }
 
 model LabTrainingSession {
-  id                       String            @id @default(uuid())
-  user                     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId                   String
-  module                   LabTrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  moduleId                 String
-  scenario                 LabScenario?      @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
-  scenarioId               String?
-  reactionTimeMs           Float?
-  completionTimeS          Float?
+  id                        String            @id @default(uuid())
+  user                      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                    String
+  module                    LabTrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId                  String
+  scenario                  LabScenario?      @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  scenarioId                String?
+  reactionTimeMs            Float?
+  completionTimeS           Float?
   movementEfficiencyPercent Float?
-  staminaUsedPercent       Float?
-  balanceScore             Float?
-  accuracyPercent          Float?
-  decisionQualityPercent   Float?
-  defensiveSuccessPercent  Float?
-  mistakes                 Int?
-  score                    Int               // 0-100 composite
-  notes                    String?
-  startedAt                DateTime          @default(now())
-  completedAt              DateTime?
-  createdAt                DateTime          @default(now())
+  staminaUsedPercent        Float?
+  balanceScore              Float?
+  accuracyPercent           Float?
+  decisionQualityPercent    Float?
+  defensiveSuccessPercent   Float?
+  mistakes                  Int?
+  score                     Int // 0-100 composite
+  notes                     String?
+  startedAt                 DateTime          @default(now())
+  completedAt               DateTime?
+  createdAt                 DateTime          @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -2456,19 +2979,19 @@ model LabTrainingSession {
 // ---------------------------------------------------------------------------
 
 model LabTutorial {
-  id               String               @id @default(uuid())
-  title            String
-  category         LabTutorialCategory
-  difficulty       LabDifficulty
-  lesson           String
-  demonstration    String?
-  exercisePrompt   String?
+  id             String              @id @default(uuid())
+  title          String
+  category       LabTutorialCategory
+  difficulty     LabDifficulty
+  lesson         String
+  demonstration  String?
+  exercisePrompt String?
   /// JSON array of {question, options: string[], answerIndex}.
-  quiz             String?
-  prerequisite     LabTutorial?         @relation("TutorialPrereq", fields: [prerequisiteId], references: [id], onDelete: SetNull)
-  prerequisiteId   String?
-  unlocks          LabTutorial[]        @relation("TutorialPrereq")
-  createdAt        DateTime             @default(now())
+  quiz           String?
+  prerequisite   LabTutorial?        @relation("TutorialPrereq", fields: [prerequisiteId], references: [id], onDelete: SetNull)
+  prerequisiteId String?
+  unlocks        LabTutorial[]       @relation("TutorialPrereq")
+  createdAt      DateTime            @default(now())
 
   progress LabTutorialProgress[]
 }
@@ -2530,24 +3053,24 @@ enum LabResearchCategory {
 /// the user records by hand or via the AI Lab Engineer, always confidence-
 /// tagged like every other lab claim.
 model LabResearchItem {
-  id         String              @id @default(uuid())
-  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
-  project    LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  projectId  String?
+  id          String              @id @default(uuid())
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  project     LabProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
   /// Optional: the specific component this research finding informs.
-  component   LabComponent?      @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  component   LabComponent?       @relation(fields: [componentId], references: [id], onDelete: SetNull)
   componentId String?
-  title      String
-  category   LabResearchCategory
-  source     String?
-  sourceDate DateTime?
-  confidence LabConfidence       @default(ESTIMATED)
+  title       String
+  category    LabResearchCategory
+  source      String?
+  sourceDate  DateTime?
+  confidence  LabConfidence       @default(ESTIMATED)
   /// 0-100 — how relevant this finding is to current lab work.
-  relevance  Int                 @default(50)
-  notes      String?
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  relevance   Int                 @default(50)
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -2576,25 +3099,25 @@ enum LabPriority {
 /// A concrete, testable engineering requirement — "what the system must
 /// accomplish" — for Engineering Mode's REQUIREMENTS section.
 model LabRequirement {
-  id          String        @id @default(uuid())
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  suit        LabSuit?      @relation(fields: [suitId], references: [id], onDelete: Cascade)
-  suitId      String?
-  code        String
-  title       String
-  description String?
-  priority    LabPriority   @default(MEDIUM)
-  status      LabRequirementStatus @default(HYPOTHESIS)
+  id                 String               @id @default(uuid())
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             String
+  suit               LabSuit?             @relation(fields: [suitId], references: [id], onDelete: Cascade)
+  suitId             String?
+  code               String
+  title              String
+  description        String?
+  priority           LabPriority          @default(MEDIUM)
+  status             LabRequirementStatus @default(HYPOTHESIS)
   verificationMethod String?
-  evidence    String?
-  subsystem   LabSubsystem?
-  component   LabComponent? @relation(fields: [componentId], references: [id], onDelete: SetNull)
-  componentId String?
-  experiment  LabExperiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
-  experimentId String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  evidence           String?
+  subsystem          LabSubsystem?
+  component          LabComponent?        @relation(fields: [componentId], references: [id], onDelete: SetNull)
+  componentId        String?
+  experiment         LabExperiment?       @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  experimentId       String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 }
 
 /// A first-class unresolved engineering question — something concrete for
@@ -2750,20 +3273,20 @@ model ArtifactVersion {
   version    Int
 
   /// Public URL the app can render. Bytes live on disk under public/artifacts/.
-  url       String
-  mimeType  String
+  url             String
+  mimeType        String
   /// Size on disk. Recorded, never estimated.
-  bytes     Int
-  width     Int?
-  height    Int?
+  bytes           Int
+  width           Int?
+  height          Int?
   /// Seconds, for time-based media.
   durationSeconds Float?
 
   /// Which provider and model produced this, when one did.
-  provider String?
-  model    String?
+  provider   String?
+  model      String?
   /// The prompt as actually sent. Stored so a result is reproducible.
-  prompt   String?
+  prompt     String?
   /// JSON — provider-specific generation parameters, verbatim.
   parameters String?
 
@@ -2792,14 +3315,14 @@ model ArtifactVersion {
 /// concept image and a 3D model, and collapsing that to a single parent would
 /// silently discard half the provenance.
 model ArtifactLink {
-  id       String          @id @default(uuid())
-  parent   ArtifactVersion @relation("LinkParent", fields: [parentId], references: [id], onDelete: Cascade)
-  parentId String
-  child    ArtifactVersion @relation("LinkChild", fields: [childId], references: [id], onDelete: Cascade)
-  childId  String
+  id        String          @id @default(uuid())
+  parent    ArtifactVersion @relation("LinkParent", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId  String
+  child     ArtifactVersion @relation("LinkChild", fields: [childId], references: [id], onDelete: Cascade)
+  childId   String
   /// How the child used the parent, e.g. "reference", "start_frame", "source".
   role      String
-  createdAt DateTime @default(now())
+  createdAt DateTime        @default(now())
 
   @@unique([parentId, childId, role])
   @@index([childId])
@@ -2843,7 +3366,7 @@ model CapabilityRun {
 
   /// Correlation. `traceId` groups every run in one user-visible task, so a
   /// whole chain can be pulled back with a single query.
-  traceId String
+  traceId    String
   /// The AgentRun this belongs to, when it was agent-driven.
   agentRunId String?
 
@@ -2895,7 +3418,7 @@ model ApprovalGrant {
 
   /// SHA-256 (hex) of the canonical serialization of the VALIDATED arguments.
   /// See src/lib/policy/canonical.ts for exactly what "canonical" means.
-  argumentsHash String
+  argumentsHash      String
   /// SHA-256 (hex) of the classification snapshot shown to the approver. An
   /// approval cannot survive a change to what the action is understood to do.
   classificationHash String
@@ -2925,9 +3448,9 @@ model ApprovalGrant {
   /// what a person was told, and P4-G will be what populates it.
   trustLabels String?
 
-  createdAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
   /// Required. An approval is never permanent.
-  expiresAt DateTime
+  expiresAt  DateTime
   /// NULL means unused. A timestamp means spent — set by a conditional update
   /// so two concurrent consumers cannot both win.
   consumedAt DateTime?

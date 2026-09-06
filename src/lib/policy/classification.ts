@@ -440,6 +440,39 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   // would corrupt those. The decision is already HOLD without it; the risk is
   // recorded here instead of mislabelled there.
   "workspace.validate": { effect: "ACT", reversibility: "IRREVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
+
+  // ---- [P4-F] THE VOLARA RUNTIME'S ONLY CONSEQUENTIAL TOOL ----
+  //
+  // Approving a capital allocation reserves part of the user's autonomous spend
+  // ceiling against one agent's request. Classified for what it can cause:
+  //
+  //   FINANCIAL      it commits the user's money. Nothing about the fact that
+  //                  the commitment is internal makes it not financial — the
+  //                  reserved amount is unavailable to anything else from the
+  //                  moment it lands.
+  //   IRREVERSIBLE   the row is a decision record. `releaseCapitalAllocation()`
+  //                  frees the unspent remainder, which is a NEW fact, not an
+  //                  undo: the approval happened, and anything spent against it
+  //                  in between cannot be recalled. Calling that "reversible"
+  //                  would be the same mislabelling P4-E found in
+  //                  `workspace.validate`.
+  //
+  // FINANCIAL × IRREVERSIBLE is HOLD in the matrix (P4-A moved this cell off
+  // DENY precisely because a human raising a ceiling and approving a spend IS a
+  // legitimate authorization path). So every allocation, of every size, needs an
+  // argument-bound single-use ApprovalGrant. There is no threshold below which
+  // it becomes automatic.
+  //
+  // NOT `externalSystemOfRecord`: no bank, no processor, no third party. The
+  // reservation is a VOX row against a VOX ceiling, exactly like
+  // `economic.record_expense`. Setting that flag would escalate to DENY and
+  // leave the runtime permanently unable to allocate anything, which is the
+  // wrong answer for the same reason it was wrong there.
+  //
+  // NOT `untrustedOutput`: the tool returns integers and enums it computed
+  // itself. The agent's rationale is stored on the row but is never returned
+  // into a planning context by this tool.
+  "volara.allocate_capital": { effect: "FINANCIAL", reversibility: "IRREVERSIBLE", financial: true, untrustedOutput: false, externalSystemOfRecord: false },
 });
 
 /**

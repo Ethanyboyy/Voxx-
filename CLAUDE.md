@@ -4,7 +4,9 @@
 
 VOX is a personal Cognitive Operating System (Next.js 16 App Router + TypeScript
 + Prisma/SQLite). Read `ARCHITECTURE.md`, `PHASE_2_ARCHITECTURE.md`, and `SECURITY.md`
-before making structural changes. These rules apply to every change, not just Phase 1/2.
+before making structural changes; `POLICY_GATE.md` for the authorization model and
+`VOLARA_RUNTIME.md` for the autonomous multi-agent runtime. These rules apply to
+every change, not just Phase 1/2.
 
 ## Non-negotiables
 
@@ -90,6 +92,20 @@ before making structural changes. These rules apply to every change, not just Ph
   waiting/error, derived from real AgentRun/Proposal state, never decorative).
   `src/components/brain/BrainWorkspace.tsx` is the pan/zoom/select spatial
   canvas UI built on top of it — see the Brain section in `ARCHITECTURE.md`.
+- `src/lib/volara/` — the autonomous multi-agent runtime and economic control
+  plane (P4-F). Five persistent Volara agents extend the EXISTING `Agent` model
+  rather than forking a parallel entity; the treasury is **derived** from the
+  ledger and `CapitalAllocation` rows, never stored. Two rules hold the whole
+  module together and neither may be relaxed: **agent communication is not
+  authorization** (`AgentMessage` has no capability/grant/decision column, and
+  nothing on an execution path reads a message), and **autonomous initiative is
+  not execution authority** (every allocation of every size needs an
+  argument-bound single-use `ApprovalGrant` through the existing
+  `volara.allocate_capital` tool — there is no auto-approve threshold). Nothing
+  here may import `grantPermission`/`createApprovalGrant`/`consumeApprovalGrant`
+  or write `Permission`, `ApprovalGrant`, the governing `User` columns, or an
+  agent's capability/cap columns — `tests/volara-authority.test.ts` scans the
+  directory and fails the build if it does. See `VOLARA_RUNTIME.md`.
 - `src/lib/policy/` — action/task classification (`classification.ts`) and the
   Policy Gate (`gate.ts`), currently **shadow-only**: it records what it would
   have decided and blocks nothing. Separate from `src/lib/permissions/` on

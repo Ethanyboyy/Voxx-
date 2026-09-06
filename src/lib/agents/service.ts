@@ -25,6 +25,12 @@ export interface StartAgentRunInput {
   /** JSON snapshot of the routed CapabilityPlan, for the workspace to show
    * why each stage exists. Never read back to drive execution. */
   plan?: string;
+  /** [P4-F] The Volara Strategy this run executes, when it executes one. */
+  strategyId?: string;
+  /** [P4-F] The Volara cycle that started this run, shared with that cycle's
+   * transitions, messages and allocations — see src/lib/volara/observer.ts
+   * #getCycleTrace(). Descriptive only; nothing reads it to decide anything. */
+  correlationId?: string;
 }
 
 /**
@@ -52,6 +58,8 @@ export async function createAgentRun(input: StartAgentRunInput) {
       supervisorRunId: input.supervisorRunId,
       traceId: input.traceId,
       plan: input.plan,
+      strategyId: input.strategyId,
+      correlationId: input.correlationId,
       status: "PLANNING",
     },
   });

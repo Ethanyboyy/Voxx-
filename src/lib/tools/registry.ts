@@ -741,6 +741,74 @@ register({
   },
 });
 
+/**
+ * [P4-F] The Volara runtime's ONLY consequential tool.
+ *
+ * Everything the multi-agent runtime does that could move money funnels through
+ * this one registered action, deliberately. Registering it as a TOOL — rather
+ * than building a second approval surface for capital — means it inherits, with
+ * no new code, the entire P4-B/C/D/E chain: argument finalization, the canonical
+ * arguments hash, the frozen classification and its hash, `enforceExecution()`,
+ * the argument-bound single-use `ApprovalGrant`, compare-and-swap consumption,
+ * `withEnforcedExecution()`, the audit trail, and the existing approval endpoint
+ * and UI at `POST /api/agents/[id]/steps/[stepId]/approve`.
+ *
+ * `volara.allocate_capital` is classified FINANCIAL/IRREVERSIBLE, which the
+ * matrix decides as HOLD, so reaching `execute()` at all requires that a human
+ * approved this exact allocation id. `approveCapitalAllocation()` then calls
+ * `assertExecutionAuthorized()` as its first line, so even a future caller that
+ * bypassed the executor would throw rather than reserve.
+ *
+ * requiredLevel ACT: this is the top of the ladder, and P4-E's invariant — no
+ * held tool may require only the default-granted level — is satisfied by a wide
+ * margin.
+ *
+ * The input is ONLY an allocation id. Not an amount, not an agent, not a
+ * strategy: every one of those is read from the persisted row, because a caller
+ * that could name its own amount could have a human approve one figure and
+ * reserve another.
+ */
+register({
+  name: "volara.allocate_capital",
+  description:
+    "Reserve capital against an existing Volara capital request, after a human has approved that exact request.",
+  category: "project",
+  capability: "volara.capital",
+  requiredLevel: "ACT",
+  inputSchema: z.object({ allocationId: z.string().min(1).max(200) }),
+  execute: async (userId, input) => {
+    const { approveCapitalAllocation } = await import("@/lib/volara/governor");
+
+    // The allocation id is the ONLY thing passed. The grant that authorized
+    // this execution is derived inside `approveCapitalAllocation()` from the
+    // step the allocation was submitted through — not guessed here and not
+    // accepted as an argument, both of which this call used to do and both of
+    // which were wrong: a guessed "most recently consumed grant" recorded the
+    // same grant against five concurrent approvals.
+    const result = await approveCapitalAllocation({ userId, allocationId: input.allocationId });
+
+    if (!result.approved) {
+      // A refusal is returned as a result, not thrown: the step failing is the
+      // correct outcome and the reasons are what an operator needs to see.
+      return {
+        output: { approved: false, reasons: result.reasons },
+        summary: `Capital allocation refused: ${result.reasons.join(", ")}.`,
+      };
+    }
+
+    return {
+      output: {
+        approved: true,
+        allocationId: result.allocation.id,
+        approvedCents: result.approvedCents,
+        agentId: result.allocation.agentId,
+        strategyId: result.allocation.strategyId,
+      },
+      summary: `Reserved ${(result.approvedCents / 100).toFixed(2)} USD for allocation ${result.allocation.id}.`,
+    };
+  },
+});
+
 export function getTool(name: string): ToolDefinition<never> | undefined {
   return REGISTRY[name];
 }
