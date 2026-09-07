@@ -179,6 +179,10 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
     group: "VOX",
     items: [
       { href: "/brain", label: "VOX Brain", icon: IconBrain, hero: true },
+      // [P4-G] The Global Observer — the truthful projection of the Volara
+      // runtime. A hero item because it is where the autonomous system is
+      // actually watched, not a secondary report.
+      { href: "/observer", label: "Global Observer", icon: IconEye, hero: true },
       { href: "/dashboard", label: "Home", icon: IconHome },
       { href: "/chat", label: "Chat", icon: IconChat },
     ],

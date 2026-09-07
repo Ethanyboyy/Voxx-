@@ -106,6 +106,20 @@ every change, not just Phase 1/2.
   or write `Permission`, `ApprovalGrant`, the governing `User` columns, or an
   agent's capability/cap columns — `tests/volara-authority.test.ts` scans the
   directory and fails the build if it does. See `VOLARA_RUNTIME.md`.
+- `src/components/observer/` — the Global Observer (P4-G) at `/observer`, the
+  truthful projection of that runtime. **If the runtime does not know
+  something, the Observer must not pretend to know it**: `<Money>` renders a
+  null as `UNRECORDED` rather than `$0.00`, `<Ratio>` renders `NO BASIS`,
+  `<Truthless>` names the specific absence, and `<ProvenanceTag>` labels every
+  figure RECORDED/RESERVED/REQUESTED/ESTIMATE/DERIVED so a proposal is never
+  readable as an outcome. It is READ-ONLY over
+  `getVolaraObserverState()`/`getCycleTrace()`/`getTimeline()` and must import
+  no runtime mutator (no `approveCapitalAllocation`, `approveAgentStep`,
+  `grantPermission`, `transitionAgent`, or even `@/lib/db`) —
+  `tests/volara-observer.test.ts` scans the directory and fails the build if it
+  does. Approving links to the existing step surface rather than posting from
+  here; live events trigger a re-read of the server projection and never patch
+  client state.
 - `src/lib/policy/` — action/task classification (`classification.ts`) and the
   Policy Gate (`gate.ts`), currently **shadow-only**: it records what it would
   have decided and blocks nothing. Separate from `src/lib/permissions/` on

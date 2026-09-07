@@ -241,6 +241,55 @@ A cycle's failure is caught inside that cycle. `runSociety()` uses
 `MAX_CONSECUTIVE_FAILURES` (3) the agent transitions to `SUSPENDED` and stops
 being scheduled until a human resumes it.
 
+## 9a. The Global Observer (P4-G)
+
+`/observer` is the runtime's visual and operational projection — the truthful
+one. Its governing rule is a single sentence: **if the runtime does not know
+something, the Observer must not pretend to know it.**
+
+That rule is enforced by components rather than by discipline. `<Money>` renders
+a `null` as `UNRECORDED` and never as `$0.00`; `<Ratio>` renders `NO BASIS`;
+`<Truthless>` states which specific absence a panel is showing (`NO ACTIVE
+OPPORTUNITIES`, `NO HUMAN DECISIONS PENDING`, `RUNTIME IDLE`) rather than a
+generic blank; and `<ProvenanceTag>` labels every figure `RECORDED` /
+`RESERVED` / `REQUESTED` / `ESTIMATE` / `DERIVED`, so a proposal can never be
+read as an outcome or a reservation as a spend.
+
+The screen also states, in words and beside the numbers, that no payment or
+banking integration exists and therefore **no figure is confirmed against an
+external system of record** — `ProvenanceState.externalConfirmationAvailable`
+is checked, not asserted, so the day such an integration lands the disclosure
+corrects itself.
+
+**It cannot act.** The Observer imports no runtime mutator — not
+`approveCapitalAllocation`, not `approveAgentStep`, not `grantPermission`, not
+`transitionAgent`, not even `@/lib/db` — and a test walks
+`src/components/observer/` and fails the build on any of them. The single
+mutation it offers is *rejection*, through the canonical
+`/api/volara/capital/[id]/reject`. Approving is a LINK to the existing step
+surface, deliberately: `approveAgentStep()` requires a human to assert the
+arguments hash the server derived, and an Observer that posted an approval on
+the reader's behalf would be asserting consent to arguments the reader never
+saw. For the same reason the projection does not ship `argumentsHash` at all.
+
+**Live updates never patch local state.** A relevant event triggers a re-read
+of the authoritative projection, coalesced by a trailing debounce. There is no
+client-side model to drift, so a dropped connection needs no reconciliation —
+`EventSource` reconnects, the next read is authoritative, and a reconnect
+additionally forces one. A failed read leaves the last snapshot on screen and
+says it is stale rather than blanking, because an empty screen would imply the
+runtime went quiet.
+
+**Communication is drawn differently from authority.** In the interaction
+graph a message edge is dashed, grey and labelled `INFORMATION ONLY`, and it
+terminates at the row it refers to; it never continues into the allocation or
+approval column, because in the runtime it never does. The authority edge is
+solid and begins at the human column.
+
+Tenancy is a `WHERE` clause everywhere, including the timeline and the trace: a
+correlation id is not a capability, and one belonging to another account
+returns an empty page rather than a filtered one.
+
 ## 10. Global Observer contract
 
 `getVolaraObserverState(userId)` returns one snapshot — agents with live
