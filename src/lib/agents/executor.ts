@@ -305,9 +305,35 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
       subjectId: run.id,
     });
 
+    // ---- [P4-H] HOW MANY TIMES ONE APPROVAL MAY RUN ----
+    //
+    // Retrying is a convenience for a flaky read. It is NOT something a human's
+    // approval covers twice.
+    //
+    // `enforceExecution()` above spends exactly one grant per attempt at this
+    // step, which is what P4-C3's comment meant by "one attempt spends at most
+    // one approval". But the retry loop sits INSIDE that decision, so a tool
+    // that threw AFTER its side effect landed ran that side effect again on the
+    // same spent approval. That is reachable without any attacker:
+    // `recordPolicySpend()` inserts an `EconomicExpense` atomically and only
+    // then calls `recordEvent()`, so a database failure while writing the audit
+    // row throws, the step retries, and one approved spend becomes two real
+    // ones. An `ApprovalGrant` carries `amplification`, defaulting to 1 — two
+    // executions is precisely the amplification it exists to bound.
+    //
+    // So a HOLD retries zero times. ALLOW actions keep the retry, because
+    // nothing about them was authorized in a quantity: they were permitted as a
+    // class, no human was asked, and re-reading a file or re-running a search
+    // after a transient error is the behaviour that was always intended.
+    //
+    // A HOLD action that fails now fails the run, and the human re-approves. It
+    // costs an extra click on a genuinely flaky financial call, and it makes
+    // "approved once" mean executed at most once.
+    const maxAttempts = enforcement.decision === "ALLOW" ? MAX_RETRIES : 0;
+
     let lastError: string | null = null;
     let succeeded = false;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       try {
         // Executed inside the policy boundary opened by the evaluation above.
         // A service that evaluates itself — `runResearch()`, so the direct

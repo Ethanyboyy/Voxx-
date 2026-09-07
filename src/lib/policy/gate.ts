@@ -311,7 +311,18 @@ interface PolicyBoundaryScope {
    * `assertExecutionAuthorized()`.
    */
   enforced: boolean;
-  /** The action the enforcement decision was about. Checked at the sink. */
+  /**
+   * The action the enforcement decision was about.
+   *
+   * [P4-H] Now actually compared at the sink. It was recorded here from P4-D
+   * onward and read by nothing, which meant an enforced scope authorized any
+   * sink rather than the one it was decided for — see
+   * `assertExecutionAuthorized()`.
+   *
+   * Optional only because an OBSERVATION boundary has no decision to name;
+   * `withEnforcedExecution()` always sets it, and a scope with `enforced: true`
+   * and no `actionId` authorizes nothing.
+   */
   actionId?: string;
 }
 
@@ -324,9 +335,22 @@ interface PolicyBoundaryScope {
  * in a position to trigger it.
  */
 export class ExecutionNotAuthorizedError extends Error {
-  constructor(readonly actionId: string) {
+  /**
+   * @param actionId       the sink that was reached
+   * @param scopeActionId  [P4-H] the action the surrounding enforcement decision
+   *                       was actually about, when there was one. Named in the
+   *                       message because "no decision" and "a decision about
+   *                       something else" are different failures, and a reader
+   *                       debugging the second should not be told the first.
+   */
+  constructor(
+    readonly actionId: string,
+    readonly scopeActionId?: string
+  ) {
     super(
-      `"${actionId}" was reached outside an enforced policy boundary. This action has consequences, so it may only run through a path that evaluated the policy and, where required, matched a human approval.`
+      scopeActionId
+        ? `"${actionId}" was reached inside an enforced policy boundary that authorized "${scopeActionId}" instead. An enforcement decision authorizes the action it was decided for and nothing else, so this action still needs its own decision and, where required, its own human approval.`
+        : `"${actionId}" was reached outside an enforced policy boundary. This action has consequences, so it may only run through a path that evaluated the policy and, where required, matched a human approval.`
     );
     this.name = "ExecutionNotAuthorizedError";
   }
@@ -345,7 +369,8 @@ export function withEnforcedExecution<T>(boundary: string, actionId: string, fn:
 }
 
 /**
- * [P4-D] THE SINK GUARD. Throws unless an enforcement decision is in scope.
+ * [P4-D] THE SINK GUARD. Throws unless an enforcement decision FOR THIS ACTION
+ * is in scope.
  *
  * Placed at the consequential operation itself rather than at its callers, which
  * is the whole point: a gate on a route protects that route, and a gate on the
@@ -353,12 +378,36 @@ export function withEnforcedExecution<T>(boundary: string, actionId: string, fn:
  * failure mode this exists for is not a malicious HTTP request — it is a future
  * service function that reaches a side effect having never heard of the gate.
  *
+ * [P4-H] THE ACTION IS NOW COMPARED, AND THIS IS THE SECURITY-RELEVANT PART.
+ *
+ * From P4-D until now the guard asked only "did SOME enforcement decision open
+ * this scope", which is a strictly weaker question than the one it exists to
+ * ask. P4-H demonstrated the consequence end to end against production code: an
+ * enforcement decision for `memory.search` — READ, REVERSIBLE, ALLOW, no
+ * approval required and no human involved — satisfied the guard inside
+ * `runResearch()`, and a HOLD-classified action that fetches the open web and
+ * writes durable memory ran to completion with zero `ApprovalGrant` rows ever
+ * created or consumed.
+ *
+ * The mismatch was never that the executor did the wrong thing; it enforces the
+ * right action every time. The hole was that the guard could not TELL. Once a
+ * scope was open, every sink inside it was covered by whatever decision happened
+ * to be outermost, so any path from a cheap approved action to an expensive
+ * unapproved one was an authorization laundering route — exactly the "second
+ * execution path" a sink guard is supposed to make impossible.
+ *
+ * Comparing the action closes it with no new machinery: the scope has carried
+ * `actionId` since P4-D and nothing read it. An enforcement decision now
+ * authorizes the action it was decided for, and nothing else.
+ *
  * Fail-closed by construction: it throws rather than returning a boolean, so
- * there is no value a caller can accidentally ignore.
+ * there is no value a caller can accidentally ignore, and a scope that is
+ * enforced but nameless (`actionId` unset) authorizes nothing.
  */
 export function assertExecutionAuthorized(actionId: string): void {
   const scope = policyBoundary.getStore();
   if (!scope?.enforced) throw new ExecutionNotAuthorizedError(actionId);
+  if (scope.actionId !== actionId) throw new ExecutionNotAuthorizedError(actionId, scope.actionId);
 }
 
 /**
