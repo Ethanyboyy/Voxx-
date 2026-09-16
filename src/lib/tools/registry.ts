@@ -173,7 +173,14 @@ register({
       objectiveId: input.objectiveId ?? context?.objectiveId,
     });
     return {
-      output: items.map((i) => ({ title: i.title, sourceUrl: i.sourceUrl, summary: i.summary })),
+      // [P5-D] `provider` is carried through because the step's persisted output
+      // is what an observation rule measures, and a count of research results is
+      // only interpretable if you know who answered. A count of three sourced
+      // results from the mock provider and a count of three from real web search
+      // are the same integer and completely different facts; without this field
+      // the measurement's provenance would have to be guessed at read time.
+      // It is already on the row — it was simply being dropped here.
+      output: items.map((i) => ({ title: i.title, sourceUrl: i.sourceUrl, summary: i.summary, provider: i.provider })),
       summary: `Found ${items.length} research ${items.length === 1 ? "result" : "results"} for "${input.query}".`,
     };
   },

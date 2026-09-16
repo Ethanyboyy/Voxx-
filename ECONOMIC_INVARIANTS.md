@@ -172,6 +172,102 @@ All four now read `getPolicySpendPosition()` in `economic/accounting.ts`.
 
 ---
 
+## I9 — An experiment is executed exactly once, and "the execution" is never ambiguous
+
+`Experiment.executionRunId` is `@unique` and is claimed by a **compare-and-set**,
+not by a check-then-write:
+
+```ts
+db.experiment.updateMany({ where: { id, userId, executionRunId: null }, data: { executionRunId: run.id } })
+```
+
+Two concurrent dispatches both read `null`; exactly one gets `count: 1`. The
+loser **cancels the run it had already created**, so no orphan sits in the user's
+run list looking like work VOX is doing.
+
+This matters because a measurement is bound to *an* execution. If an experiment
+could have two, a person choosing between two measurements would be choosing
+their evidence after the fact.
+
+`src/lib/economic/evidence.ts#requestExperimentExecution()`. It reaches a tool
+**only** through the existing `executeRun()` — no second executor, no second
+capability check, and no grant this module can mint. A source-level test asserts
+the module contains no `grantPermission`, no `createApprovalGrant`, and no
+reference to the tool registry.
+
+**Tests:** *two concurrent dispatches produce exactly one execution*, *the losing
+dispatch leaves no orphan run*, *the module cannot execute or authorize anything
+itself*.
+
+---
+
+## I10 — A measurement is not evidence, and an unobserved execution can never become a result
+
+Three separate statements, all enforced:
+
+1. **Nothing downstream reads `ExperimentMeasurement`.** Not the probability, not
+   the ranking, not the decision layer. A measurement is inert until a human acts
+   on it.
+2. **`reconcileExperimentOutcome()` is the only writer of `WIN`/`LOSS`**, it is
+   reached only through an API route a person posts to, and it records a
+   consequential `Event` naming what the verdict rested on.
+3. **`MEASUREMENT_MISSING`.** If VOX dispatched an execution and no measurement
+   came out of it, a verdict is **refused**. Otherwise an execution whose result
+   nobody observed — the run died mid-step, the output was unreadable — could be
+   written up as a success on the strength of somebody's recollection while
+   carrying a real audit trail behind it.
+
+An experiment VOX *never dispatched* still reconciles freely: a person judging
+their own work from their own knowledge is ordinary, and it records
+`HUMAN_EXTERNAL` so the basis is visible.
+
+The probability itself counts **verdicts**, not enum values: the query predicate
+is `outcomeRecordedAt: { not: null }`, so writing `outcome: "WIN"` straight onto
+the row counts for nothing. With no decided trials it returns **`null`, never 0
+and never 0.5** — a system with no trials has no success rate, and every number
+that could be shown in its place is a claim nothing supports.
+
+**Tests:** *refuses a verdict on an execution nobody observed*, *does not count an
+outcome that no human recorded*, *is null, not zero, when nothing has been
+decided*, *excludes INCONCLUSIVE from both numerator and denominator*.
+
+---
+
+## I11 — An absent observation is never a zero, and an altered one is detectable
+
+**The third state.** An execution that produced no readable answer writes **no
+measurement**. The refusal type has no value field at all, so there is no member
+a `?? 0` could read. The reason is stored on `Experiment.lastObservationFailure`
+as a **diagnostic nothing computes from**, purely so a surface can say
+"observation unavailable" instead of rendering a silence that looks like a zero.
+
+A genuine empty result set is different and is recorded as a real zero, with a
+provenance that says no provider answered rather than blaming one. `OBSERVED
+ZERO` and `NO ANSWER` do not collapse into each other.
+
+**In doubt outranks the summary.** A step left `RUNNING` on a run that is no
+longer running means the process died between "starting the tool" and "recording
+what it returned". The tool may have run, or half-run. `observeExperimentExecution()`
+refuses such an execution outright rather than resolving the unknown by
+assumption in either direction — and it checks this *before* the run's own
+status, because a run row can read `COMPLETED` while carrying such a step.
+
+**Tamper-evidence.** `measurementDigest()` hashes the counts, the unit, the rule,
+the provenance **and the execution identity** — repointing a measurement at a
+different step is as much a change of evidence as editing its counts. The digest
+is copied onto the experiment at reconciliation, so a row edited afterwards no
+longer matches the verdict resting on it. `verifyEvidenceIntegrity()` **reports
+and repairs nothing**: a verifier that "fixed" a mismatch by recomputing the
+digest would be a tool for erasing the evidence that a measurement had been
+altered.
+
+**Tests:** *refuses a step whose end was never recorded*, *refuses output that is
+not the shape the rule reads — and writes no zero*, *an empty result set is a real
+zero with an honest provenance*, *detects a measurement edited in place*, *detects
+a verdict whose evidence changed underneath it*, *reports rather than repairs*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -179,6 +275,16 @@ honest:
 
 - **The engine is not autonomous.** It cannot transact. Every `SCALE` stops at a
   human.
+- **VOX has measured nothing about money.** The one observation rule that exists
+  counts how many research results carried a source URL. That says whether an
+  assumption is researchable with the provider configured at the time. It is not
+  revenue, not a conversion, not a customer, and not evidence that an opportunity
+  will make money — and the rule carries that sentence with it to every surface
+  that renders the number.
+- **A measured probability over one or two verdicts is not a success rate.**
+  `ProbabilityEvidence` is returned whole — wins, losses, decided, and the basis
+  each verdict rested on — precisely so a caller cannot render "1 of 1" as
+  "100%".
 - **`REALIZED` profit is $0 and will stay $0** until an external system of
   record exists to confirm anything.
 - **Available capital is `null`**, not zero — VOX has no account balance to read

@@ -102,6 +102,7 @@ model User {
   decisions              Decision[]
   ideas                  Idea[]
   experiments            Experiment[]
+  experimentMeasurements ExperimentMeasurement[]
   researchItems          ResearchItem[]
   knowledgeNodes         KnowledgeNode[]
   knowledgeEdges         KnowledgeConnection[]
@@ -661,7 +662,158 @@ model Experiment {
   lastDecisionReason String?
   lastDecisionAt     DateTime?
 
+  // --- [P5-D] The evidence loop -----------------------------------------
+  //
+  // Before this, `outcome` above could only ever become KILLED_BY_CONSTRAINT
+  // (scheduler.ts). WIN and LOSS existed in the enum and NOTHING in VOX could
+  // write them, so every probability computed from experiment outcomes was
+  // computed over an empty set. These columns are what make an outcome
+  // reachable, and they are deliberately shaped so it is only reachable the
+  // long way round: dispatch an execution, observe it, record a measurement,
+  // and have a human reconcile that measurement into a verdict.
+
+  /// The AgentRun that IS this experiment's execution.
+  ///
+  /// UNIQUE, and that is the exactly-once guarantee rather than a convention:
+  /// two concurrent dispatches race to compare-and-set this column from null,
+  /// and the loser cancels its orphan run. An experiment therefore has at most
+  /// one execution identity for its whole life, which is what lets a
+  /// measurement be bound to "the execution" without ambiguity.
+  executionRunId           String?   @unique
+  /// Key into the FROZEN registry in src/lib/economic/evidence.ts.
+  ///
+  /// Declared BEFORE the experiment runs. That ordering is the safeguard:
+  /// choosing what to count after seeing the result is not measuring, it is
+  /// arguing. A key rather than free text for the same reason the proposal
+  /// registry is closed — a rule writable at call time is a rule that can be
+  /// written to produce a desired number.
+  observationRule          String?
+  /// Why the last observation attempt produced nothing. DIAGNOSTIC ONLY.
+  ///
+  /// Nothing computes from this. It exists so a surface can say "observation
+  /// unavailable" instead of rendering a silence that looks like a zero.
+  lastObservationFailure   String?
+  lastObservationAttemptAt DateTime?
+
+  /// The measurement a human's verdict was recorded against, and the digest
+  /// that measurement had AT THAT MOMENT.
+  ///
+  /// The digest is stored rather than recomputed so that a measurement edited
+  /// or deleted afterwards no longer matches the verdict resting on it, and
+  /// `verifyEvidenceIntegrity()` can say so — instead of a probability
+  /// quietly standing on evidence that changed underneath it.
+  outcomeMeasurementId     String?
+  outcomeMeasurementDigest String?
+  /// What KIND of thing the verdict rests on. Never inferred at read time.
+  outcomeEvidenceBasis     OutcomeEvidenceBasis?
+  /// When a human recorded the verdict. Null means `outcome` is not a verdict.
+  outcomeRecordedAt        DateTime?
+  /// The human's own words. Never parsed, never fed to a model, never counted.
+  outcomeNote              String?
+
+  measurement ExperimentMeasurement?
+
   @@index([userId, executionStatus])
+}
+
+/// What a verdict was recorded against.
+///
+/// Kept explicit rather than derived from the measurement row at read time,
+/// because the measurement can be deleted and the basis of a recorded verdict
+/// must not silently change when it is.
+enum OutcomeEvidenceBasis {
+  /// VOX measured its own execution's persisted output.
+  MACHINE_MEASUREMENT
+  /// VOX read an external system of record. [P5-E]
+  EXTERNAL_MEASUREMENT
+  /// A person reported a figure from outside VOX. Not VOX's observation.
+  HUMAN_EXTERNAL
+}
+
+/// Who produced the figure.
+enum MeasurementSource {
+  /// A person typed it in. VOX observed nothing.
+  HUMAN_ENTERED
+  /// VOX computed it from its own execution's persisted output.
+  MACHINE_OBSERVED
+  /// VOX read it from an external system of record. [P5-E]
+  EXTERNAL_OBSERVED
+}
+
+/// What the number means with respect to time.
+///
+/// Exists so that a DELTA can never be read as a LEVEL. "12 orders in this
+/// window" and "12 orders ever" are the same integer and completely different
+/// claims, and an experiment result computed from the second is a store's
+/// entire trading history wearing an experiment's name.
+enum MeasurementSemantics {
+  /// Counted over a bounded window: inclusive start, exclusive end.
+  DELTA_OVER_WINDOW
+  /// Read at an instant. No external rule produces one of these today.
+  LEVEL_AT_INSTANT
+}
+
+/// ONE measurement per experiment, bound to ONE execution step.
+///
+/// Three unique constraints, each closing a different way the same execution
+/// could be counted twice: `experimentId` (an experiment has one measurement),
+/// and `agentStepId` (a step is measured once). Those are enforced by the
+/// database rather than by a check-then-write, because a check-then-write
+/// under concurrency is not a guarantee, it is a race with good manners.
+///
+/// A MEASUREMENT IS NOT EVIDENCE. Nothing downstream — not the probability,
+/// not the ranking, not the decision layer — reads this table. Only a human's
+/// verdict via `reconcileExperimentOutcome()` turns one of these rows into
+/// something that counts.
+model ExperimentMeasurement {
+  id           String     @id @default(uuid())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  experimentId String     @unique
+
+  source MeasurementSource
+
+  /// The execution this was computed from. Null only for HUMAN_ENTERED.
+  agentRunId  String?
+  agentStepId String? @unique
+
+  /// The numerator and the denominator WHERE ONE EXISTS.
+  ///
+  /// For a research rule the denominator is real (results returned). For an
+  /// event count over a window there is none — three orders are not "three out
+  /// of three" — so the columns mirror and every surface renders the bare value
+  /// with its unit rather than a ratio. Inventing a denominator would put a
+  /// fraction on screen that means nothing.
+  observedValue Int
+  observedTotal Int
+  /// What is being counted, in words. Stored so no number ever travels bare.
+  unit          String
+  /// The observation rule key that produced this.
+  rule          String
+  /// Where the counted material came from, e.g. the provider id.
+  provenance    String
+
+  // --- [P5-E] External provenance. Null for a measurement of VOX's own work.
+  /// The provider that answered, e.g. "shopify".
+  externalProvider String?
+  /// WHICH external thing was read, e.g. the shop domain. Never a secret.
+  externalScope    String?
+  /// When the provider actually answered.
+  retrievedAt      DateTime?
+  /// Hash of the raw provider response. Never the response itself, and never
+  /// anything carrying a token.
+  responseDigest   String?
+  /// The declared window. Inclusive start, EXCLUSIVE end.
+  windowStart      DateTime?
+  windowEnd        DateTime?
+  semantics        MeasurementSemantics?
+
+  /// Hash over everything that makes this measurement mean what it means.
+  digest     String
+  observedAt DateTime @default(now())
+
+  @@index([userId, rule])
 }
 
 model ExperimentResult {
