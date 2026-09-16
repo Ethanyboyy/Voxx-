@@ -173,6 +173,17 @@ Shopify, read-only.** Every other service remains stubbed by construction.
     `resolveConnectionCredential()` scopes every lookup by `userId` in the
     WHERE clause rather than checking ownership afterwards, and it is the only
     path by which a provider ever receives a token.
+  - **Two read methods, both reads (P5-F).** `countOrdersInWindow` and
+    `sumOrderValueInWindow` — how many orders, and how much they came to. The
+    second pages through orders and sums their order-time totals; it still
+    writes nothing, still requires only `read_orders`, and is classified
+    identically to the count (READ / REVERSIBLE / not financial). A test asserts
+    by name that the port carries exactly these two methods and that neither
+    matches a write-shaped verb.
+  - **Order data is read but never retained.** The value read sees order ids and
+    totals in the response; only the summed integer, its scale, its currency and
+    a sha256 of the pages are persisted. No order id, customer, address, line
+    item or raw body is stored.
   - **No live observation has been performed in this repository.** There are no
     live store credentials here; every test drives the provider through a
     stubbed `fetch`. The path is real and empirically unexercised.

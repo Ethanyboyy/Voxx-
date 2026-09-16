@@ -285,23 +285,29 @@ describe("P4-A — external system of record is the HOLD/DENY discriminator", ()
     expect(moneyMoving).toEqual([]);
   });
 
-  it("the one action that reads an external system of record is a read, and ALLOWs", () => {
-    // The positive half of the narrowing above. If someone ever reclassifies
-    // this read as financial or irreversible, the test above starts failing —
-    // and if they quietly widen what it does, this one does.
+  it("every action that reads an external system of record is a read, and ALLOWs", () => {
+    // The positive half of the narrowing above, kept as an explicit ALLOWLIST
+    // rather than a property check. A new entry here is a deliberate line in a
+    // diff — which is how P5-F's `economic.observe_order_value` arrived: it made
+    // this fail, and adding it was a decision rather than a default.
     const external = [
       ...Object.entries(TOOL_CLASSIFICATIONS),
       ...Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS),
-    ].filter(([, entry]) => entry.externalSystemOfRecord).map(([name]) => name);
-    expect(external).toEqual(["economic.observe_orders"]);
+    ]
+      .filter(([, entry]) => entry.externalSystemOfRecord)
+      .map(([name]) => name)
+      .sort();
+    expect(external).toEqual(["economic.observe_order_value", "economic.observe_orders"]);
 
-    const classification = classifyAction("tool", "economic.observe_orders").classification;
-    expect(classification.effect).toBe("READ");
-    expect(classification.financial).toBe(false);
-    expect(classification.reversibility).toBe("REVERSIBLE");
-    // Reading someone else's record is still a read. The external flag does not
-    // escalate on its own — only in combination with the other two.
-    expect(evaluatePolicy({ action: classification }).decision).toBe("ALLOW");
+    for (const name of external) {
+      const classification = classifyAction("tool", name).classification;
+      expect(classification.effect, name).toBe("READ");
+      expect(classification.financial, name).toBe(false);
+      expect(classification.reversibility, name).toBe("REVERSIBLE");
+      // Reading someone else's record is still a read. The external flag does
+      // not escalate on its own — only combined with the other two.
+      expect(evaluatePolicy({ action: classification }).decision, name).toBe("ALLOW");
+    }
   });
 
   it("Test 1 — the internal ledger record HOLDs, despite being financial AND irreversible", () => {

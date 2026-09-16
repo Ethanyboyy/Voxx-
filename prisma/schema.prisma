@@ -825,6 +825,27 @@ model ExperimentMeasurement {
   windowEnd        DateTime?
   semantics        MeasurementSemantics?
 
+  // --- [P5-F] A MONETARY amount. Its own columns, never shared with the count.
+  //
+  // `observedValue` above keeps meaning "how many orders were summed" even for a
+  // value measurement — which is what makes the sum checkable, because that is
+  // exactly the number the completeness check proved against the store's own
+  // count. The amount lives here instead.
+  //
+  // ALL THREE OR NONE. An amount is meaningless without its scale and its
+  // currency: 1250 is $12.50, ¥1,250 and KWD 1.250, and every one of those
+  // renders plausibly. So they are written together and hashed together.
+
+  /// The summed amount in minor units at `observedAmountScale`. Integer, so no
+  /// float ever touches a monetary total.
+  observedAmountMinor Int?
+  /// Decimal places the provider used. 0 for a zero-decimal currency like JPY,
+  /// 3 for KWD. READ from the provider, never assumed to be 2.
+  observedAmountScale Int?
+  /// Currency code, established from the shop's own base currency AND
+  /// cross-checked against every order summed. Never defaulted, never assumed.
+  observedCurrency    String?
+
   /// Hash over everything that makes this measurement mean what it means.
   digest     String
   observedAt DateTime @default(now())

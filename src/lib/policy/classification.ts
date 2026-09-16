@@ -376,6 +376,21 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     untrustedOutput: true,
     externalSystemOfRecord: true,
   },
+  // [P5-F] IDENTICAL TO THE COUNT, and that is the finding, not an oversight.
+  //
+  // It is tempting to mark this one `financial: true` because the subject matter
+  // is money. That would be wrong for the same reason it was wrong for the
+  // count: the flag means "this action moves or commits money", and summing
+  // order totals in a merchant's own store spends nothing, commits nothing, and
+  // changes nothing. Reading an amount is not a financial act; recording an
+  // expense against a finite spend ceiling is.
+  "economic.observe_order_value": {
+    effect: "READ",
+    reversibility: "REVERSIBLE",
+    financial: false,
+    untrustedOutput: true,
+    externalSystemOfRecord: true,
+  },
   "calendar.list_events": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
   // The event can be deleted; the invitation has already been delivered.
   "calendar.create_event": {

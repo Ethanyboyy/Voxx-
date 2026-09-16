@@ -891,13 +891,27 @@ describe("the integration surface cannot grow by accident", () => {
     expect(codeOnly(shopifySource)).not.toContain("write_orders");
   });
 
-  it("declares exactly one method on the port", () => {
-    // A tripwire. Adding a second method here is adding a capability, and it
-    // should be a deliberate change against a failing test rather than a quiet
-    // addition to an interface.
+  it("every method on the port is a read", () => {
+    // ---- WIDENED IN P5-F, AND THE INVARIANT IS UNCHANGED -----------------
+    //
+    // This used to assert the port had exactly ONE method. P5-F added a second
+    // (`sumOrderValueInWindow`), and that made this fail — correctly, because a
+    // new method on this interface is a new capability and should never slip in
+    // unnoticed.
+    //
+    // But the count was never the property worth protecting. Two reads can
+    // between them cancel nothing and move no money. What matters is that no
+    // method WRITES, so that is what is asserted now — by name, against an
+    // allowlist. Adding a third read means adding it here deliberately; adding
+    // anything that sounds like a write fails immediately.
     const body = portSource.slice(portSource.indexOf("interface EconomicObservationProvider"));
-    const methods = body.slice(0, body.indexOf("}")).match(/^\s+\w+\(/gm) ?? [];
-    expect(methods).toHaveLength(1);
+    const methods = (body.slice(0, body.indexOf("\n}")).match(/^\s+(\w+)\(/gm) ?? []).map((m) =>
+      m.trim().replace("(", "")
+    );
+    expect(methods.sort()).toEqual(["countOrdersInWindow", "sumOrderValueInWindow"]);
+    for (const method of methods) {
+      expect(method).not.toMatch(/create|update|delete|cancel|refund|write|set|send|charge/i);
+    }
   });
 
   it("the failure arm of the outcome type carries no value field", () => {

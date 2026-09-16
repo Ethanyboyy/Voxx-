@@ -8,7 +8,8 @@ import { getConnectionProvider } from "@/lib/integrations/stub";
 import { createRequirement, nextRequirementCode } from "@/lib/lab/requirements";
 import { createQuestion } from "@/lib/lab/questions";
 import { recordOpportunitySpend } from "@/lib/economic/service";
-import { observeDeclaredOrderWindow } from "@/lib/economic/externalObservation";
+import { observeDeclaredOrderValue, observeDeclaredOrderWindow } from "@/lib/economic/externalObservation";
+import { formatMinor } from "@/lib/integrations/decimal";
 import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import { recordEvent } from "@/lib/observability/events";
 import {
@@ -348,6 +349,63 @@ register({
         semantics: outcome.semantics,
       },
       summary: `${outcome.scope} recorded ${outcome.value} order${outcome.value === 1 ? "" : "s"} created between ${outcome.windowStart.toISOString()} and ${outcome.windowEnd.toISOString()}.`,
+    };
+  },
+});
+
+register({
+  name: "economic.observe_order_value",
+  description:
+    "Ask a connected Shopify store for the total price of the orders it recorded inside an experiment's declared observation window. Read-only: it sums, and can change nothing in the store.",
+  category: "external",
+  // [P5-F] THE SAME CAPABILITY AS THE COUNT, deliberately. Reading how much is
+  // not a greater authority than reading how many — it is the same authenticated
+  // read of the same resource, returning a different column. Minting a second
+  // capability would imply a second decision for a user to make and a second
+  // grant to keep in step, without protecting anything the first does not.
+  capability: "integration.shopify.read",
+  requiredLevel: "RECOMMEND",
+  isExternal: true,
+  // Experiment id and nothing else — the store, the window and the rule all come
+  // from the experiment's own frozen contract, so no caller can aim this at a
+  // different shop or a better week.
+  inputSchema: z.object({ experimentId: z.string().min(1).max(80) }),
+  execute: async (userId, input) => {
+    const outcome = await observeDeclaredOrderValue(userId, input.experimentId);
+
+    // A refusal is OUTPUT, not a throw — same reasoning as the count tool. The
+    // persisted reason is what lets the observation stage say "unavailable"
+    // rather than showing a silence that reads as 0.00.
+    if (!outcome.observed) {
+      return {
+        output: {
+          observed: false as const,
+          failure: outcome.failure,
+          detail: outcome.detail,
+          provider: outcome.provider,
+          attemptedAt: outcome.attemptedAt.toISOString(),
+        },
+        summary: `No order value was obtained (${outcome.failure}). This is not a value of zero.`,
+      };
+    }
+
+    return {
+      output: {
+        observed: true as const,
+        amountMinor: outcome.amountMinor,
+        amountScale: outcome.amountScale,
+        currency: outcome.currency,
+        orderCount: outcome.orderCount,
+        unit: outcome.unit,
+        provider: outcome.provider,
+        scope: outcome.scope,
+        retrievedAt: outcome.retrievedAt.toISOString(),
+        responseDigest: outcome.responseDigest,
+        windowStart: outcome.windowStart.toISOString(),
+        windowEnd: outcome.windowEnd.toISOString(),
+        semantics: outcome.semantics,
+      },
+      summary: `${outcome.scope} recorded ${formatMinor(outcome.amountMinor, outcome.amountScale, outcome.currency)} across ${outcome.orderCount} order${outcome.orderCount === 1 ? "" : "s"} created between ${outcome.windowStart.toISOString()} and ${outcome.windowEnd.toISOString()}. This is gross order value at order time, not revenue and not profit.`,
     };
   },
 });

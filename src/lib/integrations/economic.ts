@@ -29,13 +29,18 @@
  *   NOT CONFIGURED   there is no store. Nothing was asked of anyone.
  *
  * ---------------------------------------------------------------------------
- * WHY THE PORT DECLARES EXACTLY ONE METHOD, AND WHY IT IS A COUNT
+ * WHY EVERY METHOD ON THE PORT IS A READ
  * ---------------------------------------------------------------------------
  *
- * An integration surface grows by accident. One read method that returns an
- * integer cannot cancel an order, issue a refund, or move money, and adding the
- * ability to do any of those means adding a method to this interface — in a diff
- * someone reads, against a doc comment that says the port is read-only.
+ * An integration surface grows by accident. Two read methods — how many orders,
+ * and how much they came to — can between them cancel nothing, refund nothing
+ * and move no money, and adding the ability to do any of those means adding a
+ * method to this interface, in a diff someone reads, against a doc comment that
+ * says the port is read-only.
+ *
+ * [P5-F] The second method is the reason this heading changed from "exactly one
+ * method". The invariant was never the COUNT of methods; it was that none of
+ * them writes. `tests/p5-e-external-observation.test.ts` asserts that directly.
  */
 
 import { db } from "@/lib/db";
@@ -75,7 +80,21 @@ export type ObservationFailure =
   /** The window closed too long ago for the store's answer to still describe it. */
   | "WINDOW_EXPIRED"
   /** The stored scope is not a shape this provider will talk to. */
-  | "SCOPE_INVALID";
+  | "SCOPE_INVALID"
+  // --- [P5-F] Money-specific refusals. Each one is a case where a number could
+  // --- be produced but would not be trustworthy, so none is produced at all.
+  /** More than one currency appeared. A sum across currencies is not an amount. */
+  | "CURRENCY_AMBIGUOUS"
+  /** An amount was not an exact decimal at a plausible currency scale. */
+  | "IMPRECISE_VALUE"
+  /** Fewer orders were read than the store itself counts for the same window. */
+  | "INCOMPLETE_RESULT"
+  /** The store's own count moved while the pages were being read. */
+  | "RESULT_UNSTABLE"
+  /** The window holds more orders than can be paged within a sane bound. */
+  | "RESULT_SET_TOO_LARGE"
+  /** The total exceeds what the measurement column can hold exactly. */
+  | "AMOUNT_OUT_OF_RANGE";
 
 export interface ObservationSuccess {
   observed: true;
@@ -108,6 +127,48 @@ export interface ObservationRefusal {
 
 export type ObservationOutcome = ObservationSuccess | ObservationRefusal;
 
+/**
+ * [P5-F] A MONETARY observation.
+ *
+ * Note what is NOT here: a `valueUsd`, a `formattedTotal`, or any single field
+ * that could be read as an amount on its own. `amountMinor`, `amountScale` and
+ * `currency` are three parts of one fact and are always carried together —
+ * because an integer without its scale and its currency is not money, it is a
+ * number that will eventually be rendered with someone's assumed symbol.
+ *
+ * `orderCount` rides along deliberately. It is the COMPLETENESS PROOF: the sum
+ * is only accepted when the number of orders read equals the store's own count
+ * for the same window, so recording that number beside the amount lets anyone
+ * re-check the claim later.
+ */
+export interface ValueObservationSuccess {
+  observed: true;
+  /** The exact total in minor units at `amountScale`. */
+  amountMinor: number;
+  /** Decimal places, read from the provider. Never assumed to be 2. */
+  amountScale: number;
+  /** The single currency that held across the shop and every order summed. */
+  currency: string;
+  /** How many orders went into the sum. Equal to the store's own count. */
+  orderCount: number;
+  unit: string;
+  provider: string;
+  scope: string;
+  retrievedAt: Date;
+  responseDigest: string;
+  /** INCLUSIVE. */
+  windowStart: Date;
+  /** EXCLUSIVE. */
+  windowEnd: Date;
+  semantics: MeasurementSemantics;
+}
+
+/**
+ * Same discipline as `ObservationOutcome`: the failure arm has no amount field,
+ * so "the store did not answer" cannot become "the store recorded 0.00".
+ */
+export type ValueObservationOutcome = ValueObservationSuccess | ObservationRefusal;
+
 export interface OrderCountQuery {
   /** The shop domain or equivalent identifier. */
   scope: string;
@@ -120,12 +181,24 @@ export interface OrderCountQuery {
 }
 
 /**
- * The port. One method, and it is a read that returns a count.
+ * The port. Two methods, both reads, neither able to change anything.
  */
 export interface EconomicObservationProvider {
   readonly provider: string;
   readonly unit: string;
+  /** [P5-F] What the monetary figure means, in words. */
+  readonly valueUnit: string;
   countOrdersInWindow(query: OrderCountQuery): Promise<ObservationOutcome>;
+  /**
+   * [P5-F] The total monetary value of the orders in the same declared window.
+   *
+   * A SECOND READ METHOD, AND STILL NO WRITE. The port's rule is unchanged:
+   * adding the ability to change anything in the merchant's store means adding a
+   * method here, in a diff someone reads. Reading how much is not a greater
+   * authority than reading how many — it is the same authenticated read of the
+   * same resource, returning a different column.
+   */
+  sumOrderValueInWindow(query: OrderCountQuery): Promise<ValueObservationOutcome>;
 }
 
 const PROVIDERS = new Map<string, EconomicObservationProvider>();

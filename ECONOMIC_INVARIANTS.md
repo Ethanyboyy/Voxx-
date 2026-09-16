@@ -386,6 +386,60 @@ exactly one method on the port*.
 
 ---
 
+## I15 — A monetary total is exact, complete, denominated — or it does not exist
+
+P5-F asks the same store, over the same frozen window, for a different column:
+how much the orders came to. Money has failure modes a count does not, and each
+one produces a number that looks entirely real.
+
+**COMPLETENESS.** A count arrives as one integer. A total has to be *assembled*
+by paging, and a page-walk that stops early yields a smaller total that is
+indistinguishable from a correct one. So the sum is refused unless the number of
+orders read **equals the store's own `ordersCount`** for the same filter — two
+independent answers from the provider have to agree before either is believed —
+and unless that count **did not move** between the first page and the last. A
+repeated order id is refused too, since a replayed cursor would double-count
+real orders into a larger, believable figure. There is no partial total: hitting
+the page bound is a refusal, never a truncated answer.
+
+**DENOMINATION.** `1250` is `$12.50`, `¥1,250` and `KWD 1.250`. So an amount is
+stored as three columns — `observedAmountMinor`, `observedAmountScale`,
+`observedCurrency` — written together, hashed together, and projected as
+**null unless all three are present**. The scale is *read from the provider*,
+never assumed to be 2: assuming cents reports a ¥5,000 sale as ¥500,000 (100×)
+and a KWD 5.000 sale as KWD 500 (10×, the other way). A window whose orders span
+two currencies is refused, because a sum across currencies is not an amount of
+anything.
+
+**EXACTNESS.** Amounts are parsed as text and summed as integers; the parser
+rejects exponents, separators, whitespace, negatives and trailing points rather
+than letting any of them become a plausible wrong number. Anything past four
+decimal places is refused as an unrounded computed figure rather than money.
+
+**STABILITY.** The field summed is `totalPriceSet` — the value **at order time**
+— and not `currentTotalPriceSet`. Shopify defines every `current*` money field
+as the value *"after returns, refunds, order edits, and cancellations"*, so it
+**drifts**: a measurement built on it would silently stop matching its own digest
+and could never be re-verified. The cost of that choice is stated rather than
+hidden — a fully refunded order still counts at full value.
+
+**AND IT IS STILL NOT REVENUE.** Gross order value at order time survives no
+refund, cancellation, chargeback or recognition rule. Nothing is subtracted for
+goods, fees, shipping, advertising or tax, so it is not profit. Orders inside a
+window are not orders *caused by* the experiment, so it is not attribution and
+not causation. The rule carries all four sentences to every surface that renders
+the figure.
+
+**Tests:** *REFUSES when fewer orders were read than the store itself counts*,
+*refuses when the store's own count moves between pages*, *refuses when the same
+order comes back twice*, *refuses a window holding two currencies*, *records a
+non-USD currency as itself, with the right scale*, *projects a HALF-RECORDED
+amount as no amount*, *binds amount, scale AND currency into the digest*, *asks
+for the order-time total, not the drifting current total*, *A REAL ZERO-VALUE
+WINDOW IS A REAL MEASUREMENT*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -393,13 +447,17 @@ honest:
 
 - **The engine is not autonomous.** It cannot transact. Every `SCALE` stops at a
   human.
-- **VOX has still measured nothing about money.** `EXTERNAL_ORDER_COUNT` is a
-  real fact about the world — the first one in this system — and it is a count of
-  orders, not an amount. It establishes that orders existed in a window. It
-  establishes **nothing** about whether the experiment caused them, what they
-  were worth, or whether they will recur. Attribution, revenue and profit are
-  each a separate claim that VOX cannot make, and the rule carries that sentence
-  to every surface that renders the number.
+- **VOX can now measure an amount, and an amount is not revenue.** `EXTERNAL_ORDER_VALUE`
+  retrieves gross order value at order time, from the merchant's own store, over
+  a window declared in advance. That is a real monetary fact about the world. It
+  is **not revenue** (it survives no refund or cancellation), **not profit**
+  (nothing is subtracted), **not attribution** (orders in a window are not orders
+  the experiment caused), and **not causation**. VOX still cannot truthfully say
+  it earned anything.
+- **No money has moved, and nothing here can move any.** Both external actions
+  are reads. There is no payment, banking, card, transfer, refund or purchasing
+  integration anywhere in VOX, and the policy gate's money-moving cell is still
+  empty — `tests/policy-gate.test.ts` fails the build if that changes.
 - **No live Shopify observation has ever been performed in this repository.** The
   provider is real and the code path is real, but every test drives it through a
   stubbed `fetch`. No live store credentials exist here, so the integration is

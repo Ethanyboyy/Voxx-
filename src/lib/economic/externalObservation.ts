@@ -19,6 +19,7 @@ import {
   type ObservationFailure,
   type OrderCountQuery,
   type EconomicObservationProvider,
+  type ValueObservationOutcome,
 } from "@/lib/integrations/economic";
 import { SHOPIFY_REQUIRED_SCOPE } from "@/lib/integrations/shopify";
 import {
@@ -28,6 +29,8 @@ import {
 } from "@/lib/economic/observationContract";
 
 export const EXTERNAL_ORDER_COUNT_RULE = "EXTERNAL_ORDER_COUNT";
+/** [P5-F] The monetary counterpart. Same store, same window, different column. */
+export const EXTERNAL_ORDER_VALUE_RULE = "EXTERNAL_ORDER_VALUE";
 
 /** The provider an external rule reads. One, deliberately. */
 const PROVIDER_ID = "shopify";
@@ -180,6 +183,24 @@ export async function observeDeclaredOrderWindow(
   const gate = await openDeclaredWindow(userId, experimentId, EXTERNAL_ORDER_COUNT_RULE);
   if (!gate.open) return gate.refusal;
   return gate.provider.countOrdersInWindow(gate.query);
+}
+
+/**
+ * [P5-F] Asks the declared store how much the orders in the declared window
+ * came to.
+ *
+ * THE SAME GATE AS THE COUNT, deliberately — one `openDeclaredWindow()`, so the
+ * contract freeze, the window timing, the tenant boundary and the store-match
+ * check cannot be more lenient for money than they are for volume. Only the
+ * final method call differs.
+ */
+export async function observeDeclaredOrderValue(
+  userId: string,
+  experimentId: string
+): Promise<ValueObservationOutcome> {
+  const gate = await openDeclaredWindow(userId, experimentId, EXTERNAL_ORDER_VALUE_RULE);
+  if (!gate.open) return gate.refusal;
+  return gate.provider.sumOrderValueInWindow(gate.query);
 }
 
 export interface DeclareContractInput {

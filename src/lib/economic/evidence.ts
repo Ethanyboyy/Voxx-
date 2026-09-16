@@ -81,6 +81,7 @@ import { recordEvent } from "@/lib/observability/events";
 import { createAgentRun, cancelAgentRun, getAgentRun } from "@/lib/agents/service";
 import { executeRun } from "@/lib/agents/executor";
 import { observationContractDigestOf, resolveObservationWindow } from "@/lib/economic/observationContract";
+import { formatMinor, MAX_MONEY_SCALE } from "@/lib/integrations/decimal";
 
 /**
  * Whether VOX itself produced this figure, as opposed to a person reporting one.
@@ -110,6 +111,29 @@ export interface RuleObservation {
    */
   observedTotal: number;
   provenance: string;
+  /**
+   * [P5-F] A MONETARY amount, set only by a rule that read one.
+   *
+   * SEPARATE FROM `observedValue` ON PURPOSE, and the separation is the whole
+   * safeguard. `observedValue` is a count with a unit in words beside it; money
+   * is a triple — an integer, the number of decimal places that integer is
+   * expressed at, and the currency it is denominated in — and it is meaningless
+   * without all three. Folding an amount into the count column would produce a
+   * bare number that reads as "1250" whether the store meant $12.50, ¥1,250 or
+   * KWD 1.250, and every one of those renders plausibly.
+   *
+   * So a value rule fills BOTH: `observedValue` stays the number of orders
+   * summed (which is what makes the sum checkable — it is the completeness
+   * proof), and `money` carries the amount.
+   */
+  money?: {
+    /** The exact total in minor units at `amountScale`. Never a float. */
+    amountMinor: number;
+    /** Decimal places the provider used. Read from the provider, never assumed. */
+    amountScale: number;
+    /** Currency code. Established from the provider, never defaulted. */
+    currency: string;
+  };
   /** [P5-E] Set only by a rule that read an external system of record. */
   external?: {
     provider: string;
@@ -295,6 +319,116 @@ export const OBSERVATION_RULES: Readonly<Record<string, ObservationRule>> = Obje
       };
     },
   }),
+
+  /**
+   * [P5-F] How much order value a connected storefront recorded inside a
+   * declared window.
+   *
+   * THE SAME QUESTION AS `EXTERNAL_ORDER_COUNT`, ASKED OF A DIFFERENT COLUMN.
+   * Same store, same frozen contract, same inclusive-start/exclusive-end window,
+   * same authenticated read-only scope. What changes is that the answer is
+   * money, and money is where a measurement stops being merely wrong and starts
+   * being a claim about revenue.
+   *
+   * SO THIS RULE IS DELIBERATELY HARDER TO SATISFY THAN THE COUNT. It refuses
+   * unless the provider returned a single unambiguous currency, an exact
+   * (non-rounded, non-estimated) figure, and a set of orders whose size the
+   * store's own count agrees with. Any of those missing produces a refusal,
+   * never a partial total — a sum that silently dropped its last page is a
+   * smaller number that looks exactly like a real one.
+   *
+   * WHAT IT DOES NOT ESTABLISH, and this is the point of the whole phase:
+   *
+   *   NOT REVENUE. Gross order value is what customers were charged. Revenue is
+   *   an accounting concept that survives refunds, cancellations, chargebacks,
+   *   unfulfilled orders and recognition timing. This figure survives none of
+   *   them — `totalPriceSet` is deliberately the value AT ORDER TIME, because
+   *   the alternative drifts and a drifting measurement breaks its own digest.
+   *
+   *   NOT PROFIT. No cost of goods, no fees, no shipping, no advertising, no
+   *   tax treatment. Subtracting nothing from a gross figure does not make it a
+   *   margin.
+   *
+   *   NOT ATTRIBUTION. Orders in a window are orders in a window. Whether the
+   *   experiment produced any of them needs context — other campaigns,
+   *   seasonality, existing demand — that VOX does not have.
+   *
+   *   NOT CAUSATION, and no window arithmetic makes it so.
+   */
+  EXTERNAL_ORDER_VALUE: Object.freeze({
+    requiresExternalContract: true,
+    source: "EXTERNAL_OBSERVED" as MeasurementSource,
+    toolName: "economic.observe_order_value",
+    unit: "total price of orders created in the observation window, at order time and before returns",
+    method:
+      "The connected storefront is asked for the orders it recorded with a creation time inside the declared window — lower bound inclusive, upper bound exclusive — and their order-time totals are summed exactly as integers in minor units, at the number of decimal places the store itself used. The store is separately asked how many orders that window holds, and the sum is refused unless the number of orders summed equals that count and that count did not move while the pages were read. A single currency must hold across the shop and every order summed; a mixed-currency, rounded, estimated or incomplete answer is refused rather than recorded.",
+    doesNotEstablish:
+      "It is not revenue: gross order value at order time survives no refund, cancellation, chargeback or recognition rule. It is not profit: nothing is subtracted for goods, fees, shipping, advertising or tax. It is not attribution: orders inside a window are not orders caused by the experiment. It is not causation, and it does not predict recurrence. Every one of those is a judgement a person makes with context VOX does not have.",
+    buildInput: (experiment: Experiment) => ({ experimentId: experiment.id }),
+    observe: (output: unknown): RuleOutcome => {
+      if (typeof output !== "object" || output === null) return null;
+      const row = output as Record<string, unknown>;
+
+      // The explicit non-answer. A refused sum is an absence of knowledge about
+      // money, which is the one thing that must never round to zero.
+      if (row.observed === false) {
+        return {
+          notObserved: true,
+          failure: typeof row.failure === "string" ? row.failure : "UNKNOWN",
+          detail:
+            typeof row.detail === "string" ? row.detail : "The observation produced no monetary value.",
+        };
+      }
+      if (row.observed !== true) return null;
+
+      // Every monetary field is validated independently and the whole row is
+      // rejected if any one is off-shape. A partially-read money row is not a
+      // smaller amount, it is an unknown one.
+      const amountMinor = row.amountMinor;
+      const amountScale = row.amountScale;
+      const orderCount = row.orderCount;
+      if (typeof amountMinor !== "number" || !Number.isInteger(amountMinor) || amountMinor < 0) return null;
+      if (typeof amountScale !== "number" || !Number.isInteger(amountScale) || amountScale < 0) return null;
+      if (amountScale > MAX_MONEY_SCALE) return null;
+      if (typeof orderCount !== "number" || !Number.isInteger(orderCount) || orderCount < 0) return null;
+
+      // A three-letter code, checked by shape. A currency this module cannot
+      // read is an amount it cannot denominate, and an undenominated amount is
+      // not money.
+      const currency = row.currency;
+      if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
+
+      for (const key of ["provider", "scope", "retrievedAt", "responseDigest", "windowStart", "windowEnd"]) {
+        if (typeof row[key] !== "string") return null;
+      }
+      if (row.semantics !== "DELTA_OVER_WINDOW") return null;
+
+      const retrievedAt = new Date(row.retrievedAt as string);
+      const windowStart = new Date(row.windowStart as string);
+      const windowEnd = new Date(row.windowEnd as string);
+      if ([retrievedAt, windowStart, windowEnd].some((d) => Number.isNaN(d.getTime()))) return null;
+
+      return {
+        // THE COUNT COLUMN STAYS A COUNT. `observedValue` is how many orders
+        // went into the sum, which is exactly the number the completeness check
+        // proved. Putting the amount here instead would produce a bare integer
+        // with no scale and no currency attached to it anywhere downstream.
+        observedValue: orderCount,
+        observedTotal: orderCount,
+        money: { amountMinor, amountScale, currency },
+        provenance: `${row.provider as string}: ${row.scope as string}`,
+        external: {
+          provider: row.provider as string,
+          scope: row.scope as string,
+          retrievedAt,
+          responseDigest: row.responseDigest as string,
+          windowStart,
+          windowEnd,
+          semantics: "DELTA_OVER_WINDOW",
+        },
+      };
+    },
+  }),
 });
 
 export function getObservationRule(key: string | null): ObservationRule | null {
@@ -332,6 +466,20 @@ export function measurementDigest(input: {
   observedValue: number;
   observedTotal: number;
   provenance: string;
+  /**
+   * [P5-F] The monetary terms, when the measurement carries an amount.
+   *
+   * ALL THREE OR NONE. A digest covering the integer but not the scale would let
+   * 1250 be restated as 125.0 without breaking; one covering the amount but not
+   * the currency would let a JPY total be relabelled USD — a ~150x revaluation —
+   * while still verifying. Currency and scale are not metadata about the amount,
+   * they are part of it.
+   */
+  money?: {
+    amountMinor: number;
+    amountScale: number;
+    currency: string;
+  } | null;
   /**
    * [P5-E] External provenance, when the figure came from outside VOX.
    *
@@ -371,6 +519,19 @@ export function measurementDigest(input: {
           input.external.semantics,
         ]
       : []),
+    // [P5-F] APPENDED, AND TAGGED.
+    //
+    // Appended so a measurement carrying no amount hashes to exactly what it
+    // hashed to before this phase existed — a research count and an order count
+    // both keep their digests, and `verifyEvidenceIntegrity()` does not report
+    // every pre-existing row as tampered with the moment this ships.
+    //
+    // Tagged because the terms are joined by a separator, and an untagged
+    // variable-length tail is how two different measurements end up with the
+    // same canonical string.
+    ...(input.money
+      ? ["MONEY", String(input.money.amountMinor), String(input.money.amountScale), input.money.currency]
+      : []),
   ].join("|");
   return createHash("sha256").update(canonical).digest("hex");
 }
@@ -393,6 +554,16 @@ function recomputeMeasurementDigest(experimentId: string, measurement: Experimen
     observedValue: measurement.observedValue,
     observedTotal: measurement.observedTotal,
     provenance: measurement.provenance,
+    money:
+      measurement.observedAmountMinor !== null &&
+      measurement.observedAmountScale !== null &&
+      measurement.observedCurrency !== null
+        ? {
+            amountMinor: measurement.observedAmountMinor,
+            amountScale: measurement.observedAmountScale,
+            currency: measurement.observedCurrency,
+          }
+        : null,
     external:
       measurement.externalProvider && measurement.windowStart && measurement.windowEnd
         ? {
@@ -777,6 +948,7 @@ export async function observeExperimentExecution(
     observedValue: observation.observedValue,
     observedTotal: observation.observedTotal,
     provenance: observation.provenance,
+    money: observation.money ?? null,
     external: observation.external
       ? {
           provider: observation.external.provider,
@@ -804,6 +976,13 @@ export async function observeExperimentExecution(
         rule: experiment.observationRule!,
         provenance: observation.provenance,
         digest,
+        ...(observation.money
+          ? {
+              observedAmountMinor: observation.money.amountMinor,
+              observedAmountScale: observation.money.amountScale,
+              observedCurrency: observation.money.currency,
+            }
+          : {}),
         ...(observation.external
           ? {
               externalProvider: observation.external.provider,
@@ -841,6 +1020,13 @@ export async function observeExperimentExecution(
       observedTotal: observation.observedTotal,
       provenance: observation.provenance,
       digest,
+      ...(observation.money
+        ? {
+            observedAmountMinor: observation.money.amountMinor,
+            observedAmountScale: observation.money.amountScale,
+            observedCurrency: observation.money.currency,
+          }
+        : {}),
       ...(observation.external
         ? {
             externalProvider: observation.external.provider,
@@ -1011,6 +1197,20 @@ export interface MeasurementProjection {
   agentRunId: string | null;
   agentStepId: string | null;
   observedAt: Date;
+  /**
+   * [P5-F] The monetary amount, or NULL when this measurement is a count.
+   *
+   * Null rather than zero, and a surface must render it as an absence. A value
+   * measurement that failed to record its currency has no business displaying
+   * its integer.
+   */
+  money: {
+    amountMinor: number;
+    amountScale: number;
+    currency: string;
+    /** Rendered with its currency code, never with an assumed symbol. */
+    formatted: string;
+  } | null;
   /** Null for a measurement of VOX's own execution. */
   external: {
     provider: string;
@@ -1043,6 +1243,23 @@ function projectMeasurement(measurement: ExperimentMeasurement | null): Measurem
     agentRunId: measurement.agentRunId,
     agentStepId: measurement.agentStepId,
     observedAt: measurement.observedAt,
+    // All three or nothing. A partially-recorded amount is rendered as no
+    // amount, because an integer without its currency is not a monetary fact.
+    money:
+      measurement.observedAmountMinor !== null &&
+      measurement.observedAmountScale !== null &&
+      measurement.observedCurrency !== null
+        ? {
+            amountMinor: measurement.observedAmountMinor,
+            amountScale: measurement.observedAmountScale,
+            currency: measurement.observedCurrency,
+            formatted: formatMinor(
+              measurement.observedAmountMinor,
+              measurement.observedAmountScale,
+              measurement.observedCurrency
+            ),
+          }
+        : null,
     external: measurement.externalProvider
       ? {
           provider: measurement.externalProvider,
