@@ -345,6 +345,37 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
   },
 
   // --- Someone else's systems. ---
+  //
+  // [P5-E] READING a merchant's own store, and the classification says exactly
+  // that and nothing more.
+  //
+  // READ + REVERSIBLE: it issues one authenticated GraphQL query whose only
+  // effect on the store is a log line and some rate-limit budget. Nothing is
+  // created, changed or removed, and the OAuth scope behind it (read_orders)
+  // does not permit a write even if the code tried.
+  //
+  // financial: FALSE, and this is the subtle one. The flag means "this action
+  // moves or commits money", not "this action concerns money". Reading how many
+  // orders a shop recorded spends nothing and commits nothing. Marking it
+  // financial because the subject matter is commercial would put a read in the
+  // same cell as `economic.record_expense`, which consumes a finite spend
+  // ceiling — and blurring those two is how a system ends up treating a query as
+  // a transaction, or worse, a transaction as a query.
+  //
+  // untrustedOutput: TRUE. The figure comes from outside VOX.
+  //
+  // externalSystemOfRecord: TRUE. It is the first action in VOX for which that
+  // is true. On its own it does not escalate the decision — a read of someone
+  // else's record is still a read — it escalates only in combination with
+  // FINANCIAL and IRREVERSIBLE, which is the cell where a write to a third
+  // party's books would land.
+  "economic.observe_orders": {
+    effect: "READ",
+    reversibility: "REVERSIBLE",
+    financial: false,
+    untrustedOutput: true,
+    externalSystemOfRecord: true,
+  },
   "calendar.list_events": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
   // The event can be deleted; the invitation has already been delivered.
   "calendar.create_event": {

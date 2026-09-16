@@ -157,6 +157,30 @@ export const CONNECTION_CATALOG: CatalogEntry[] = [
     requiredEnvVars: ["PRINTIFY_API_KEY"],
     writeEnabledByDefault: false,
   },
+  {
+    // [P5-E] The first entry with a REAL provider behind it. Every other
+    // service here resolves to a StubConnectionProvider that throws on connect;
+    // this one performs an authenticated read against the merchant's own store.
+    service: "SHOPIFY",
+    category: "SHOPPING",
+    displayName: "Shopify",
+    description:
+      "Read how many orders your store recorded inside an experiment's declared window. Read-only: VOX cannot change anything in the store.",
+    readCapability: "integration.shopify.read",
+    // NULL, and that is the point. This integration has no write mode at all —
+    // not a write mode that defaults to off, no write mode. `grantAccess()`
+    // cannot grant what the catalog does not define, so there is no path by
+    // which VOX gains the ability to change a merchant's store.
+    writeCapability: null,
+    // A per-store admin access token rather than an app-level OAuth client:
+    // this connects one merchant's own store, so the credential belongs to the
+    // connection, not to the deployment. There is nothing for the operator to
+    // configure, which is why this list is empty.
+    requiredEnvVars: [],
+    writeEnabledByDefault: false,
+    notes:
+      "Requires a custom-app Admin API access token with the read_orders scope. VOX verifies the token against the real store before the connection is marked connected.",
+  },
 ];
 
 export function getCatalogEntry(service: string): CatalogEntry | undefined {

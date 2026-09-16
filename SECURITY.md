@@ -126,22 +126,63 @@ features specifically so they can be added later without retrofitting a security
 
 VOX's "Connections Hub" (`/connections`, `src/lib/connections/service.ts`,
 `src/lib/integrations/`) is the trust/control layer every external
-integration must pass through, not a settings page. Nothing described here
-can currently reach a real external account:
+integration must pass through, not a settings page.
 
-- **Provider layer is stubbed by construction, not just by policy.** Every
-  service (Google Calendar, Gmail, Notion, Todoist, Craft, QuickBooks,
-  Plaid, Apple Health, Google Fit, Google Maps, Amazon order history, Etsy,
-  Printful, Printify — see `src/lib/integrations/catalog.ts`) resolves to
+**As of P5-E, exactly one integration can reach a real external account:
+Shopify, read-only.** Every other service remains stubbed by construction.
+
+- **Provider layer is stubbed by construction for every service but one.**
+  Google Calendar, Gmail, Notion, Todoist, Craft, QuickBooks, Plaid, Apple
+  Health, Google Fit, Google Maps, Amazon order history, Etsy, Printful and
+  Printify (see `src/lib/integrations/catalog.ts`) all resolve to
   `StubConnectionProvider` (`src/lib/integrations/stub.ts`), which reports
   `isConfigured: false` unless every vendor env var the catalog lists is
   present, and throws on any authorization/exchange attempt regardless. No
-  real vendor OAuth client is registered anywhere in this codebase.
+  real vendor OAuth client is registered for any of them.
+- **Shopify is real, and read-only (P5-E).** `src/lib/integrations/shopify.ts`
+  performs one authenticated Admin GraphQL query — `ordersCount` over a
+  declared time window — against a merchant's own store. Its safety rests on
+  properties enforced in code, not on intention:
+  - **No write mode exists.** Shopify is the only catalog entry whose
+    `writeCapability` is `null` — not a write capability defaulting to off.
+    `grantAccess()` cannot grant what the catalog does not define, and the
+    OAuth scope requested is `read_orders` alone. A test fails the build if a
+    GraphQL mutation appears in the provider, or if a second method is added
+    to the observation port.
+  - **The request target cannot be redirected.** The shop domain comes out of
+    the database and is interpolated into a URL carrying a live access token,
+    so it is validated whole-string against
+    `^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]\.myshopify\.com$` — no scheme, port,
+    path or userinfo. `169.254.169.254`, `acme.myshopify.com.evil.test` and
+    `acme.myshopify.com@evil.test` are refused before any request is made.
+  - **The token never leaves the header.** It is sent as
+    `X-Shopify-Access-Token`, never in a URL or body; it is stored only
+    encrypted; and it appears in no event payload, log line, digest or error
+    message. Tests assert each of those.
+  - **Raw responses are never stored.** Only a sha256 digest is persisted. An
+    order payload carries customer names, addresses and email addresses, and
+    keeping it would place third-party personal data in VOX's database for no
+    measurement benefit.
+  - **Connecting performs a real verification call.** `connectShopifyStore()`
+    validates the domain, grants the read capability through the real
+    `grantPermission()`, sets `CONNECTING`, and only reaches `CONNECTED` after
+    an authenticated read against the actual store succeeds. A token that does
+    not work is never stored, so the Hub cannot display a connection VOX
+    cannot actually use.
+  - **Per-user credential, per-user boundary.**
+    `resolveConnectionCredential()` scopes every lookup by `userId` in the
+    WHERE clause rather than checking ownership afterwards, and it is the only
+    path by which a provider ever receives a token.
+  - **No live observation has been performed in this repository.** There are no
+    live store credentials here; every test drives the provider through a
+    stubbed `fetch`. The path is real and empirically unexercised.
 - **Lifecycle**: `NOT_CONNECTED → PROPOSED → AWAITING_APPROVAL → CONNECTING
-  → CONNECTED → PAUSED / REVOKED` (plus `ERROR`). A connection can only
-  reach `CONNECTED` via a real provider's `exchangeCode()` succeeding —
-  today that call always throws, so every "connect" attempt ends at
-  `ERROR` with a "not configured" reason.
+  → CONNECTED → PAUSED / REVOKED` (plus `ERROR`). For every stubbed service a
+  connection can only reach `CONNECTED` via that provider's `exchangeCode()`
+  succeeding — those calls always throw, so each "connect" attempt ends at
+  `ERROR` with a "not configured" reason. Shopify reaches `CONNECTED` only
+  after a real authenticated read against the merchant's store succeeds, and
+  ends at `ERROR` (with nothing stored) when it does not.
 - **Suggested connections are Proposals.** VOX recommending a connection
   reuses the existing proposal engine (`connection.propose` in
   `src/lib/cognition/proposals.ts`'s `ACTION_HANDLERS`) rather than a

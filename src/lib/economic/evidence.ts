@@ -52,20 +52,19 @@
  * money. `provenance` carries the provider id precisely so a count over the mock
  * provider's placeholder output is legible as exactly that.
  *
+ * [P5-E] `EXTERNAL_ORDER_COUNT` asks a connected storefront how many orders it
+ * recorded inside a declared window. That IS a fact about the world rather than
+ * about VOX — the first one in this system — and it is still not a result. It
+ * establishes that orders existed in a window. It establishes nothing about
+ * whether the experiment caused them, what they were worth, or whether they will
+ * happen again. Every one of those is a judgement a person makes with context
+ * VOX does not have, which is why a measurement still cannot become evidence
+ * without a human verdict.
+ *
  * A THIRD STATE EXISTS AND MUST NOT COLLAPSE INTO EITHER. An execution that
- * fails, or whose output the rule cannot read, produces NO measurement — never a
- * zero. The observation records why it produced nothing and moves nothing.
- *
- * ---------------------------------------------------------------------------
- * A NOTE ON THE EXTERNAL COLUMNS
- * ---------------------------------------------------------------------------
- *
- * `RuleObservation.external`, the external terms in `measurementDigest()`, and
- * the nullable provenance columns on `ExperimentMeasurement` are present and
- * UNUSED by any rule in this phase. They are here rather than added later
- * because the digest is a hash: introducing terms into it afterwards would
- * change the digest of every measurement already recorded, and the whole point
- * of the digest is that it does not change unless the measurement does.
+ * fails, whose provider is unreachable, or whose output the rule cannot read
+ * produces NO measurement — never a zero. The observation records why it
+ * produced nothing and moves nothing.
  */
 
 import { createHash } from "node:crypto";
@@ -81,6 +80,7 @@ import type {
 import { recordEvent } from "@/lib/observability/events";
 import { createAgentRun, cancelAgentRun, getAgentRun } from "@/lib/agents/service";
 import { executeRun } from "@/lib/agents/executor";
+import { observationContractDigestOf, resolveObservationWindow } from "@/lib/economic/observationContract";
 
 /**
  * Whether VOX itself produced this figure, as opposed to a person reporting one.
@@ -110,7 +110,7 @@ export interface RuleObservation {
    */
   observedTotal: number;
   provenance: string;
-  /** Set only by a rule that read an external system of record. Unused in P5-D. */
+  /** [P5-E] Set only by a rule that read an external system of record. */
   external?: {
     provider: string;
     scope: string;
@@ -151,9 +151,9 @@ export interface ObservationRule {
   /** What this measurement does NOT establish. Carried to the surface deliberately. */
   readonly doesNotEstablish: string;
   /**
-   * True when this rule reads an external system of record, and therefore
-   * requires a frozen scope + window contract before it may be dispatched.
-   * No rule in P5-D sets this.
+   * [P5-E] True when this rule reads an external system of record, and
+   * therefore requires a frozen scope + window contract before it may be
+   * dispatched — and again before a measurement is written from the answer.
    */
   readonly requiresExternalContract: boolean;
   /** The measurement source a successful application produces. */
@@ -173,10 +173,16 @@ interface ResearchResultShape {
 /**
  * Every rule VOX can execute, hardcoded.
  *
- * ONE ENTRY. A registry with seven speculative rules in it would be seven ways
- * to measure nothing. New rules belong here when a new capability genuinely
- * arrives, with the same properties — declared before execution, computed from
- * persisted output, honest about what it does not establish.
+ * TWO ENTRIES, and they are different kinds of thing. `RESEARCH_SOURCED_RESULTS`
+ * counts what one of VOX's own executions produced — real, deterministic, and
+ * about VOX. `EXTERNAL_ORDER_COUNT` asks a merchant's own system of record what
+ * happened in the world, which is the first thing here that could be economic
+ * evidence at all.
+ *
+ * A registry with seven speculative rules in it would be seven ways to measure
+ * nothing. New rules belong here when a new capability genuinely arrives, with
+ * the same properties — declared before execution, computed from persisted
+ * output, honest about what it does not establish.
  */
 export const OBSERVATION_RULES: Readonly<Record<string, ObservationRule>> = Object.freeze({
   RESEARCH_SOURCED_RESULTS: Object.freeze({
@@ -213,6 +219,79 @@ export const OBSERVATION_RULES: Readonly<Record<string, ObservationRule>> = Obje
           rows.length === 0
             ? "research provider: none (the execution returned no results)"
             : `research provider: ${providers.join(", ")}`,
+      };
+    },
+  }),
+
+  /**
+   * [P5-E] How many orders a connected storefront recorded inside a declared
+   * window.
+   *
+   * THE FIRST RULE THAT MEASURES THE WORLD RATHER THAN VOX. The number comes
+   * from a merchant's own system of record, retrieved through an authenticated
+   * read the executor authorized, and it is a DELTA over a window rather than a
+   * level read at an instant — so it cannot turn a store's entire trading
+   * history into one experiment's result.
+   *
+   * IT STILL DOES NOT MEAN THE EXPERIMENT SUCCEEDED. Three orders in the window
+   * is a fact. Whether three orders is a win, a loss, or noise depends on what
+   * the experiment predicted, what it cost, what else was running that week, and
+   * whether those orders had anything to do with it — none of which VOX knows.
+   * A human reconciles. This rule counts.
+   */
+  EXTERNAL_ORDER_COUNT: Object.freeze({
+    requiresExternalContract: true,
+    source: "EXTERNAL_OBSERVED" as MeasurementSource,
+    toolName: "economic.observe_orders",
+    unit: "orders created in the observation window",
+    method:
+      "The connected storefront is asked how many orders it recorded with a creation time inside the declared window — lower bound inclusive, upper bound exclusive. The store answers with a single integer and its own precision flag; anything other than an exact count is refused rather than recorded. VOX performs no arithmetic on the answer.",
+    doesNotEstablish:
+      "Nothing about causation, revenue, margin, or profit. It says orders existed in a window, not that the experiment produced them, not that they were profitable, and not that they will recur. Attribution is a judgement a person makes with context VOX does not have.",
+    buildInput: (experiment: Experiment) => ({ experimentId: experiment.id }),
+    observe: (output: unknown): RuleOutcome => {
+      if (typeof output !== "object" || output === null) return null;
+      const row = output as Record<string, unknown>;
+
+      // The explicit non-answer. Recorded as a refusal, never as a zero.
+      if (row.observed === false) {
+        return {
+          notObserved: true,
+          failure: typeof row.failure === "string" ? row.failure : "UNKNOWN",
+          detail: typeof row.detail === "string" ? row.detail : "The observation produced no value.",
+        };
+      }
+      if (row.observed !== true) return null;
+
+      const value = row.value;
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
+      for (const key of ["provider", "scope", "retrievedAt", "responseDigest", "windowStart", "windowEnd"]) {
+        if (typeof row[key] !== "string") return null;
+      }
+      // A LEVEL read at an instant must never be recorded under a rule that
+      // means a delta over a window — that is how a store's lifetime total
+      // becomes one experiment's result.
+      if (row.semantics !== "DELTA_OVER_WINDOW") return null;
+
+      const retrievedAt = new Date(row.retrievedAt as string);
+      const windowStart = new Date(row.windowStart as string);
+      const windowEnd = new Date(row.windowEnd as string);
+      if ([retrievedAt, windowStart, windowEnd].some((d) => Number.isNaN(d.getTime()))) return null;
+
+      return {
+        observedValue: value,
+        // A count has no denominator; see the note on RuleObservation.
+        observedTotal: value,
+        provenance: `${row.provider as string}: ${row.scope as string}`,
+        external: {
+          provider: row.provider as string,
+          scope: row.scope as string,
+          retrievedAt,
+          responseDigest: row.responseDigest as string,
+          windowStart,
+          windowEnd,
+          semantics: "DELTA_OVER_WINDOW",
+        },
       };
     },
   }),
@@ -254,12 +333,13 @@ export function measurementDigest(input: {
   observedTotal: number;
   provenance: string;
   /**
-   * External provenance, when the figure came from outside VOX.
+   * [P5-E] External provenance, when the figure came from outside VOX.
    *
    * Inside the hash for the same reason the execution identity is: repointing a
    * measurement at a different store, a different window, or a different raw
    * response is exactly as much a change of evidence as editing its counts.
-   * Absent entirely for a non-external measurement.
+   * Absent entirely for a non-external measurement, so a research measurement's
+   * digest is computed from exactly the terms it always was.
    */
   external?: {
     provider: string;
@@ -602,6 +682,44 @@ export async function observeExperimentExecution(
   );
   if (!step || !step.output) return { observed: false, reason: "NO_OBSERVABLE_OUTPUT" };
 
+  // ---- [P5-E] THE CONTRACT IS RE-CHECKED HERE, NOT ONLY AT DISPATCH --------
+  //
+  // The gate in `externalObservation.ts` verified the contract before the store
+  // was asked, which stops a question being changed BEFORE it is asked. It does
+  // not stop one being changed AFTER: the retrieval is already sitting in the
+  // step's stored output, and rewriting the experiment's window or store
+  // afterwards would leave a measurement that reads as though it had always been
+  // about the new thing.
+  //
+  // So the digest is re-derived once more, immediately before the measurement is
+  // written, and this is the check that actually protects the recorded evidence.
+  if (rule.requiresExternalContract) {
+    const window = resolveObservationWindow(experiment);
+    if (!window || !experiment.externalScope || !experiment.observationContractDigest) {
+      return {
+        observed: false,
+        reason: "OBSERVATION_UNAVAILABLE",
+        failure: "NO_CONTRACT",
+        detail: "The experiment no longer carries a complete observation contract.",
+      };
+    }
+    const current = observationContractDigestOf({
+      rule: experiment.observationRule!,
+      scope: experiment.externalScope,
+      windowStart: window.start,
+      windowMinutes: window.minutes,
+    });
+    if (current !== experiment.observationContractDigest) {
+      return {
+        observed: false,
+        reason: "OBSERVATION_UNAVAILABLE",
+        failure: "CONTRACT_ALTERED",
+        detail:
+          "The observation rule, store or window changed after this experiment was dispatched. The retrieval sitting on the step answered a different question from the one the experiment now asks, so no measurement may be written from it.",
+      };
+    }
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(step.output);
@@ -723,6 +841,15 @@ export async function observeExperimentExecution(
       observedTotal: observation.observedTotal,
       provenance: observation.provenance,
       digest,
+      ...(observation.external
+        ? {
+            externalProvider: observation.external.provider,
+            externalScope: observation.external.scope,
+            windowStart: observation.external.windowStart.toISOString(),
+            windowEnd: observation.external.windowEnd.toISOString(),
+            responseDigest: observation.external.responseDigest,
+          }
+        : {}),
     },
   });
 

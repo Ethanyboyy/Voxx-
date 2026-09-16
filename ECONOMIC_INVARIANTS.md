@@ -268,6 +268,124 @@ a verdict whose evidence changed underneath it*, *reports rather than repairs*.
 
 ---
 
+## I12 — There is no code path from a failed observation to a number
+
+`ObservationOutcome` is a discriminated union whose **failure arm has no `value`
+field** — not an optional one, not a nullable one, none at all. So
+
+```ts
+const orders = outcome.value ?? 0;   // does not compile on the failure arm
+```
+
+is a **type error**, not a code-review note. This is the single most important
+line of P5-E, because the natural shape (`value: number | null` plus an error
+string) makes `?? 0` the obvious defensive idiom — and what it actually does is
+convert *"the store did not answer"* into *"the store said zero"*.
+
+Three states, never collapsed:
+
+| state | meaning | writes a measurement? |
+|---|---|---|
+| **OBSERVED ZERO** | the store was asked and said zero | **yes** — a real result |
+| **UNAVAILABLE** | throttled, rejected, unreachable, imprecise | **no** |
+| **NOT CONFIGURED** | there is no store; nobody was asked | **no** |
+
+The hazard this is defending against is specific and documented in the provider:
+**Shopify returns many errors as HTTP 200 with an `errors[]` body**, so
+`response.ok` proves nothing. The `errors[]` check runs *before* the data is
+read, an `AT_LEAST` count is refused because a lower bound is not a measurement,
+and a null `data` is a refusal rather than a zero.
+
+**Tests:** *refuses an errors[] body that arrived with HTTP 200*, *refuses an
+AT_LEAST count*, *refuses a 200 whose data is null — not a zero*, *A REAL ZERO IS
+A REAL MEASUREMENT*, *the failure arm of the outcome type carries no value field*.
+
+---
+
+## I13 — The question is frozen before the answer is visible
+
+An external measurement has three degrees of freedom an internal one does not,
+and **none of them requires falsifying anything**: ask a different store, move
+the window until a good week is inside it, or count something else. The store's
+answer is true every time. What makes the result dishonest is that the question
+was chosen after the answer was visible.
+
+So the defence is **ordering**, not validation. Rule, scope, window start and
+window length are declared before dispatch and hashed into
+`Experiment.observationContractDigest`. That digest is checked **twice**:
+
+1. **Before the store is asked** (`externalObservation.ts`) — an altered
+   contract means the request is never made at all.
+2. **Before a measurement is written** (`evidence.ts`) — because the first check
+   does not stop an edit made *after* the retrieval is already sitting in the
+   step's output, which would leave a measurement reading as though it had
+   always been about the new thing.
+
+Window semantics are **inclusive start, exclusive end** (`>=` and `<`, never
+`<=`) — with an inclusive upper bound two adjacent windows both claim the order
+landing on the boundary, and two experiments report a combined total larger than
+the store's own. A window that has **not closed** is refused (a partial period
+reads as a disappointing result rather than an incomplete one), and one that
+closed more than seven days ago is refused too (a store's record of a past
+period moves as orders are cancelled and archived).
+
+The connected store must also **be** the declared store, or the measurement
+would carry one scope while holding another store's number.
+
+**Tests:** *refuses to ask when the window was widened after dispatch*, *refuses
+to ask when the store was repointed after dispatch*, *the contract is re-checked
+before a measurement is written*, *refuses a window that has not closed*, *filters
+with >= on the start and < on the end*, *refuses when the connected store is not
+the declared store*.
+
+---
+
+## I14 — The integration is read-only, scoped to one tenant, and cannot be aimed
+
+**Read-only by construction, not by intention.** The port declares exactly one
+method and it is a count; `SHOPIFY` is the only catalog entry whose
+`writeCapability` is **`null`** — not a write mode defaulting to off, no write
+mode — so `grantAccess()` cannot grant what does not exist. The OAuth scope is
+`read_orders` alone. A source-level test asserts no GraphQL mutation appears in
+any template literal in the provider, and another fails the build if a second
+method is added to the port.
+
+**Cannot be aimed.** The tool's input schema is `{ experimentId }` and nothing
+else. Store, window and rule all come from the experiment's own frozen contract,
+so no caller — including a planner writing a step — can point the read at a
+different shop or a better week.
+
+**SSRF boundary.** The scope comes out of the database and is interpolated into a
+URL with a real access token in the header, so it is validated against
+`^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]\.myshopify\.com$` — whole-string, no scheme,
+no port, no path, no userinfo. `169.254.169.254`, `acme.myshopify.com.evil.test`
+and `acme.myshopify.com@evil.test` are all refused **before any request is made**.
+
+**Tenant boundary.** `resolveConnectionCredential()` puts `userId` in the WHERE
+clause rather than checking it afterwards, and it is the only way a provider ever
+receives a token.
+
+**Secrets.** The token travels in a header, never in a URL or body; it is stored
+only encrypted; it appears in no event payload, no log line, no digest, and no
+refusal message. The raw response is **never stored** — only a sha256 of it —
+because an order payload carries customer names, addresses and emails, and
+persisting it would put third-party personal data in VOX's database for no
+measurement benefit.
+
+**Connecting is real.** `connectShopifyStore()` validates the domain, calls the
+real `grantPermission()`, sets CONNECTING, and then performs a **genuine
+authenticated read against the actual store**. Only if that succeeds is the token
+stored and the status set to CONNECTED. A token that does not work is never
+persisted, so the Connections Hub cannot show a store VOX is unable to talk to.
+
+**Tests:** *rejects every shape that would redirect the authenticated request*,
+*makes no request at all for an invalid scope*, *stores nothing and reaches ERROR
+when the store rejects the token*, *has no write capability at all*, *never writes
+the token into an event payload*, *contains no GraphQL mutation*, *declares
+exactly one method on the port*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -275,12 +393,18 @@ honest:
 
 - **The engine is not autonomous.** It cannot transact. Every `SCALE` stops at a
   human.
-- **VOX has measured nothing about money.** The one observation rule that exists
-  counts how many research results carried a source URL. That says whether an
-  assumption is researchable with the provider configured at the time. It is not
-  revenue, not a conversion, not a customer, and not evidence that an opportunity
-  will make money — and the rule carries that sentence with it to every surface
-  that renders the number.
+- **VOX has still measured nothing about money.** `EXTERNAL_ORDER_COUNT` is a
+  real fact about the world — the first one in this system — and it is a count of
+  orders, not an amount. It establishes that orders existed in a window. It
+  establishes **nothing** about whether the experiment caused them, what they
+  were worth, or whether they will recur. Attribution, revenue and profit are
+  each a separate claim that VOX cannot make, and the rule carries that sentence
+  to every surface that renders the number.
+- **No live Shopify observation has ever been performed in this repository.** The
+  provider is real and the code path is real, but every test drives it through a
+  stubbed `fetch`. No live store credentials exist here, so the integration is
+  architecturally complete and **empirically unexercised** — it has never been
+  run against a real merchant's store.
 - **A measured probability over one or two verdicts is not a success rate.**
   `ProbabilityEvidence` is returned whole — wins, losses, decided, and the basis
   each verdict rested on — precisely so a caller cannot render "1 of 1" as

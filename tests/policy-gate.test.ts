@@ -254,14 +254,54 @@ describe("P4-A — external system of record is the HOLD/DENY discriminator", ()
     externalSystemOfRecord: true,
   });
 
-  it("no production action claims to touch an external system of record", () => {
-    // The premise of the whole distinction. If this ever fails, someone added a
-    // real money-moving integration and P4-A's assumptions need re-reading.
+  it("no production action MOVES MONEY against an external system of record", () => {
+    // ---- NARROWED IN P5-E, AND HERE IS WHY -------------------------------
+    //
+    // This assertion used to be `external === []` — no production action may
+    // carry the flag at all. `economic.observe_orders` now carries it, and that
+    // made this test fail exactly as its author intended it to.
+    //
+    // The comment it was written with says what it was guarding: "if this ever
+    // fails, someone added a real money-moving integration". That premise is
+    // still true. What was added is a READ of a merchant's own store — one
+    // authenticated GraphQL query, behind a scope (read_orders) that cannot
+    // write, spending nothing and committing nothing.
+    //
+    // So the flag alone was never the thing worth guarding; the gate itself
+    // escalates to DENY only for external AND FINANCIAL AND IRREVERSIBLE, which
+    // is the cell a wire transfer or a refund would land in. This now asserts
+    // precisely that cell is empty, which is the property the original test was
+    // reaching for — and it stays a tripwire: adding a payment, banking or
+    // refund integration still fails here.
+    const moneyMoving = [
+      ...Object.entries(TOOL_CLASSIFICATIONS),
+      ...Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS),
+    ]
+      .filter(
+        ([, entry]) =>
+          entry.externalSystemOfRecord && entry.financial && entry.reversibility === "IRREVERSIBLE"
+      )
+      .map(([name]) => name);
+    expect(moneyMoving).toEqual([]);
+  });
+
+  it("the one action that reads an external system of record is a read, and ALLOWs", () => {
+    // The positive half of the narrowing above. If someone ever reclassifies
+    // this read as financial or irreversible, the test above starts failing —
+    // and if they quietly widen what it does, this one does.
     const external = [
       ...Object.entries(TOOL_CLASSIFICATIONS),
       ...Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS),
     ].filter(([, entry]) => entry.externalSystemOfRecord).map(([name]) => name);
-    expect(external).toEqual([]);
+    expect(external).toEqual(["economic.observe_orders"]);
+
+    const classification = classifyAction("tool", "economic.observe_orders").classification;
+    expect(classification.effect).toBe("READ");
+    expect(classification.financial).toBe(false);
+    expect(classification.reversibility).toBe("REVERSIBLE");
+    // Reading someone else's record is still a read. The external flag does not
+    // escalate on its own — only in combination with the other two.
+    expect(evaluatePolicy({ action: classification }).decision).toBe("ALLOW");
   });
 
   it("Test 1 — the internal ledger record HOLDs, despite being financial AND irreversible", () => {

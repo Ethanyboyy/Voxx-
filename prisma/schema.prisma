@@ -688,6 +688,22 @@ model Experiment {
   /// registry is closed — a rule writable at call time is a rule that can be
   /// written to produce a desired number.
   observationRule          String?
+  // --- [P5-E] The external observation contract ------------------------
+  //
+  // Declared BEFORE the experiment runs, frozen by a digest, and re-checked
+  // twice: once before the store is asked, and again before a measurement is
+  // written from the answer. Editing the window or the store afterwards does
+  // not produce a better result, it produces a refusal.
+
+  /// WHICH external thing is read, e.g. the shop domain. Never a secret.
+  externalScope            String?
+  /// The window's inclusive lower bound.
+  observationWindowStart   DateTime?
+  /// The window's length. The upper bound is EXCLUSIVE.
+  observationWindowMinutes Int?
+  /// sha256 over (rule, scope, windowStart, windowMinutes). The freeze.
+  observationContractDigest String?
+
   /// Why the last observation attempt produced nothing. DIAGNOSTIC ONLY.
   ///
   /// Nothing computes from this. It exists so a surface can say "observation
@@ -995,6 +1011,8 @@ enum ConnectionService {
   ETSY
   PRINTFUL
   PRINTIFY
+  /// [P5-E] The first service in this enum with a REAL provider behind it.
+  SHOPIFY
 }
 
 /// NOT_CONNECTED -> PROPOSED -> AWAITING_APPROVAL -> CONNECTING -> CONNECTED

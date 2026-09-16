@@ -8,6 +8,7 @@ import { getConnectionProvider } from "@/lib/integrations/stub";
 import { createRequirement, nextRequirementCode } from "@/lib/lab/requirements";
 import { createQuestion } from "@/lib/lab/questions";
 import { recordOpportunitySpend } from "@/lib/economic/service";
+import { observeDeclaredOrderWindow } from "@/lib/economic/externalObservation";
 import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import { recordEvent } from "@/lib/observability/events";
 import {
@@ -290,6 +291,63 @@ register({
     return {
       output: { id: expense.id, amountUsd: expense.amountUsd, amountCents: expense.amountCents },
       summary: `Recorded a $${expense.amountUsd.toFixed(2)} expense (autonomous spend now $${((decision.alreadySpentUsd ?? 0) + expense.amountUsd).toFixed(2)} of the $${decision.thresholdUsd.toFixed(2)} ceiling).`,
+    };
+  },
+});
+
+register({
+  name: "economic.observe_orders",
+  description:
+    "Ask a connected Shopify store how many orders it recorded inside an experiment's declared observation window. Read-only: it counts, and can change nothing in the store.",
+  category: "external",
+  capability: "integration.shopify.read",
+  // RECOMMEND, matching CLAUDE.md rule 10 for read access to an external
+  // integration. The executor checks this before `execute` is ever entered.
+  requiredLevel: "RECOMMEND",
+  isExternal: true,
+  // [P5-E] EXPERIMENT ID AND NOTHING ELSE.
+  //
+  // The store, the window and the rule all come from the experiment's own frozen
+  // contract. If this schema accepted a shop domain or a date range, a caller —
+  // including a planner writing a step — could aim the read at a different shop
+  // or a better week, and the answer would still be a true fact from a real
+  // store. The narrow schema is what makes the contract the only source of the
+  // question.
+  inputSchema: z.object({ experimentId: z.string().min(1).max(80) }),
+  execute: async (userId, input) => {
+    const outcome = await observeDeclaredOrderWindow(userId, input.experimentId);
+
+    // A refusal is returned as OUTPUT, not thrown. Throwing would fail the step
+    // and then the run, which would present "the store did not answer" as "VOX
+    // broke" — and, worse, would leave no persisted record of WHY no number came
+    // back for the observation stage to read.
+    if (!outcome.observed) {
+      return {
+        output: {
+          observed: false as const,
+          failure: outcome.failure,
+          detail: outcome.detail,
+          provider: outcome.provider,
+          attemptedAt: outcome.attemptedAt.toISOString(),
+        },
+        summary: `No order count was obtained (${outcome.failure}). This is not a count of zero.`,
+      };
+    }
+
+    return {
+      output: {
+        observed: true as const,
+        value: outcome.value,
+        unit: outcome.unit,
+        provider: outcome.provider,
+        scope: outcome.scope,
+        retrievedAt: outcome.retrievedAt.toISOString(),
+        responseDigest: outcome.responseDigest,
+        windowStart: outcome.windowStart.toISOString(),
+        windowEnd: outcome.windowEnd.toISOString(),
+        semantics: outcome.semantics,
+      },
+      summary: `${outcome.scope} recorded ${outcome.value} order${outcome.value === 1 ? "" : "s"} created between ${outcome.windowStart.toISOString()} and ${outcome.windowEnd.toISOString()}.`,
     };
   },
 });
