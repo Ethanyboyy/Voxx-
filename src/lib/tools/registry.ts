@@ -10,6 +10,7 @@ import { createQuestion } from "@/lib/lab/questions";
 import { recordOpportunitySpend } from "@/lib/economic/service";
 import { observeDeclaredOrderValue, observeDeclaredOrderWindow } from "@/lib/economic/externalObservation";
 import { formatMinor } from "@/lib/integrations/decimal";
+import { executeCommercialAction, observeCommercialAction } from "@/lib/commerce/execute";
 import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import { recordEvent } from "@/lib/observability/events";
 import {
@@ -406,6 +407,119 @@ register({
         semantics: outcome.semantics,
       },
       summary: `${outcome.scope} recorded ${formatMinor(outcome.amountMinor, outcome.amountScale, outcome.currency)} across ${outcome.orderCount} order${outcome.orderCount === 1 ? "" : "s"} created between ${outcome.windowStart.toISOString()} and ${outcome.windowEnd.toISOString()}. This is gross order value at order time, not revenue and not profit.`,
+    };
+  },
+});
+
+register({
+  name: "commerce.create_discount_code",
+  description:
+    "Create ONE bounded, reversible discount code in a connected Shopify store, exactly as a previously declared and frozen commercial action specifies. Changes a merchant's store.",
+  category: "external",
+  // [P5-G] A SEPARATE CAPABILITY FROM THE READ, AT A HIGHER LEVEL.
+  //
+  // `integration.shopify.read` at RECOMMEND does not authorize this and cannot
+  // be made to: the capability string differs, and `matchesApproval()` compares
+  // it exactly. Per CLAUDE.md rule 10 an integration write is ACT, which is
+  // above the default-granted band, so an account that has granted nothing
+  // cannot reach this tool at all.
+  capability: "integration.shopify.write",
+  requiredLevel: "ACT",
+  isExternal: true,
+  // The action id AND the digest of its frozen parameters.
+  //
+  // THE DIGEST IS IN THE ARGUMENTS ON PURPOSE. The executor hashes validated
+  // arguments into `argumentsHash` and the ApprovalGrant binds that hash, so a
+  // parameter edited between approval and execution changes the digest, changes
+  // the hash, and the grant no longer matches. Without the digest here the grant
+  // would bind an opaque id and the parameters would be free to move underneath
+  // it — a person approving 5% off could have 50% off executed on their grant.
+  inputSchema: z.object({
+    actionId: z.string().min(1).max(80),
+    contractDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  }),
+  execute: async (userId, input, context) => {
+    const result = await executeCommercialAction({
+      userId,
+      actionId: input.actionId,
+      contractDigest: input.contractDigest,
+      runId: context?.runId,
+      stepId: context?.stepId,
+    });
+
+    if (result.executed) {
+      return {
+        output: {
+          status: "SUCCEEDED" as const,
+          externalId: result.externalId,
+          actionId: input.actionId,
+        },
+        summary: `A discount code now exists in the store (${result.externalId}). No money moved and no revenue was created.`,
+      };
+    }
+
+    // A refusal and an unknown are both OUTPUT rather than a throw. Throwing
+    // would fail the step, and for an UNKNOWN that is actively misleading — the
+    // write may well have landed, and a failed step reads as "nothing happened".
+    if (result.status === "UNKNOWN") {
+      return {
+        output: {
+          status: "UNKNOWN" as const,
+          failure: result.failure,
+          detail: result.detail,
+          actionId: input.actionId,
+        },
+        summary: `The request was submitted and its outcome is NOT known (${result.failure}). It will not be retried. Ask the store whether the code exists.`,
+      };
+    }
+    if (result.status === "REFUSED") {
+      return {
+        output: { status: "REFUSED" as const, reason: result.reason, detail: result.detail, actionId: input.actionId },
+        summary: `The action was refused before anything was sent (${result.reason}).`,
+      };
+    }
+    return {
+      output: { status: "FAILED" as const, failure: result.failure, detail: result.detail, actionId: input.actionId },
+      summary: `The store declined the request (${result.failure}). Nothing was created.`,
+    };
+  },
+});
+
+register({
+  name: "commerce.verify_discount_code",
+  description:
+    "Ask a connected Shopify store whether a previously authorized discount code exists and matches what was authorized. Read-only. This is the only way to resolve an action whose outcome is unknown.",
+  category: "external",
+  // A READ, so the read capability — reading back what was written is not a
+  // second act of writing, and requiring ACT for it would make the safe response
+  // to an ambiguous write harder to reach than the write itself was.
+  capability: "integration.shopify.read",
+  requiredLevel: "RECOMMEND",
+  isExternal: true,
+  inputSchema: z.object({ actionId: z.string().min(1).max(80) }),
+  execute: async (userId, input) => {
+    const result = await observeCommercialAction(userId, input.actionId);
+
+    if (!result.observed) {
+      return {
+        output: { observed: false as const, failure: result.failure, detail: result.detail },
+        summary: `The store could not be asked (${result.failure}). This does NOT mean the code is absent.`,
+      };
+    }
+
+    return {
+      output: {
+        observed: true as const,
+        exists: result.exists,
+        matches: result.matches,
+        redemptions: result.redemptions,
+        status: result.status,
+        resolved: result.resolved,
+        detail: result.detail,
+      },
+      summary: result.exists
+        ? `The store holds this code (${result.matches ? "matching" : "NOT matching"} what was authorized)${result.redemptions !== null ? `, redeemed ${result.redemptions} time${result.redemptions === 1 ? "" : "s"}` : ""}. Redemptions are a count, not revenue.`
+        : "The store does not hold this code. The write did not land.",
     };
   },
 });

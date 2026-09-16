@@ -49,6 +49,24 @@ export interface ConnectShopifyInput {
   shopDomain: string;
   /** A custom-app Admin API access token carrying `read_orders`. */
   accessToken: string;
+  /**
+   * [P5-G] Additional scopes the operator states this token carries.
+   *
+   * OFF BY DEFAULT: omitted means a read-only connection, exactly as before.
+   *
+   * AN HONEST LIMITATION, stated here rather than buried. VOX verifies the READ
+   * path for real — it performs an authenticated order count before the
+   * connection is called connected. It cannot verify a WRITE scope the same way,
+   * because the only way to prove a token may create a discount is to create
+   * one, and creating an unrequested discount to test a connection is exactly
+   * the kind of unauthorized side effect this architecture exists to prevent.
+   *
+   * So these are DECLARED, not proven. The write path fails closed on them —
+   * a missing declaration refuses before sending anything — and then fails
+   * closed again on Shopify's own rejection if the declaration was wrong. A
+   * false declaration therefore produces a refusal, never a silent success.
+   */
+  declaredWriteScopes?: string[];
 }
 
 export async function connectShopifyStore(input: ConnectShopifyInput): Promise<ShopifyConnectResult> {
@@ -99,7 +117,11 @@ export async function connectShopifyStore(input: ConnectShopifyInput): Promise<S
       category: entry.category,
       displayName: entry.displayName,
       readCapability: entry.readCapability,
-      writeCapability: null,
+      // [P5-G] Mirrors the catalog: a write mode EXISTS. `writeEnabled` below
+      // stays false, which is the honest state — the mode exists and is off,
+      // rather than the mode not existing. Turning it on is `grantAccess()`
+      // with an explicit write request, which grants at ACT.
+      writeCapability: entry.writeCapability,
       readEnabled: true,
       writeEnabled: false,
       status: "CONNECTING",
@@ -110,8 +132,9 @@ export async function connectShopifyStore(input: ConnectShopifyInput): Promise<S
     update: {
       status: "CONNECTING",
       readEnabled: true,
+      // Reconnecting never silently preserves a previously enabled write.
       writeEnabled: false,
-      writeCapability: null,
+      writeCapability: entry.writeCapability,
       statusReason: null,
       config: JSON.stringify({ scope: shopDomain, apiScope: SHOPIFY_REQUIRED_SCOPE }),
     },
@@ -141,9 +164,16 @@ export async function connectShopifyStore(input: ConnectShopifyInput): Promise<S
     return { connected: false, reason: "VERIFICATION_FAILED", detail: verification.detail };
   }
 
+  // The scope string the write path checks against. Built from the verified
+  // read scope plus whatever the operator declared, de-duplicated and sorted so
+  // the stored value is stable.
+  const grantedScope = [...new Set([SHOPIFY_REQUIRED_SCOPE, ...(input.declaredWriteScopes ?? [])])]
+    .sort()
+    .join(",");
+
   await storeCredential(connection.id, {
     accessToken: input.accessToken,
-    grantedScope: SHOPIFY_REQUIRED_SCOPE,
+    grantedScope,
   });
 
   await db.connection.update({
@@ -159,7 +189,16 @@ export async function connectShopifyStore(input: ConnectShopifyInput): Promise<S
     consequential: true,
     // The shop domain is recorded; the token is not, and never appears in any
     // event payload, log line, or digest.
-    payload: { service: "SHOPIFY", shopDomain, apiScope: SHOPIFY_REQUIRED_SCOPE, verified: true },
+    payload: {
+      service: "SHOPIFY",
+      shopDomain,
+      apiScope: grantedScope,
+      // Only the read scope was actually exercised against the store. Recorded
+      // separately so the audit log never implies a write scope was verified.
+      verifiedScopes: SHOPIFY_REQUIRED_SCOPE,
+      declaredScopes: input.declaredWriteScopes ?? [],
+      verified: true,
+    },
   });
 
   return { connected: true, shopDomain };

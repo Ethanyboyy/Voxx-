@@ -349,7 +349,17 @@ export async function executeRun(userId: string, runId: string): Promise<AgentRu
         // record, and still neither gates nor alters the call: the result and any
         // error pass straight through.
         const result = await withEnforcedExecution("agents.executor", tool.name, () =>
-          tool.execute(userId, parsedInput.data as never, executionContext)
+          // [P5-G] The execution identity travels with the call. A tool that
+          // changes someone else's system has to be able to record WHICH
+          // authorized execution did it, and the executor is the only caller
+          // that knows. Spread last so a run-level objective cannot be
+          // overwritten, and so this stays purely additive for every tool that
+          // does not read it.
+          tool.execute(userId, parsedInput.data as never, {
+            ...executionContext,
+            runId: step.runId,
+            stepId: step.id,
+          })
         );
         await db.agentStep.update({
           where: { id: step.id },

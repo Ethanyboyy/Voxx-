@@ -165,13 +165,22 @@ export const CONNECTION_CATALOG: CatalogEntry[] = [
     category: "SHOPPING",
     displayName: "Shopify",
     description:
-      "Read how many orders your store recorded inside an experiment's declared window. Read-only: VOX cannot change anything in the store.",
+      "Read how many orders your store recorded inside an experiment's declared window, and how much they came to. With write access separately granted, VOX can also create one bounded discount code per authorized action — and nothing else.",
     readCapability: "integration.shopify.read",
-    // NULL, and that is the point. This integration has no write mode at all —
-    // not a write mode that defaults to off, no write mode. `grantAccess()`
-    // cannot grant what the catalog does not define, so there is no path by
-    // which VOX gains the ability to change a merchant's store.
-    writeCapability: null,
+    // [P5-G] NO LONGER NULL — and this is the single most consequential line in
+    // the catalog, so it is worth being explicit about what changed.
+    //
+    // Through P5-F this was null, documented as "no write mode at all, not a
+    // write mode that defaults to off". P5-G introduces exactly one write, so
+    // the capability now exists. What has NOT changed is that it is off:
+    // `writeEnabledByDefault` is false, `grantAccess()` grants it only when a
+    // person explicitly asks for write, and it is granted at ACT — above the
+    // default band, so an account that has granted nothing cannot reach it.
+    //
+    // And the capability alone is still not enough to change anything. Every
+    // individual write additionally needs a single-use ApprovalGrant bound to
+    // its exact arguments. This line opens the door; it does not walk through it.
+    writeCapability: "integration.shopify.write",
     // A per-store admin access token rather than an app-level OAuth client:
     // this connects one merchant's own store, so the credential belongs to the
     // connection, not to the deployment. There is nothing for the operator to
@@ -179,7 +188,7 @@ export const CONNECTION_CATALOG: CatalogEntry[] = [
     requiredEnvVars: [],
     writeEnabledByDefault: false,
     notes:
-      "Requires a custom-app Admin API access token with the read_orders scope. VOX verifies the token against the real store before the connection is marked connected.",
+      "Requires a custom-app Admin API access token with the read_orders scope. VOX verifies the token against the real store before the connection is marked connected. Creating a discount additionally requires the write_discounts and read_discounts scopes, an explicit ACT-level write grant, and a per-action human approval.",
   },
 ];
 

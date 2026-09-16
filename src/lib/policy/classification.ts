@@ -391,6 +391,50 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     untrustedOutput: true,
     externalSystemOfRecord: true,
   },
+  // [P5-G] THE FIRST ACTION IN VOX THAT CHANGES SOMEONE ELSE'S SYSTEM.
+  //
+  // ACT: it reaches outside VOX and a merchant's store now differs. Not WRITE —
+  // WRITE is VOX's own state, and the whole reason this row exists is that the
+  // consequence lands somewhere VOX does not own.
+  //
+  // PARTIALLY_REVERSIBLE, and this is the honest answer rather than the
+  // flattering one. The code can be deactivated, so it is not IRREVERSIBLE. But
+  // a redemption that happened before it was deactivated stands: the customer
+  // paid less, the order exists, and no action by VOX unwinds it. That is
+  // precisely "partially reversible" — the object can be withdrawn, its effects
+  // cannot.
+  //
+  // financial: TRUE. No money moves when a code is created, and it is tempting
+  // to call it false on that basis. But the flag means "moves or COMMITS money",
+  // and a discount code is a standing commitment to accept less: every
+  // redemption is margin given away on the merchant's behalf. Marking it false
+  // would be the same understatement as calling an order-value read financial
+  // was an overstatement, in the opposite direction.
+  //
+  // It also buys a safety property. ACT + PARTIALLY_REVERSIBLE is HOLD either
+  // way, so `financial: true` costs nothing in permissiveness today — but the
+  // gate escalates external + financial + IRREVERSIBLE to DENY, so if anyone
+  // ever reclassifies this action as irreversible it becomes categorically
+  // refused rather than merely held. The honest classification is also the one
+  // that fails safe under a future edit.
+  "commerce.create_discount_code": {
+    effect: "ACT",
+    reversibility: "PARTIALLY_REVERSIBLE",
+    financial: true,
+    untrustedOutput: false,
+    externalSystemOfRecord: true,
+  },
+  // Reading back what was written. A read, so it classifies like one — and it
+  // MUST stay a read: it is the only way to resolve an action whose outcome is
+  // unknown, and making the safe response to ambiguity harder to reach than the
+  // write that caused it would push callers toward retrying instead.
+  "commerce.verify_discount_code": {
+    effect: "READ",
+    reversibility: "REVERSIBLE",
+    financial: false,
+    untrustedOutput: true,
+    externalSystemOfRecord: true,
+  },
   "calendar.list_events": { effect: "READ", reversibility: "REVERSIBLE", financial: false, untrustedOutput: true, externalSystemOfRecord: false },
   // The event can be deleted; the invitation has already been delivered.
   "calendar.create_event": {

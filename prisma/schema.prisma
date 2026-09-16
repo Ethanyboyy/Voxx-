@@ -103,6 +103,7 @@ model User {
   ideas                  Idea[]
   experiments            Experiment[]
   experimentMeasurements ExperimentMeasurement[]
+  commercialActions      CommercialAction[]
   researchItems          ResearchItem[]
   knowledgeNodes         KnowledgeNode[]
   knowledgeEdges         KnowledgeConnection[]
@@ -728,6 +729,7 @@ model Experiment {
   outcomeNote              String?
 
   measurement ExperimentMeasurement?
+  commercialAction CommercialAction?
 
   @@index([userId, executionStatus])
 }
@@ -851,6 +853,117 @@ model ExperimentMeasurement {
   observedAt DateTime @default(now())
 
   @@index([userId, rule])
+}
+
+/// [P5-G] What kind of commercial action this is. A CLOSED set, like the
+/// observation registry and the proposal registry, and for the same reason: a
+/// kind that can be written at call time is a kind that can be written to do
+/// something nobody reviewed.
+enum CommercialActionKind {
+  /// Create one bounded, reversible discount code. The only kind that exists.
+  DISCOUNT_CODE
+}
+
+/// Where an external write stands.
+///
+/// THE IMPORTANT PROPERTY IS THAT THREE OF THESE ARE NOT SUCCESS, and two of
+/// those three are not failure either. An external write has an outcome a
+/// distributed system genuinely cannot always determine, and pretending
+/// otherwise is how a system claims to have done something it did not, or
+/// repeats something it already did.
+enum CommercialActionStatus {
+  /// Declared and frozen. Nothing has been handed to the provider.
+  PLANNED
+  /// Handed to the provider; the outcome is NOT yet recorded.
+  ///
+  /// Written BEFORE the network call, so a process that dies mid-call leaves
+  /// this behind. It means "this may have happened" — never "it did", and never
+  /// "it did not". It blocks re-dispatch, because retrying a write whose
+  /// outcome is unknown is how one authorized action becomes two real ones.
+  SUBMITTED
+  /// The provider confirmed it, AND the echoed parameters matched the request.
+  SUCCEEDED
+  /// The provider explicitly refused. No external state was created.
+  FAILED
+  /// Submitted, and VOX affirmatively established that it cannot tell what
+  /// happened — a timeout, or a response it could not read. Distinct from
+  /// FAILED. Resolvable only by asking the store, never by assuming or retrying.
+  UNKNOWN
+}
+
+/// [P5-G] ONE authorized external commercial write.
+///
+/// The typed contract for an action that changes a merchant's store. It is
+/// declared and frozen BEFORE it is authorized, for the same reason an
+/// observation contract is frozen before it is answered: choosing the
+/// parameters after the approval is not authorization, it is drafting.
+///
+/// Three independent things must line up before anything is sent:
+///   1. a standing `integration.shopify.write` permission at ACT
+///   2. an `ApprovalGrant` bound to these exact arguments
+///   3. this row's own digest, re-derived and re-checked at execution
+///
+/// None of them is sufficient alone, and the third is what stops a parameter
+/// being edited in the window between an approval and its use.
+model CommercialAction {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// The experiment this action is the intervention for.
+  ///
+  /// UNIQUE: one commercial action per experiment. An experiment that performed
+  /// two interventions has no single thing whose effect could be measured.
+  experiment   Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  experimentId String?     @unique
+
+  kind CommercialActionKind
+  /// The store this acts on. Never a secret; validated as a shop domain.
+  externalScope String
+
+  /// JSON — the exact parameters, canonical. Frozen by `contractDigest`.
+  parameters String
+  /// sha256 over (kind, scope, canonical parameters). The freeze.
+  contractDigest String
+
+  status CommercialActionStatus @default(PLANNED)
+
+  /// The AgentRun that IS this action's execution, and the step that submitted
+  /// it. Both UNIQUE — an action is executed at most once, and a step performs
+  /// at most one external write.
+  executionRunId  String? @unique
+  executionStepId String? @unique
+
+  /// Set BEFORE the provider is called. Its presence is what makes a crash
+  /// legible as "may have happened" rather than "never started".
+  submittedAt DateTime?
+  /// The provider's id for what was created. Only ever set alongside SUCCEEDED,
+  /// and only after the echoed parameters were checked against the request.
+  externalId  String?
+  /// sha256 of the provider response. Never the response, which can carry
+  /// anything the provider chooses to put in it.
+  responseDigest String?
+
+  /// Why it failed, or why the outcome is unknown. DIAGNOSTIC ONLY — nothing
+  /// computes from it, and it is never rendered as an outcome.
+  failureCode   String?
+  failureDetail String?
+
+  // --- Reconciliation: what the store said when asked whether this exists ---
+  //
+  // This is the ONLY thing that may resolve a SUBMITTED or UNKNOWN action. Not
+  // a retry, not a timeout, not an assumption.
+  verifiedAt     DateTime?
+  /// Tri-state on purpose. NULL means nobody has asked.
+  verifiedExists Boolean?
+  /// True only when the store's copy matches every declared parameter.
+  verifiedMatches Boolean?
+  verifiedDetail  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
 }
 
 model ExperimentResult {

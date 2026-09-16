@@ -29,6 +29,23 @@ export interface ToolResult {
 export interface ToolExecutionContext {
   /** The Objective behind the SupervisorRun that spawned this AgentRun, when there is one. */
   objectiveId?: string;
+  /**
+   * [P5-G] THE EXECUTION IDENTITY of the step making this call.
+   *
+   * Added because an external WRITE has to be bound to the exact execution that
+   * performed it, and a tool that received only its arguments could not record
+   * which run and step created a thing in someone else's system. With this, the
+   * `CommercialAction` row carries `executionRunId`/`executionStepId` — both
+   * UNIQUE — so "which authorized execution created this discount" has one
+   * answer, and a second step cannot claim the same action.
+   *
+   * Supplied by the executor, which is the only caller that knows it. Optional
+   * and additive: every existing tool ignores it, and a direct invoker (a test,
+   * a future non-agent caller) may omit it — in which case a write simply
+   * records no execution identity rather than an invented one.
+   */
+  runId?: string;
+  stepId?: string;
 }
 
 export interface ToolDefinition<TInput = unknown> {

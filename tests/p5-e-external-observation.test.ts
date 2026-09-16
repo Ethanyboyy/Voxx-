@@ -629,12 +629,32 @@ describe("a connection is only CONNECTED when the store actually answered", () =
     expect(permission?.level).toBe("RECOMMEND");
   });
 
-  it("has no write capability at all — not one that defaults to off", async () => {
+  it("connects with write access OFF, and connecting never turns it on", async () => {
+    // ---- NARROWED IN P5-G, AND HERE IS WHY -------------------------------
+    //
+    // This asserted `writeCapability === null` — Shopify has no write mode at
+    // all. P5-G adds exactly one write, so the capability now exists and this
+    // failed, correctly: a write capability appearing on this integration is
+    // precisely the kind of change that must never pass unnoticed.
+    //
+    // But "the capability does not exist" was the implementation, not the
+    // invariant. The invariant is that CONNECTING A STORE DOES NOT GRANT WRITE
+    // ACCESS — which is what actually protects a merchant, and which still
+    // holds. It is asserted directly now, including the negative that no ACT
+    // permission is created by connecting.
     const owner = await createTestUser();
     await connectStore(owner);
     const connection = await db.connection.findFirst({ where: { userId: owner.id, service: "SHOPIFY" } });
-    expect(connection?.writeCapability).toBeNull();
+
     expect(connection?.writeEnabled).toBe(false);
+    // The capability exists as a mode that is off, not as a mode that is absent.
+    expect(connection?.writeCapability).toBe("integration.shopify.write");
+
+    // And nothing granted it. Connecting grants read at RECOMMEND and that is all.
+    const write = await db.permission.findFirst({
+      where: { userId: owner.id, capability: "integration.shopify.write" },
+    });
+    expect(write).toBeNull();
   });
 
   it("refuses an invalid domain before touching the database or the network", async () => {

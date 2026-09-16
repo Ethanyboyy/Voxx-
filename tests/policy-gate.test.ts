@@ -285,11 +285,30 @@ describe("P4-A — external system of record is the HOLD/DENY discriminator", ()
     expect(moneyMoving).toEqual([]);
   });
 
-  it("every action that reads an external system of record is a read, and ALLOWs", () => {
-    // The positive half of the narrowing above, kept as an explicit ALLOWLIST
-    // rather than a property check. A new entry here is a deliberate line in a
-    // diff — which is how P5-F's `economic.observe_order_value` arrived: it made
-    // this fail, and adding it was a decision rather than a default.
+  it("every action against an external system of record has a pinned decision", () => {
+    // ---- WIDENED IN P5-G, AND THE GUARD IS NOW STRICTER ------------------
+    //
+    // This asserted every external action is a READ that ALLOWs. P5-G adds the
+    // first external WRITE, so that became false and this failed — correctly.
+    //
+    // Rather than drop to a weaker property check, the allowlist now pins the
+    // EXPECTED DECISION for each action by name. That is stronger than what it
+    // replaced: before, a new external read could be added silently as long as
+    // it was a read; now every external action must be listed here with the
+    // decision it is supposed to produce, and reclassifying any of them fails.
+    //
+    // The two properties being protected:
+    //   reads of someone else's records stay ALLOW (the external flag alone
+    //     does not escalate — it is a read);
+    //   writes to someone else's records stay HOLD (never ALLOW, so no external
+    //     write can ever happen without a human's grant).
+    const EXPECTED: Record<string, PolicyDecision> = {
+      "economic.observe_orders": "ALLOW",
+      "economic.observe_order_value": "ALLOW",
+      "commerce.verify_discount_code": "ALLOW",
+      "commerce.create_discount_code": "HOLD",
+    };
+
     const external = [
       ...Object.entries(TOOL_CLASSIFICATIONS),
       ...Object.entries(PROPOSAL_ACTION_CLASSIFICATIONS),
@@ -297,16 +316,31 @@ describe("P4-A — external system of record is the HOLD/DENY discriminator", ()
       .filter(([, entry]) => entry.externalSystemOfRecord)
       .map(([name]) => name)
       .sort();
-    expect(external).toEqual(["economic.observe_order_value", "economic.observe_orders"]);
+    expect(external).toEqual(Object.keys(EXPECTED).sort());
 
     for (const name of external) {
       const classification = classifyAction("tool", name).classification;
-      expect(classification.effect, name).toBe("READ");
-      expect(classification.financial, name).toBe(false);
-      expect(classification.reversibility, name).toBe("REVERSIBLE");
-      // Reading someone else's record is still a read. The external flag does
-      // not escalate on its own — only combined with the other two.
-      expect(evaluatePolicy({ action: classification }).decision, name).toBe("ALLOW");
+      expect(evaluatePolicy({ action: classification }).decision, name).toBe(EXPECTED[name]);
+    }
+  });
+
+  it("the one external write is ACT and can never be ALLOW", () => {
+    // The write deserves its own assertion rather than a row in a table. There
+    // is exactly one action in VOX that changes someone else's system, and the
+    // property that matters is that no combination of its classification lets it
+    // run without a human: ACT is HOLD at every reversibility in the matrix.
+    const classification = classifyAction("tool", "commerce.create_discount_code").classification;
+    expect(classification.effect).toBe("ACT");
+    expect(classification.externalSystemOfRecord).toBe(true);
+    // Honest about committing margin, which also means it becomes DENY if anyone
+    // ever reclassifies it as irreversible.
+    expect(classification.financial).toBe(true);
+    expect(classification.reversibility).toBe("PARTIALLY_REVERSIBLE");
+    expect(evaluatePolicy({ action: classification }).decision).toBe("HOLD");
+
+    for (const reversibility of REVERSIBILITIES) {
+      const decision = evaluatePolicy({ action: { ...classification, reversibility } }).decision;
+      expect(decision, reversibility).not.toBe("ALLOW");
     }
   });
 
