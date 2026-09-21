@@ -184,9 +184,30 @@ Shopify, read-only.** Every other service remains stubbed by construction.
     totals in the response; only the summed integer, its scale, its currency and
     a sha256 of the pages are persisted. No order id, customer, address, line
     item or raw body is stored.
-  - **No live observation has been performed in this repository.** There are no
-    live store credentials here; every test drives the provider through a
-    stubbed `fetch`. The path is real and empirically unexercised.
+  - **One write exists, and it is triply authorized (P5-G).** VOX can create a
+    bounded discount code — and nothing else. It needs (1) an ACT-level
+    `integration.shopify.write` grant, off by default and never granted by
+    connecting; (2) a single-use `ApprovalGrant` bound to the exact arguments;
+    and (3) a contract digest re-checked against the stored parameters at
+    execution. The RECOMMEND-level read grant cannot satisfy any of it. The
+    action is classified ACT / PARTIALLY_REVERSIBLE / financial, which the policy
+    gate resolves to HOLD at every reversibility — it can never be ALLOW.
+  - **The write is bounded and cannot be aimed.** At most 50% off, a required
+    redemption limit (hard-capped), and a required end date. The mutation is a
+    constant; the only variable is the frozen parameter set. Scope is
+    `write_discounts` alone — not orders, products, customers or payments.
+  - **An ambiguous write is never retried.** `SUBMITTED` is committed before the
+    network call, so a crash mid-flight leaves "may have happened" and every
+    re-run is refused; the only resolution is reading the discount back from the
+    store. This is deliberate: retrying a write whose outcome is unknown is how
+    one authorized action becomes two real ones.
+  - **No live observation OR write has been performed in this repository.** There
+    are no live store credentials here; every test drives the provider through a
+    stubbed `fetch`. Both paths are real and empirically unexercised. The write
+    scope in particular is **declared by the operator, not proven** — verifying
+    it would require creating an unrequested discount, so the write path fails
+    closed on the declaration and then fails closed again on Shopify's own
+    rejection.
 - **Lifecycle**: `NOT_CONNECTED → PROPOSED → AWAITING_APPROVAL → CONNECTING
   → CONNECTED → PAUSED / REVOKED` (plus `ERROR`). For every stubbed service a
   connection can only reach `CONNECTED` via that provider's `exchangeCode()`

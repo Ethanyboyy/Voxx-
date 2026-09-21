@@ -440,6 +440,72 @@ WINDOW IS A REAL MEASUREMENT*.
 
 ---
 
+## I16 — One external commercial action, triply authorized, at most once, and never a claim of revenue
+
+P5-G gives VOX its first ability to CAUSE an economic event rather than observe
+one: create a bounded, reversible discount code in a connected store. Nothing
+else. There is no product, listing, price, order, refund, payment or charging
+path anywhere in the system.
+
+**THREE INDEPENDENT AUTHORIZATIONS, none sufficient alone.**
+
+1. **A standing capability.** `integration.shopify.write` at **ACT** — above the
+   default-granted band, a different capability string from the read, and
+   `matchesApproval()` compares capability exactly, so the RECOMMEND-level read
+   grant that P5-E/P5-F rely on can never satisfy it.
+2. **A per-invocation `ApprovalGrant`,** bound to the exact arguments, single-use,
+   expiring, and consumed by one conditional update. The tool's input is
+   `{ actionId, contractDigest }` — **the digest is in the arguments on purpose**,
+   because a grant that bound only an opaque id would leave the parameters free
+   to move underneath it: a person approves 5% off and 50% off executes on their
+   grant.
+3. **The contract's own digest,** re-derived from the stored row at execution and
+   compared to the approved one. Editing a parameter after approval therefore
+   breaks two checks rather than none.
+
+**AT MOST ONCE, INCLUDING ACROSS A CRASH.** `status: SUBMITTED` and `submittedAt`
+are committed to the database **BEFORE** the network call, not after. That
+ordering is the design: the window between the request leaving and the answer
+arriving is exactly where a crash is most likely and exactly where the external
+state may already exist, so a process that dies mid-flight leaves behind "may
+have happened" — and every subsequent attempt is refused. `executionRunId` and
+`executionStepId` are both `@unique`; a collision fails closed as a refusal
+rather than throwing. The executor contributes the rest: a HOLD action gets
+`maxAttempts = 0`, so there is no automatic retry at all.
+
+**NO OUTCOME IS INFERRED FROM THE ABSENCE OF AN ERROR.** Success requires four
+things at once — no transport failure, no top-level `errors[]`, an **empty
+`userErrors`**, and a node carrying an id — and then a fifth: the echoed
+parameters must **match the request**. A confirmation is not a match, and a
+provider that created something different produces `ECHO_MISMATCH`, which is
+neither success nor failure because external state exists in a shape nobody
+authorized.
+
+**UNKNOWN IS A FIRST-CLASS OUTCOME, RESOLVED ONLY BY ASKING.** A timeout, a 5xx,
+an unreadable body and an echo mismatch are all `UNKNOWN`, never `FAILED` —
+calling them failures is what licenses the retry that duplicates real external
+state. The only thing that may resolve one is the store's own answer:
+exists+matches → `SUCCEEDED`, absent → `FAILED`, **exists-but-mismatched → stays
+`UNKNOWN`**, and a check that could not be made changes nothing at all.
+
+**AND A SUCCESSFUL WRITE IS NOT REVENUE.** A created discount code writes no
+measurement, no ledger row and no outcome; it leaves the experiment `PENDING`.
+Redemptions are reported as a **count of uses** — never an amount, never a
+currency, never revenue. Whether any order was caused by the code remains
+unproven, and P5-G adds no causal methodology: it makes an intervention
+*identifiable*, which is a precondition for attribution and not attribution
+itself.
+
+**Tests:** *NO GRANT: the run parks and the store is never called*, *READ ACCESS
+IS NOT WRITE ACCESS*, *WRONG PARAMETERS / WRONG ACTION / WRONG EXECUTION IDENTITY
+/ WRONG USER / EXPIRED / CONSUMED*, *SUBMITTED is committed to the database
+BEFORE the network call*, *A CRASH MID-FLIGHT LEAVES SUBMITTED, AND IS NEVER
+RETRIED*, *A TIMEOUT IS UNKNOWN, NOT A FAILURE*, *AN ECHO MISMATCH IS UNKNOWN*,
+*A MISMATCHED DISCOUNT STAYS UNKNOWN*, *creates no measurement, no ledger row and
+no economic result*, *the one external write is ACT and can never be ALLOW*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -454,10 +520,25 @@ honest:
   (nothing is subtracted), **not attribution** (orders in a window are not orders
   the experiment caused), and **not causation**. VOX still cannot truthfully say
   it earned anything.
-- **No money has moved, and nothing here can move any.** Both external actions
-  are reads. There is no payment, banking, card, transfer, refund or purchasing
-  integration anywhere in VOX, and the policy gate's money-moving cell is still
-  empty — `tests/policy-gate.test.ts` fails the build if that changes.
+- **No money has moved, and nothing here can move any.** VOX can now create one
+  bounded discount code, which charges nobody and transfers nothing. There is
+  still no payment, banking, card, transfer, refund or purchasing integration
+  anywhere in VOX, and the policy gate's money-moving cell (external + financial
+  + irreversible) is still empty — `tests/policy-gate.test.ts` fails the build if
+  that changes.
+- **Causation is still unproven, and P5-G does not change that.** A discount code
+  is an intervention that can be identified, which is a precondition for
+  attribution rather than attribution itself. Orders carrying the code are
+  redemptions, not proof the code caused the purchase — the counterfactual
+  (would that customer have bought anyway?) is exactly what VOX has no way to
+  observe. Claiming causation would need an explicit causal methodology, and
+  none exists here.
+- **No live Shopify write has ever been performed in this repository.** The
+  mutation is real and verified against the live schema; every test drives it
+  through a stubbed `fetch`. The write path is architecturally complete and
+  **empirically unexercised**, and the write SCOPE is declared by the operator
+  rather than proven — because proving it would require creating an unrequested
+  discount.
 - **No live Shopify observation has ever been performed in this repository.** The
   provider is real and the code path is real, but every test drives it through a
   stubbed `fetch`. No live store credentials exist here, so the integration is

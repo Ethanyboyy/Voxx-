@@ -9,6 +9,8 @@ import { ProfitLossPanel } from "@/components/economic/ProfitLossPanel";
 import { EvidencePanel } from "@/components/economic/EvidencePanel";
 import { listExperimentEvidence, verifyEvidenceIntegrity } from "@/lib/economic/evidence";
 import { getMeasuredProbability } from "@/lib/economic/probability";
+import { CommercialActionPanel } from "@/components/economic/CommercialActionPanel";
+import { listCommercialActions } from "@/lib/commerce/execute";
 import { toPanelData } from "@/lib/economic/panelData";
 import { RoomHeader } from "@/components/ui/Instrument";
 
@@ -16,7 +18,7 @@ export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity] =
+  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions] =
     await Promise.all([
       listEconomicAssets(user.id),
       getEconomicOverview(user.id),
@@ -27,6 +29,7 @@ export default async function FinancePage() {
       listExperimentEvidence(user.id),
       getMeasuredProbability({ userId: user.id }),
       verifyEvidenceIntegrity(user.id),
+      listCommercialActions(user.id),
     ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -66,6 +69,23 @@ export default async function FinancePage() {
           }))}
           probability={probability}
           integrityIssues={integrity.length}
+        />
+      </div>
+
+      <div className="mt-6">
+        <CommercialActionPanel
+          actions={commercialActions.map((a) => ({
+            ...a,
+            parameters: a.parameters
+              ? {
+                  ...a.parameters,
+                  startsAt: a.parameters.startsAt.toISOString(),
+                  endsAt: a.parameters.endsAt.toISOString(),
+                }
+              : null,
+            submittedAt: a.submittedAt?.toISOString() ?? null,
+            verifiedAt: a.verifiedAt?.toISOString() ?? null,
+          }))}
         />
       </div>
 

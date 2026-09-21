@@ -298,16 +298,33 @@ export async function executeCommercialAction(input: ExecuteActionInput): Promis
   // `submittedAt` lands here rather than after the provider answers. From this
   // moment the honest description of this action is "may have happened", and it
   // stays that way until the store is asked.
-  const claimed = await db.commercialAction.updateMany({
-    where: { id: actionId, userId, status: "PLANNED" },
-    data: {
-      status: "SUBMITTED",
-      submittedAt: new Date(),
-      executionRunId: input.runId ?? null,
-      executionStepId: input.stepId ?? null,
-    },
-  });
-  if (claimed.count === 0) {
+  let claimedCount = 0;
+  try {
+    const claimed = await db.commercialAction.updateMany({
+      where: { id: actionId, userId, status: "PLANNED" },
+      data: {
+        status: "SUBMITTED",
+        submittedAt: new Date(),
+        executionRunId: input.runId ?? null,
+        executionStepId: input.stepId ?? null,
+      },
+    });
+    claimedCount = claimed.count;
+  } catch {
+    // `executionRunId` and `executionStepId` are both UNIQUE, so this is what a
+    // second action trying to claim an execution identity that is already spoken
+    // for looks like at the database. It must FAIL CLOSED rather than propagate:
+    // an exception here would escape as a step failure, which reads as "the
+    // request failed" when in fact nothing was ever sent. Nothing was sent, and
+    // the honest answer is a refusal.
+    return {
+      executed: false,
+      status: "REFUSED",
+      reason: "EXECUTION_RACE_LOST",
+      detail: "This execution identity is already bound to another commercial action. Nothing was sent.",
+    };
+  }
+  if (claimedCount === 0) {
     return {
       executed: false,
       status: "REFUSED",
