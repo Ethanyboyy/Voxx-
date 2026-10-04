@@ -10,6 +10,8 @@ import { EvidencePanel } from "@/components/economic/EvidencePanel";
 import { listExperimentEvidence, verifyEvidenceIntegrity } from "@/lib/economic/evidence";
 import { getMeasuredProbability } from "@/lib/economic/probability";
 import { CommercialActionPanel } from "@/components/economic/CommercialActionPanel";
+import { PosturePanel } from "@/components/economic/PosturePanel";
+import { nextBestEconomicAction } from "@/lib/economic/nextAction";
 import { listCommercialActions } from "@/lib/commerce/execute";
 import { toPanelData } from "@/lib/economic/panelData";
 import { RoomHeader } from "@/components/ui/Instrument";
@@ -18,7 +20,7 @@ export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions] =
+  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions, posture] =
     await Promise.all([
       listEconomicAssets(user.id),
       getEconomicOverview(user.id),
@@ -30,6 +32,7 @@ export default async function FinancePage() {
       getMeasuredProbability({ userId: user.id }),
       verifyEvidenceIntegrity(user.id),
       listCommercialActions(user.id),
+      nextBestEconomicAction(user.id),
     ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -42,7 +45,11 @@ export default async function FinancePage() {
         description={<>Real assets, real revenue and expense entries you log yourself — nothing here is a projection, a forecast, or invented income. An asset starts as an Opportunity (see Objectives) and becomes real once you record it here.</>}
       />
 
-      <ProfitLossPanel initial={toPanelData(pnl)} />
+      <PosturePanel posture={posture} />
+
+      <div className="mt-6">
+        <ProfitLossPanel initial={toPanelData(pnl)} />
+      </div>
 
       <div className="mt-6">
         <EvidencePanel

@@ -506,6 +506,109 @@ no economic result*, *the one external write is ACT and can never be ALLOW*.
 
 ---
 
+## I17 — A forecast nobody grounded cannot be ranked, and a model's number cannot spend
+
+P5-D through P5-G made MEASUREMENT honest and left FORECASTING alone. The
+forecasting side had the same bug:
+
+```ts
+// src/lib/objectives/service.ts#scoreOpportunity
+const value = o.estimatedValue ?? 1;
+const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
+```
+
+An opportunity nobody researched was scored as worth a dollar at moderate risk,
+and the result was a plain `number` indistinguishable from one computed from
+measured data. This is the `?? 0` hazard of I12 one layer up: there a failed
+observation became a measured zero, here an absent estimate became a ranked
+opportunity.
+
+**AN UNKNOWN CARRIES NO VALUE.** `Estimate<T>` is a union whose unknown arm has
+no `value` property, so `estimate.value ?? 0` is a type error. Every consumer is
+forced to decide what to do about not knowing, and most correctly refuse.
+
+**A DERIVED FIGURE TAKES ITS WORST INPUT'S BASIS.** `weakestBasis()` never
+averages — averaging would let two measured inputs launder one invented one. An
+expected profit combining a measured conversion rate with a model-suggested
+price is a *model-suggested* figure.
+
+**UNRANKABLE IS NOT LAST, IT IS SEPARATE.** `expectedValueOf()` returns a union
+whose unrankable arm has no sortable field at all, and names the missing
+dimensions. Sorting the unknown to the bottom would imply it is worse, when what
+is true is that nobody knows — and some of it will outrank everything funded
+once somebody looks.
+
+**THE DOWNSIDE IS HALF THE EXPECTATION.** `E[net] = p × profit − (1−p) × maxLoss`,
+in **cents**, not a dimensionless score — so it can be compared to capital,
+subtracted for opportunity cost, and summed across a portfolio. Dropping the
+second term is how a 2%-chance moonshot outranks a reliable small win.
+
+**A MODEL'S NUMBERS CANNOT RESERVE MONEY.** `CAPITAL_MINIMUM_BASIS` is
+`COMPARABLE`, one rank above `MODEL_SUGGESTED`, and the portfolio routes anything
+weaker to *corroborate* rather than *fund*. `statedBasisFor()` makes that guard
+live rather than theoretical: a row whose `source` is not a human reads as
+MODEL_SUGGESTED until corroborated. That is a **heuristic over the existing
+`source` column**, named as one — `Opportunity` has no per-figure provenance
+column, and adding one is the real fix.
+
+**N IS DERIVED, NEVER HARDCODED.** How many opportunities can be active comes
+from four independent limits — capital less the governor's reserve, the
+governor's concentration cap, a concurrency bound, and a non-negative
+expectation — and whichever binds first binds. `portfolio.ts` imports
+`RESERVE_FRACTION` and `CONCENTRATION_FRACTION` from `volara/governor.ts` rather
+than redeclaring them, so there is exactly one of each.
+
+**AND NONE OF IT ALLOCATES ANYTHING.** The decision layer imports no allocator,
+no spend function and no executor; a test asserts that on the imports, because a
+symbol that is never imported cannot be called. Committing capital remains
+`requestCapital()` → a human's `ApprovalGrant` → `approveCapitalAllocation()`.
+
+**Tests:** *AN UNKNOWN HAS NO VALUE FIELD AT ALL*, *a derived figure is only as
+good as its worst input*, *REFUSES TO RANK AN UNRESEARCHED OPPORTUNITY*,
+*SUBTRACTS THE DOWNSIDE*, *A MODEL'S NUMBERS NEVER RESERVE MONEY*, *AN UNKNOWN
+CAPITAL REQUIREMENT IS NOT A ZERO ONE*, *N IS DERIVED, NOT HARDCODED*, *nothing
+in the decision layer allocates, spends or executes*.
+
+---
+
+## I18 — A prediction is frozen, and scored only against the ledger
+
+Nothing in VOX recorded a prediction before P6-A. `Opportunity.probabilityOfSuccess`
+is a mutable column, so "what did VOX think would happen" was overwritten by
+"what VOX thinks now" on every edit. **A system whose past beliefs are
+unrecoverable cannot be shown to have been wrong, and therefore cannot improve —
+it can only accumulate confidence.**
+
+`ProfitPrediction` holds the two halves, and they must come from different
+places:
+
+| half | source | rule |
+|---|---|---|
+| the prediction | the expected-value engine | written **once**, digest-frozen, carrying the **weakest basis** of its inputs |
+| the outcome | the **LEDGER** | `revenue − expenses` in cents, the same definition `decide()` uses |
+
+A second prediction for the same experiment is **refused** — a forecast revisable
+once the answer is in sight is not a forecast, and a calibration over revisable
+predictions measures nothing. Revising means recording a new prediction against
+a new experiment, leaving the first standing to be scored.
+
+**A ZERO LEDGER IS A REAL OUTCOME** — that is how an optimistic prediction gets
+caught. **NO LEDGER AT ALL IS NOT**: an experiment with no economic asset has
+nothing to measure, writes no outcome, and records the reason. Same distinction
+as OBSERVED ZERO versus UNAVAILABLE in I12.
+
+`getCalibration()` returns `overallFactor: null` below `MIN_CALIBRATION_SAMPLE`,
+because a correction factor from two data points would be applied to every
+future forecast with the authority of statistics. Null, never 1.0 — a factor of
+1 asserts "perfectly calibrated", which is the opposite of "unknown".
+
+**Tests:** *REFUSES A SECOND PREDICTION FOR THE SAME EXPERIMENT*, *SCORES
+AGAINST THE LEDGER, not against another estimate*, *A ZERO LEDGER IS A REAL
+OUTCOME*, *NO LEDGER IS NOT A ZERO OUTCOME*, *WITHHOLDS A CALIBRATION FACTOR
+BELOW THE MINIMUM SAMPLE*, *DETECTS SYSTEMATIC OPTIMISM once there is a sample*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -526,6 +629,15 @@ honest:
   anywhere in VOX, and the policy gate's money-moving cell (external + financial
   + irreversible) is still empty — `tests/policy-gate.test.ts` fails the build if
   that changes.
+- **No estimate has ever been validated.** P6-A can rank opportunities and
+  record predictions; zero predictions have been scored against a real ledger in
+  this repository, so `getCalibration()` reports NO BASIS and every expected-value
+  figure is unadjusted. The machinery for learning exists and has learned
+  nothing yet.
+- **VOX discovers no opportunities on its own.** Opportunities are still created
+  by a person or an earlier pipeline. Discovery is deliberately the NEXT phase
+  and not this one: building it first would have flooded the ranker with
+  model-invented figures, which the pre-P6 scorer would have ranked happily.
 - **Causation is still unproven, and P5-G does not change that.** A discount code
   is an intervention that can be identified, which is a precondition for
   attribution rather than attribution itself. Orders carrying the code are

@@ -104,6 +104,7 @@ model User {
   experiments            Experiment[]
   experimentMeasurements ExperimentMeasurement[]
   commercialActions      CommercialAction[]
+  profitPredictions      ProfitPrediction[]
   researchItems          ResearchItem[]
   knowledgeNodes         KnowledgeNode[]
   knowledgeEdges         KnowledgeConnection[]
@@ -730,6 +731,7 @@ model Experiment {
 
   measurement ExperimentMeasurement?
   commercialAction CommercialAction?
+  profitPrediction ProfitPrediction?
 
   @@index([userId, executionStatus])
 }
@@ -905,6 +907,71 @@ enum CommercialActionStatus {
 ///
 /// None of them is sufficient alone, and the third is what stops a parameter
 /// being edited in the window between an approval and its use.
+/// [P6-A] What VOX predicted, frozen at the moment it decided.
+///
+/// NOTHING IN VOX RECORDED A PREDICTION BEFORE THIS. `Opportunity.probabilityOfSuccess`
+/// is a mutable column, so "what did VOX think would happen" was overwritten by
+/// "what VOX thinks now" on every edit — which makes comparing prediction to
+/// outcome impossible, and therefore makes learning from being wrong impossible.
+/// A system that cannot be shown to have been wrong cannot improve.
+///
+/// So a prediction is written ONCE, digest-frozen like a measurement, and the
+/// outcome is filled in later from the LEDGER — never from another estimate.
+/// `src/lib/economic/calibration.ts` then derives, per basis class, how far off
+/// VOX's predictions actually run. That number is the only honest input to
+/// "how much should I trust my own forecasts", and it cannot be produced
+/// without this table.
+model ProfitPrediction {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  opportunityId String
+  /// The experiment that will test it, when one exists. The link that lets the
+  /// outcome be read from a real ledger rather than guessed at.
+  experiment   Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  experimentId String?     @unique
+
+  // --- THE PREDICTION, frozen ------------------------------------------
+  /// Expected NET profit in cents over `horizonDays`. An ESTIMATE, and the
+  /// schema keeps it here rather than anywhere near the ledger: `LedgerProvenance`
+  /// has no PROJECTED member precisely so a forecast cannot be summed into
+  /// profit, and this column must never become an exception to that.
+  predictedNetCents Int
+  /// 0-1, as predicted. Never defaulted — a prediction with no probability is
+  /// not recorded at all.
+  predictedProbability Float
+  /// The WEAKEST basis among the inputs this prediction was computed from.
+  /// A prediction is only as good as its worst input, so this is the honest
+  /// label for the whole figure — see `weakestBasis()`.
+  predictedBasis String
+  /// Days the prediction is about. Comparing a 7-day test to a 90-day build
+  /// needs this, and so does deciding when the prediction is due.
+  horizonDays Int
+  /// sha256 over the predicted terms. A prediction edited after the fact is a
+  /// prediction that was never made.
+  digest String
+
+  // --- THE OUTCOME, from the ledger only -------------------------------
+  /// Measured net in cents, summed from the experiment's own EconomicRevenue
+  /// and EconomicExpense rows. NULL means nobody has reconciled it — never zero.
+  observedNetCents Int?
+  observedAt       DateTime?
+  /// How the outcome was obtained. "LEDGER" is the only value any code writes;
+  /// stored so a future second source cannot be mistaken for the first.
+  outcomeSource    String?
+  /// Why no outcome could be established, when that is the answer. Diagnostic
+  /// only — nothing computes from it, and it is never read as an outcome.
+  unresolvedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, opportunityId])
+  @@index([userId, predictedBasis])
+}
+
 model CommercialAction {
   id     String @id @default(uuid())
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2123,6 +2190,7 @@ model Opportunity {
   /// Economic experiments testing this opportunity — see the contract fields
   /// on Experiment. Extends the existing chain rather than forking it.
   experiments        Experiment[]
+  profitPredictions  ProfitPrediction[]
 }
 
 // ---------------------------------------------------------------------------
