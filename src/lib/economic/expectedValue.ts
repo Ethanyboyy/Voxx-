@@ -43,8 +43,14 @@
  */
 
 import { formatCents } from "@/lib/economic/money";
-import { CAPITAL_MINIMUM_BASIS, meetsMinimumBasis, type EstimateBasis } from "@/lib/economic/estimate";
-import type { OpportunityDimensions, OpportunityModelView } from "@/lib/economic/opportunityModel";
+import { weakerBasis, type EstimateBasis } from "@/lib/economic/estimate";
+import { EV_MATERIAL_FIGURES, type CapitalBasisAssessment } from "@/lib/economic/figures";
+import type {
+  FigureProvenance,
+  OpportunityDimensions,
+  OpportunityModelView,
+} from "@/lib/economic/opportunityModel";
+import type { EconomicFigure } from "@/generated/prisma/enums";
 
 /** The longest horizon a per-day rate is computed over. */
 export const MAX_HORIZON_DAYS = 365;
@@ -95,12 +101,55 @@ export interface RankableExpectation {
    */
   expectedReturnOnCapital: number | null;
   terms: ExpectedValueTerms;
-  /** The honest basis of the whole figure: the weakest of its inputs. */
+  /**
+   * The weakest basis among the figures that entered the arithmetic.
+   *
+   * [P6-B] A DERIVED LABEL FOR SURFACES, NOT THE RECORD. It is the minimum over
+   * `provenance.figures`, which is the authoritative per-figure account. Nothing
+   * may read this field and conclude anything about an individual figure — that
+   * is the inference P6-B exists to make impossible — and in particular no
+   * figure's own basis is ever set from it.
+   */
   basis: EstimateBasis;
-  /** Whether this basis is strong enough to justify committing real money. */
+  /**
+   * Whether this opportunity's figures are collectively strong enough to justify
+   * committing real money.
+   *
+   * [P6-B] Now `provenance.capital.eligible`: EVERY ev-material figure must
+   * clear the bar on its OWN basis. Previously this was one comparison against
+   * one rolled-up basis, which gave the same answer in the common case and could
+   * not say which figure was responsible.
+   */
   capitalEligible: boolean;
+  /** [P6-B] Per-figure provenance for exactly the figures that entered. */
+  provenance: ExpectationProvenance;
   /** One sentence, for a surface. States the basis alongside the number. */
   summary: string;
+}
+
+/**
+ * [P6-B] WHICH FIGURES THIS EXPECTATION RESTS ON, AND HOW WELL EACH IS EVIDENCED.
+ *
+ * Carried on the expectation itself so that a decision taken from the number can
+ * be audited without re-reading the opportunity: the figures here are the ones
+ * that ACTUALLY entered the arithmetic, in the state they were in when it ran.
+ */
+export interface ExpectationProvenance {
+  /** One entry per ev-material figure, whether or not it is known. */
+  figures: {
+    figure: EconomicFigure;
+    label: string;
+    basis: EstimateBasis;
+    value: number | null;
+    /** True when it came from an `OpportunityEstimate` row or a measurement. */
+    authoritative: boolean;
+    provenance: string;
+    establishedAt: Date | null;
+  }[];
+  /** The capital gate's verdict, with the blocking figures named. */
+  capital: CapitalBasisAssessment;
+  /** The figures still resting on the legacy column path. */
+  compatibilityFigures: EconomicFigure[];
 }
 
 export interface UnrankableExpectation {
@@ -172,8 +221,13 @@ export function expectedValueOf(model: OpportunityModelView): Expectation {
   const expectedReturnOnCapital =
     requiredCapitalCents !== null && requiredCapitalCents > 0 ? expectedNetCents / requiredCapitalCents : null;
 
-  const basis = model.monetaryBasis;
-  const capitalEligible = meetsMinimumBasis(basis, CAPITAL_MINIMUM_BASIS);
+  // [P6-B] PER-FIGURE, not a roll-up. The capital verdict comes from the gate,
+  // which checks each ev-material figure against its own basis and names the
+  // ones that fall short; `basis` below is only the weakest of them, computed
+  // for display and never fed back into any figure.
+  const provenance = expectationProvenance(model);
+  const basis = weakestEnteredBasis(model);
+  const capitalEligible = provenance.capital.eligible;
 
   return {
     rankable: true,
@@ -184,11 +238,61 @@ export function expectedValueOf(model: OpportunityModelView): Expectation {
     terms: { probability: p, profitOnSuccessCents, maxLossCents, requiredCapitalCents, horizonDays },
     basis,
     capitalEligible,
+    provenance,
     summary:
       `Expected ${formatCents(expectedNetCents)} over ${horizonDays} day${horizonDays === 1 ? "" : "s"} ` +
       `(${Math.round(p * 100)}% chance of ${formatCents(profitOnSuccessCents)}, else −${formatCents(maxLossCents)})` +
-      `. This is an estimate, not revenue, and its weakest input is ${basis.toLowerCase().replace("_", " ")}.`,
+      `. This is an estimate, not revenue, and its weakest input is ${describeWeakestFigure(model)}.`,
   };
+}
+
+/**
+ * The ev-material figures, in registry order, exactly as they stood.
+ *
+ * INCLUDES THE UNKNOWN ONES. A figure nobody has established is part of the
+ * provenance of the expectation — it is the reason the capital gate refuses —
+ * and dropping it from the list would make the record read as though every
+ * figure it mentions were the complete set.
+ */
+function expectationProvenance(model: OpportunityModelView): ExpectationProvenance {
+  return {
+    figures: EV_MATERIAL_FIGURES.map((figure) => {
+      const p: FigureProvenance = model.figures[figure];
+      return {
+        figure,
+        label: p.label,
+        basis: p.basis,
+        value: p.value,
+        authoritative: p.authoritative,
+        provenance: p.provenance,
+        establishedAt: p.establishedAt,
+      };
+    }),
+    capital: model.capital,
+    compatibilityFigures: model.compatibilityFigures,
+  };
+}
+
+/** The weakest basis among the known ev-material figures. For display only. */
+function weakestEnteredBasis(model: OpportunityModelView): EstimateBasis {
+  return EV_MATERIAL_FIGURES.map((f) => model.figures[f])
+    .filter((p) => p.value !== null)
+    .reduce<EstimateBasis>((worst, p) => weakerBasis(worst, p.basis), "MEASURED");
+}
+
+/** Names the figure AND its basis, so a surface says what to go and improve. */
+function describeWeakestFigure(model: OpportunityModelView): string {
+  const weakest = EV_MATERIAL_FIGURES.map((f) => model.figures[f])
+    .filter((p) => p.value !== null)
+    .reduce<FigureProvenance | null>(
+      // Strictly weaker, so a tie keeps the earlier figure in registry order and
+      // the same opportunity always names the same figure.
+      (worst, p) =>
+        worst === null || (p.basis !== worst.basis && weakerBasis(p.basis, worst.basis) === p.basis) ? p : worst,
+      null
+    );
+  if (weakest === null) return "nothing — no figure that enters the expectation is established";
+  return `the ${weakest.label} (${weakest.basis.toLowerCase().replace("_", " ")})`;
 }
 
 /**

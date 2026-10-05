@@ -543,13 +543,16 @@ in **cents**, not a dimensionless score — so it can be compared to capital,
 subtracted for opportunity cost, and summed across a portfolio. Dropping the
 second term is how a 2%-chance moonshot outranks a reliable small win.
 
-**A MODEL'S NUMBERS CANNOT RESERVE MONEY.** `CAPITAL_MINIMUM_BASIS` is
-`COMPARABLE`, one rank above `MODEL_SUGGESTED`, and the portfolio routes anything
-weaker to *corroborate* rather than *fund*. `statedBasisFor()` makes that guard
-live rather than theoretical: a row whose `source` is not a human reads as
-MODEL_SUGGESTED until corroborated. That is a **heuristic over the existing
-`source` column**, named as one — `Opportunity` has no per-figure provenance
-column, and adding one is the real fix.
+**A MODEL'S NUMBERS CANNOT RESERVE MONEY.** `CAPITAL_MINIMUM_BASIS` is the rank
+immediately above `MODEL_SUGGESTED`, and the portfolio routes anything weaker to
+*corroborate* rather than *fund*.
+
+> **Superseded in part by I19.** As written, P6-A made this guard live through
+> `statedBasisFor()` — a heuristic over the single `Opportunity.source` column,
+> named as one at the time, which made every figure on a row share one basis.
+> **I19 replaced it with per-figure provenance**: each ev-material figure now
+> clears the capital minimum on its own evidence, and the row-level basis is
+> gone. Everything else in this invariant stands unchanged.
 
 **N IS DERIVED, NEVER HARDCODED.** How many opportunities can be active comes
 from four independent limits — capital less the governor's reserve, the
@@ -609,6 +612,173 @@ BELOW THE MINIMUM SAMPLE*, *DETECTS SYSTEMATIC OPTIMISM once there is a sample*.
 
 ---
 
+## I19 — Provenance is a property of the NUMBER, not of the row
+
+P6-A derived every figure's basis from one column:
+
+```ts
+// src/lib/economic/opportunityModel.ts, P6-A
+const stated = statedBasisFor(opportunity.source);   // then used for all 7 figures
+```
+
+`Opportunity.source` describes how the opportunity was **discovered**. It says
+nothing about any individual figure on the row, and using it as a proxy for all
+of them was wrong in both directions at once:
+
+- **A person could not fix one figure.** Correcting a model's invented revenue
+  changed nothing, because the row's discovery source had not changed.
+- **Mixed provenance was unrepresentable.** "The probability is measured and the
+  profit is a guess" could not be said at all — both read the same column.
+- **A refusal could not be acted on.** "Its weakest monetary input is a model's
+  proposal" never named the input, so the only responses were to re-derive the
+  model by hand or to override the refusal.
+
+**Provenance is now per figure.** `OpportunityEstimate` holds one row per
+`(opportunityId, figure)` — unique-constrained, so a figure has one current
+provenance rather than an accumulating pile of assertions — and each row answers
+the six questions on its own:
+
+| question | column |
+|---|---|
+| what is the value | `valueCents` / `valueRatio` / `valueDays`, **exactly one** set, chosen by the figure's kind |
+| what is its basis | `basis` |
+| where did the basis come from | `provenance` (required free text) |
+| when was it established | `establishedAt` — **not** `createdAt`; a figure can be recorded today on last month's measurement |
+| what evidence supports it | `experimentId` / `measurementId` / `researchItemId` / `comparableId`, **foreign keys** |
+| may it influence capital | **derived on every read** by `canInfluenceCapital()`, never stored |
+
+The closed figure registry is `src/lib/economic/figures.ts`. A figure that can be
+invented at call time is a figure whose provenance rules nobody reviewed, so
+adding one is a line in a diff — same posture as the observation registry (I11)
+and the proposal registry.
+
+**GLOBAL OPPORTUNITY PROVENANCE IS NO LONGER AUTHORITATIVE.** `monetaryBasis`
+is gone from `OpportunityModelView`. `statedBasisFor()` is gone under that name:
+what remains is `legacyColumnBasis()`, consulted **last**, only for a figure with
+no recorded estimate, and **capped at `STATED`** — a value in a column carries no
+evidence reference, so there is nothing to check, so it can never be `COMPARABLE`
+or `MEASURED` however it got there. Every figure read that way reports
+`authoritative: false` and `establishedAt: null`, and the replacement path
+(`recordEstimate()`) is named at the definition. The old columns are still read,
+because refusing them would make every pre-P6-B opportunity unfundable overnight.
+
+### The ranking, and where the capital line sits on it
+
+```
+NONE  <  MODEL_SUGGESTED  <  STATED  <  COMPARABLE  <  MEASURED
+                           ^
+                           CAPITAL_MINIMUM_BASIS
+```
+
+`STATED` sits below `COMPARABLE` because both are beliefs and the ordering says
+which is better anchored: a stated figure is anchored to somebody's memory, a
+comparable to an outcome VOX **actually measured** on another opportunity. The
+inference between cases is the weak joint; the thing extrapolated from is an
+observation.
+
+The capital line is drawn **immediately above `MODEL_SUGGESTED`** and that is the
+whole specification. Fundable: `{STATED, COMPARABLE, MEASURED}`. Excluded:
+`{NONE, MODEL_SUGGESTED}`. The constant's *value* moved from `COMPARABLE` to
+`STATED` when the two ranks swapped; the membership of both sets did not change,
+because the invariant was never "at least COMPARABLE" — it was always "better
+than a model's unsupported proposal".
+
+### Every material figure is checked on its own basis
+
+`capitalBasisGate()` requires **every** ev-material figure to clear the bar
+itself. There is no roll-up, no average, no governing basis. A measured
+probability does not make an invented profit fundable: they are separate claims
+about the world that happen to share a row. The blocking figures are **named**,
+and the name reaches the portfolio deferral, the posture recommendation and the
+UI — a refusal nobody can act on gets overridden.
+
+One asymmetry, deliberate: a figure whose absence is handled by a conservative
+default (`absenceIsConservative`, true for `TIME_TO_PAYOUT_DAYS` alone) does not
+block by being **absent**, because `MAX_HORIZON_DAYS` makes the per-day rate
+smaller and so cannot flatter the expectation. It still blocks when **present**
+on a weak basis, because a model-suggested "7 days" where the truth is a year
+inflates the rate 52×.
+
+### UNKNOWN CAPITAL IS NOT ZERO CAPITAL
+
+`portfolio.ts` used to read:
+
+```ts
+const want = required ?? 0;   // P6-A
+```
+
+An unknown bill read as a free opportunity. The gate now refuses an
+unestablished capital requirement before that line, and the line itself is an
+explicit refusal rather than a coalesce, so nothing downstream substitutes a
+number for an absence. A **genuine zero** stays a real answer and stays fundable
+— plenty of opportunities need time rather than money. Same distinction as
+OBSERVED ZERO versus UNAVAILABLE in I12, one layer up.
+
+### No provenance laundering
+
+Only a reference to evidence that **exists** upgrades a figure. `MEASURED` must
+name a measurement or experiment; `COMPARABLE` must name the opportunity it was
+derived from; the service then checks the row exists **and belongs to this user**.
+Without that check the strongest basis in the system would be the easiest one to
+claim — you would write "measured from the store" in the provenance string.
+
+None of the following upgrades anything, and none of them is an argument to any
+function in `provenance.ts`:
+
+| not evidence | why |
+|---|---|
+| a model's own confidence | a property of the claim, not of the evidence |
+| repetition | the same figure proposed ten times is one unsupported figure; there is no counter to increment |
+| ranking | coming first is a consequence of the number, not evidence for it |
+| arithmetic | a derived figure takes its **weakest** input's basis; multiplication does not create knowledge |
+| portfolio construction | being selected is downstream of the figure |
+| elapsed time | an old estimate is an old estimate; nothing matures into a fact |
+| a human approving a recommendation | consent to **do the thing**, not a statement about the number that motivated it |
+
+`recordEstimate()` and `upgradeEstimate()` are deliberately separate.
+`upgradeEstimate()` refuses anything that is not a rank increase, which is what
+makes `economic.estimate.upgraded` in the event log mean that evidence genuinely
+improved. Writing **downward** stays possible through `recordEstimate()`: a
+measured conversion rate from a shop that has since changed its pricing is no
+longer measured evidence about today, and provenance that could only strengthen
+would leave the system unable to admit that what it knew is now stale.
+
+### Recording provenance authorizes nothing
+
+`provenance.ts` imports no `grantPermission`, no `createApprovalGrant`, no
+`consumeApprovalGrant`, no `approveCapitalAllocation`, no `requestCapital`, no
+`recordSpend` — a symbol that is never imported cannot be called. The dependency
+direction runs one way: the permission check, the approval grant, the atomic
+spend ceiling, the evidence loop and `decide()` import **nothing** from the
+provenance layer, because a gate whose answer depended on a figure's basis would
+be a gate that provenance could talk round, and provenance is recorded by
+whoever is proposing the spend.
+
+### Historical predictions are immutable
+
+`ProfitPrediction.predictedBasis` records the basis **at prediction time** and is
+never rewritten. If improving a figure's provenance rewrote it, the
+`MODEL_SUGGESTED` calibration bucket would quietly empty itself as figures were
+corroborated, and VOX would appear to have been better calibrated than it was.
+Better evidence is a new current estimate, not a retroactive edit — I18 unchanged.
+
+**Tests:** `tests/p6-b-figure-provenance.test.ts` — *A MEASURED PROBABILITY DOES
+NOT MAKE AN INVENTED PROFIT MEASURED*, *holds for EVERY figure in turn, by
+enumeration*, *A SINGLE WEAK FIGURE BLOCKS CAPITAL EVEN WHEN SIX ARE MEASURED*,
+*AN UNKNOWN CAPITAL REQUIREMENT IS NOT A ZERO ONE*, *A GENUINE ZERO IS STILL A
+REAL ANSWER*, *A MODEL_SUGGESTED CAPITAL REQUIREMENT CANNOT AUTHORIZE SPENDING*,
+*ONLY THE HORIZON MAY BE ABSENT WITHOUT BLOCKING*, *CAN NEVER CLAIM THE TWO
+STRONGEST BASES*, *A RECORDED ESTIMATE OVERRIDES THE COLUMN HEURISTIC IN BOTH
+DIRECTIONS*, *A MALFORMED ESTIMATE ROW READS AS UNKNOWN*, *REFUSES A MEASURED
+CLAIM THAT NAMES NO MEASUREMENT*, *REFUSES AN INVENTED EVIDENCE IDENTIFIER*,
+*REFUSES ANOTHER USER'S EVIDENCE*, *REPETITION / ARITHMETIC / RANKING AND
+SELECTION / TIME DOES NOT UPGRADE ANYTHING*, *IMPORTS NO PERMISSION, GRANT OR
+ALLOCATION SYMBOL*, *IS DOWNSTREAM OF EVERY GATE, NEVER UPSTREAM*, *NO EXTERNAL
+ACTION FOLLOWS FROM A FLATTERING MODEL-SUGGESTED EXPECTATION*, *A HISTORICAL
+PREDICTION STAYS FROZEN WHEN PROVENANCE LATER CHANGES*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -635,9 +805,14 @@ honest:
   figure is unadjusted. The machinery for learning exists and has learned
   nothing yet.
 - **VOX discovers no opportunities on its own.** Opportunities are still created
-  by a person or an earlier pipeline. Discovery is deliberately the NEXT phase
-  and not this one: building it first would have flooded the ranker with
-  model-invented figures, which the pre-P6 scorer would have ranked happily.
+  by a person or an earlier pipeline. **Discovery is deliberately excluded from
+  P6-A and P6-B both.** Building it before the ranker could refuse ungrounded
+  numbers would have flooded it with model-invented figures, which the pre-P6
+  scorer would have ranked happily; building it before provenance was per figure
+  would have meant every number a discovery run produced shared one basis with
+  every number beside it. P6-B is the precondition, not the feature: a generated
+  opportunity now arrives with each figure independently marked
+  `MODEL_SUGGESTED`, and no figure marked that way can reserve capital.
 - **Causation is still unproven, and P5-G does not change that.** A discount code
   is an intervention that can be identified, which is a precondition for
   attribution rather than attribution itself. Orders carrying the code are
@@ -656,6 +831,18 @@ honest:
   stubbed `fetch`. No live store credentials exist here, so the integration is
   architecturally complete and **empirically unexercised** — it has never been
   run against a real merchant's store.
+- **Per-figure provenance records what a number rests on; it does not check
+  whether the number is right.** A `STATED` figure is a figure somebody stood
+  behind, not a verified one, and the compatibility path still lets the old
+  `Opportunity` columns reach the capital minimum at `STATED` without any
+  evidence reference — that is a deliberate migration concession, flagged
+  `authoritative: false` on every figure it produces, and it is the weakest link
+  in the chain today.
+- **No figure in this repository has ever been upgraded to `MEASURED` from live
+  external evidence.** The `MEASURED` path requires a real `ExperimentMeasurement`
+  row and the tests supply one through P5-D's own human-entered path. No live
+  store credentials exist here, so nothing has been measured against a real
+  external system of record.
 - **A measured probability over one or two verdicts is not a success rate.**
   `ProbabilityEvidence` is returned whole — wins, losses, decided, and the basis
   each verdict rested on — precisely so a caller cannot render "1 of 1" as

@@ -54,7 +54,7 @@
  * Where a quantity came from. Ordered weakest to strongest below.
  *
  * The distinctions that matter most are the two at the bottom. `MODEL_SUGGESTED`
- * and `RECORDED` are both "somebody said so", but one of them is a person
+ * and `STATED` are both "somebody said so", but one of them is a person
  * putting their own knowledge behind a figure and the other is a language model
  * producing a plausible one, and flattening them into "estimate" is how the
  * second quietly acquires the authority of the first.
@@ -69,10 +69,10 @@ export type EstimateBasis =
    * sufficient on its own to allocate capital.
    */
   | "MODEL_SUGGESTED"
+  /** A person stated it from their own knowledge of the world. */
+  | "STATED"
   /** Derived from the measured outcome of a comparable opportunity VOX ran. */
   | "COMPARABLE"
-  /** A person stated it from their own knowledge of the world. */
-  | "RECORDED"
   /**
    * VOX observed it in an external system of record, through the P5-E/F path.
    *
@@ -85,20 +85,37 @@ export type EstimateBasis =
  * multiplies by these, because a basis is not a confidence score and treating
  * it as one would let a strong basis on one dimension paper over an absent one
  * on another.
+ *
+ * ---------------------------------------------------------------------------
+ * [P6-B] WHY `STATED` SITS BELOW `COMPARABLE`
+ * ---------------------------------------------------------------------------
+ *
+ * Both are beliefs, and the ordering says which belief is better anchored. A
+ * figure a person states is anchored to their memory of the world. A figure
+ * derived from a comparable is anchored to an outcome VOX ACTUALLY MEASURED on
+ * another opportunity — the inference from one case to another is the weak
+ * joint, but the thing being extrapolated from is an observation. So a
+ * comparable outranks a recollection, and both are outranked by measuring the
+ * figure itself.
+ *
+ * The ordering is load-bearing in exactly one place — `weakestBasis()` — and it
+ * is deliberately NOT what decides whether money may move. That line is drawn
+ * by `CAPITAL_MINIMUM_BASIS` below, and it is drawn immediately above
+ * `MODEL_SUGGESTED`, which is the distinction that actually matters.
  */
 const BASIS_RANK: Readonly<Record<EstimateBasis, number>> = Object.freeze({
   NONE: 0,
   MODEL_SUGGESTED: 1,
-  COMPARABLE: 2,
-  RECORDED: 3,
+  STATED: 2,
+  COMPARABLE: 3,
   MEASURED: 4,
 });
 
 export const ESTIMATE_BASES: readonly EstimateBasis[] = Object.freeze([
   "NONE",
   "MODEL_SUGGESTED",
+  "STATED",
   "COMPARABLE",
-  "RECORDED",
   "MEASURED",
 ] as const);
 
@@ -190,11 +207,95 @@ export function meetsMinimumBasis(basis: EstimateBasis, minimum: EstimateBasis):
  * The minimum basis required before an estimate may influence a commitment of
  * real money.
  *
- * `COMPARABLE` — i.e. at least derived from something VOX actually measured, or
- * stated by a person, or measured directly. A model's unsupported proposal is
- * deliberately one rank below this line.
+ * THE LINE IS DRAWN IMMEDIATELY ABOVE `MODEL_SUGGESTED`, and that is the whole
+ * specification. The fundable set is {STATED, COMPARABLE, MEASURED} and the
+ * excluded set is {NONE, MODEL_SUGGESTED}: a figure nobody has established and a
+ * figure a model invented cannot move money; a figure a person stands behind, a
+ * figure extrapolated from something VOX measured, and a figure VOX measured
+ * itself all can.
+ *
+ * [P6-B] THE CONSTANT'S VALUE CHANGED AND THE RULE DID NOT. It read
+ * `COMPARABLE` while `COMPARABLE` was the rank directly above `MODEL_SUGGESTED`;
+ * when `STATED` and `COMPARABLE` swapped places (see `BASIS_RANK`) the name of
+ * the rank on that line changed to `STATED`, so the constant follows it. The
+ * membership of both sets is byte-for-byte what it was — the P6-A assertions on
+ * `meetsMinimumBasis()` pass unchanged — because the invariant was never "at
+ * least COMPARABLE", it was always "better than a model's unsupported proposal".
  */
-export const CAPITAL_MINIMUM_BASIS: EstimateBasis = "COMPARABLE";
+export const CAPITAL_MINIMUM_BASIS: EstimateBasis = "STATED";
+
+/**
+ * [P6-B] Whether a basis may influence a commitment of real money.
+ *
+ * One predicate, used by the portfolio and by nothing else that decides. It is
+ * DERIVED on every read rather than stored anywhere: a persisted "may spend"
+ * flag is a flag someone can set, while a derivation means the only way to make
+ * a figure fundable is to improve its evidence.
+ */
+export function canInfluenceCapital(basis: EstimateBasis): boolean {
+  return meetsMinimumBasis(basis, CAPITAL_MINIMUM_BASIS);
+}
+
+/** Why a proposed change of basis was refused. */
+export type BasisTransitionRefusal =
+  /**
+   * The new basis is no stronger than the old one.
+   *
+   * Not an error in itself — re-recording a figure at the same basis is
+   * ordinary — but it is not an UPGRADE, and the upgrade path refuses it so
+   * that "upgraded" in an audit log always means the evidence improved.
+   */
+  | "NOT_AN_UPGRADE"
+  /**
+   * THE ANTI-LAUNDERING RULE.
+   *
+   * The claimed basis needs evidence that was not supplied. A `MEASURED` claim
+   * must name a measurement; a `COMPARABLE` claim must name the opportunity it
+   * was derived from. Without this, the strongest basis in the system would be
+   * the easiest one to assert — you would simply write "measured" in the
+   * provenance string.
+   */
+  | "EVIDENCE_REQUIRED"
+  /** The named evidence does not exist, or belongs to someone else. */
+  | "EVIDENCE_NOT_FOUND"
+  /** `NONE` is not a basis a figure can be recorded at. */
+  | "NOT_A_BASIS";
+
+/**
+ * [P6-B] WHAT MAY AND MAY NOT UPGRADE A FIGURE.
+ *
+ * Only an increase in rank, and only with the evidence that rank demands.
+ *
+ * ---------------------------------------------------------------------------
+ * THE THINGS THAT EXPLICITLY DO NOT UPGRADE ANYTHING
+ * ---------------------------------------------------------------------------
+ *
+ * None of the following appears anywhere in this module, and none of them is an
+ * argument to any function here:
+ *
+ *   A MODEL'S OWN CONFIDENCE. A model asserting certainty is still a model
+ *     asserting. Confidence is a property of the claim, not of the evidence.
+ *   REPETITION. The same figure proposed ten times is one unsupported figure
+ *     proposed ten times. There is no counter, so there is nothing to increment.
+ *   RANKING. Coming first in a list is a consequence of the number, not
+ *     evidence for it.
+ *   ARITHMETIC. A derived figure takes its weakest input's basis — see
+ *     `weakestBasis()`. Multiplication does not create knowledge.
+ *   PORTFOLIO CONSTRUCTION. Being selected is downstream of the figure; it
+ *     cannot be evidence for it.
+ *   TIME. An old estimate is an old estimate. Nothing matures into a fact.
+ *   A HUMAN ACCEPTING A RECOMMENDATION. Approving an ACTION is consent to do
+ *     the thing; it is not a statement about the number that motivated it. If a
+ *     person wants to put their own knowledge behind a figure, that is a
+ *     deliberate `STATED` recording, which is a different act with a different
+ *     audit trail.
+ *
+ * The only thing that upgrades a figure is a reference to evidence that exists.
+ */
+export function isValidBasisUpgrade(from: EstimateBasis, to: EstimateBasis): boolean {
+  if (to === "NONE") return false;
+  return BASIS_RANK[to] > BASIS_RANK[from];
+}
 
 /**
  * Human-readable, for surfaces. Says what the basis IS rather than how
@@ -205,7 +306,7 @@ export function describeBasis(basis: EstimateBasis): string {
   switch (basis) {
     case "MEASURED":
       return "measured by VOX in an external system of record";
-    case "RECORDED":
+    case "STATED":
       return "stated by a person from their own knowledge";
     case "COMPARABLE":
       return "derived from a comparable opportunity VOX measured";

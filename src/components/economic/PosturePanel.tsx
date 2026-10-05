@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { InstrumentPanel, PanelHeader, Seam } from "@/components/ui/Instrument";
+import { FIGURE_SPECS } from "@/lib/economic/figures";
 import type { EconomicPosture } from "@/lib/economic/nextAction";
 
 /**
@@ -47,6 +48,93 @@ const KIND_LABEL: Record<string, string> = {
 
 /** Actions needing a person are marked as such — VOX cannot do these itself. */
 const NEEDS_HUMAN = new Set(["RECONCILE_EXPERIMENT", "REQUEST_CAPITAL"]);
+
+/**
+ * Figure labels, read from the registry rather than retyped, so a figure added
+ * to `FIGURE_SPECS` cannot appear here as a raw enum name.
+ */
+const FIGURE_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(FIGURE_SPECS).map(([figure, spec]) => [figure, spec.label])
+);
+
+/**
+ * [P6-B] HOW A BASIS IS SHOWN.
+ *
+ * Shortened for a dense row and NEVER softened. `MODEL_SUGGESTED` renders as
+ * "model" — not "estimate", not "AI", not a percentage — because the one thing
+ * this surface must not do is let a figure a model invented read like one
+ * somebody established. The colour carries the same information as the word, so
+ * a figure that cannot move money is visible without reading.
+ */
+const BASIS_CHIP: Record<string, { label: string; className: string }> = {
+  MEASURED: { label: "measured", className: "text-emerald-300/90" },
+  COMPARABLE: { label: "comparable", className: "text-sky-300/90" },
+  STATED: { label: "stated", className: "text-white/70" },
+  MODEL_SUGGESTED: { label: "model", className: "text-amber-300/90" },
+  NONE: { label: "unknown", className: "text-rose-300/90" },
+};
+
+function formatEstablished(at: Date | string | null): string | null {
+  if (at === null) return null;
+  const date = at instanceof Date ? at : new Date(at);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString();
+}
+
+/**
+ * The per-figure provenance of one expectation, in one line per figure.
+ *
+ * THIS IS THE P6-B SURFACE. Before it, the panel showed one basis for a whole
+ * opportunity, which is the same compression the engine itself used to make:
+ * "stated" over an opportunity whose probability was measured and whose profit
+ * was invented told the user nothing they could act on. Each figure now carries
+ * its own basis, its own provenance and its own date, and the ones that block
+ * capital are marked.
+ */
+function FigureProvenanceRows({
+  figures,
+  blocking,
+}: {
+  figures: {
+    figure: string;
+    label: string;
+    basis: string;
+    value: number | null;
+    authoritative: boolean;
+    provenance: string;
+    establishedAt: Date | string | null;
+  }[];
+  blocking: { figure: string; reason: string }[];
+}) {
+  const blockedBy = new Map(blocking.map((b) => [b.figure, b.reason]));
+  return (
+    <ul className="mt-1.5 space-y-1">
+      {figures.map((f) => {
+        const chip = BASIS_CHIP[f.basis] ?? BASIS_CHIP.NONE;
+        const block = blockedBy.get(f.figure);
+        const established = formatEstablished(f.establishedAt);
+        return (
+          <li key={f.figure} className="flex flex-wrap items-baseline gap-x-2 text-[11px] leading-relaxed">
+            <span className="text-white/45">{f.label}</span>
+            <span className={`font-mono uppercase tracking-wide ${chip.className}`}>{chip.label}</span>
+            {/* A figure read from the opportunity's own columns rather than a
+                recorded estimate. Marked, because its basis is a heuristic. */}
+            {!f.authoritative && f.value !== null && (
+              <span className="font-mono text-[10px] uppercase tracking-wide text-white/30" title="read from the opportunity's own column — no per-figure estimate recorded">
+                legacy
+              </span>
+            )}
+            {established && <span className="text-white/25">est. {established}</span>}
+            {block && (
+              <span className="text-amber-300/70">
+                {block === "ABSENT" ? "blocks funding — not established" : "blocks funding — too weak"}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function PosturePanel({ posture }: { posture: SerializedPosture }) {
   const [showPlan, setShowPlan] = useState(false);
@@ -147,12 +235,18 @@ export function PosturePanel({ posture }: { posture: SerializedPosture }) {
                   id={s.expectation.opportunityId}
                   right={`${usdFromCents(s.expectation.expectedNetPerDayCents)}/day`}
                   detail={`${s.expectation.summary} ${s.rationale}`}
-                />
+                >
+                  <FigureProvenanceRows
+                    figures={s.expectation.provenance.figures}
+                    blocking={s.expectation.provenance.capital.blocking}
+                  />
+                </Line>
               ))}
             </Group>
           )}
 
-          {/* The deferrals, each with the binding reason. */}
+          {/* The deferrals, each with the binding reason — and, where the
+              reason is the evidence, the specific figure responsible. */}
           {plan.deferred.length > 0 && (
             <Group title={`Not selected (${plan.deferred.length})`}>
               {plan.deferred.map((d) => (
@@ -161,7 +255,20 @@ export function PosturePanel({ posture }: { posture: SerializedPosture }) {
                   id={d.opportunityId}
                   right={d.reason.replace(/_/g, " ").toLowerCase()}
                   detail={d.detail}
-                />
+                >
+                  {d.blockingFigures.length > 0 && (
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+                      Corroborate{" "}
+                      {d.blockingFigures.map((b, i) => (
+                        <span key={b.figure}>
+                          {i > 0 && ", "}
+                          <span className="text-white/70">{FIGURE_LABEL[b.figure] ?? b.figure}</span>
+                        </span>
+                      ))}
+                      {" "}— provenance is per figure, so the rest of this opportunity&apos;s numbers are unaffected.
+                    </p>
+                  )}
+                </Line>
               ))}
             </Group>
           )}
@@ -207,7 +314,17 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Line({ id, right, detail }: { id: string; right: string; detail: string }) {
+function Line({
+  id,
+  right,
+  detail,
+  children,
+}: {
+  id: string;
+  right: string;
+  detail: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="py-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -215,6 +332,7 @@ function Line({ id, right, detail }: { id: string; right: string; detail: string
         <span className="font-mono text-[11px] tabular-nums text-white/60">{right}</span>
       </div>
       <p className="mt-0.5 text-[11px] leading-relaxed text-white/45">{detail}</p>
+      {children}
     </div>
   );
 }

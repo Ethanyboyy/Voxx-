@@ -26,7 +26,13 @@ import {
   weakestBasis,
   type Estimate,
 } from "@/lib/economic/estimate";
-import { projectOpportunity, type OpportunityModelView } from "@/lib/economic/opportunityModel";
+import {
+  projectOpportunity,
+  type FigureProvenance,
+  type OpportunityModelView,
+} from "@/lib/economic/opportunityModel";
+import { ECONOMIC_FIGURES, capitalBasisGate } from "@/lib/economic/figures";
+import type { EconomicFigure, EvidenceBasis } from "@/generated/prisma/enums";
 import {
   expectedValueOf,
   isRankable,
@@ -124,6 +130,33 @@ function fundable(over: Partial<Opportunity> = {}): OpportunityModelView {
   );
 }
 
+/**
+ * [P6-B] Rewrites ONE figure's basis on an already-projected model.
+ *
+ * Replaces the P6-A habit of overriding the row-level `monetaryBasis`, which no
+ * longer exists. The capital gate is recomputed from the edited figures rather
+ * than patched, so the test cannot accidentally assert an inconsistent state.
+ */
+function weakenFigure(
+  model: OpportunityModelView,
+  figure: EconomicFigure,
+  basis: EvidenceBasis
+): OpportunityModelView {
+  const figures: Record<EconomicFigure, FigureProvenance> = { ...model.figures };
+  figures[figure] = { ...figures[figure], basis, capitalEligible: false };
+  return {
+    ...model,
+    figures,
+    capital: capitalBasisGate(
+      ECONOMIC_FIGURES.map((f) => ({
+        figure: f,
+        basis: figures[f].basis,
+        known: figures[f].value !== null && figures[f].basis !== "NONE",
+      }))
+    ),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The estimate: an unknown carries no value
 // ---------------------------------------------------------------------------
@@ -146,19 +179,24 @@ describe("an unknown quantity has no value to read", () => {
   });
 
   it("lifts a null column to unknown rather than to a default", () => {
-    const e = fromNullable(null, "RECORDED", "a column", "it was never set");
+    const e = fromNullable(null, "STATED", "a column", "it was never set");
     expect(e.known).toBe(false);
     expect("value" in e).toBe(false);
     // And a zero is a real value, not an absence — the distinction P5-E made
     // for observations, applied to estimates.
-    const zero = fromNullable(0, "RECORDED", "a column", "it was never set");
+    const zero = fromNullable(0, "STATED", "a column", "it was never set");
     expect(zero.known).toBe(true);
     expect(zero.known && zero.value).toBe(0);
   });
 
   it("takes the WEAKER basis when combining, never the stronger", () => {
     expect(weakerBasis("MEASURED", "MODEL_SUGGESTED")).toBe("MODEL_SUGGESTED");
-    expect(weakerBasis("RECORDED", "COMPARABLE")).toBe("COMPARABLE");
+    // [P6-B] The ranking is NONE -> MODEL_SUGGESTED -> STATED -> COMPARABLE ->
+    // MEASURED, so a recollection is weaker than a figure extrapolated from
+    // something VOX measured. This assertion read the other way round in P6-A;
+    // the ordering moved, and the invariant it protects — combining takes the
+    // weaker, never the stronger — is asserted here unchanged.
+    expect(weakerBasis("STATED", "COMPARABLE")).toBe("STATED");
     expect(weakerBasis("NONE", "MEASURED")).toBe("NONE");
   });
 
@@ -182,7 +220,7 @@ describe("an unknown quantity has no value to read", () => {
     expect(meetsMinimumBasis("MODEL_SUGGESTED", CAPITAL_MINIMUM_BASIS)).toBe(false);
     expect(meetsMinimumBasis("NONE", CAPITAL_MINIMUM_BASIS)).toBe(false);
     expect(meetsMinimumBasis("COMPARABLE", CAPITAL_MINIMUM_BASIS)).toBe(true);
-    expect(meetsMinimumBasis("RECORDED", CAPITAL_MINIMUM_BASIS)).toBe(true);
+    expect(meetsMinimumBasis("STATED", CAPITAL_MINIMUM_BASIS)).toBe(true);
     expect(meetsMinimumBasis("MEASURED", CAPITAL_MINIMUM_BASIS)).toBe(true);
   });
 
@@ -203,7 +241,15 @@ describe("every opportunity is projected onto the same dimensions", () => {
     for (const [name, dimension] of Object.entries(model.dimensions)) {
       expect(dimension.known, name).toBe(false);
     }
-    expect(model.monetaryBasis).toBe("NONE");
+    // [P6-B] Was `expect(model.monetaryBasis).toBe("NONE")`. The roll-up is
+    // gone; the invariant is now asserted per figure, which is strictly
+    // stronger — it checks all seven rather than their minimum.
+    for (const figure of ECONOMIC_FIGURES) {
+      expect(model.figures[figure].basis, figure).toBe("NONE");
+      expect(model.figures[figure].value, figure).toBeNull();
+      expect(model.figures[figure].capitalEligible, figure).toBe(false);
+    }
+    expect(model.capital.eligible).toBe(false);
     expect(model.missing.length).toBe(Object.keys(model.dimensions).length);
   });
 
@@ -252,11 +298,15 @@ describe("every opportunity is projected onto the same dimensions", () => {
     expect(model.missing).toContain("expectedProfitCents");
   });
 
-  it("an assessed ordinal cannot lift the monetary basis", () => {
+  it("an assessed ordinal cannot give a money figure a basis", () => {
     // scalability being known says nothing about whether the money figures are.
+    // [P6-B] Asserted per figure now that there is no roll-up to lift.
     const model = projectOpportunity(opportunityRow({ scalability: "HIGH", competition: "LOW" }), null);
     expect(model.dimensions.scalability.known).toBe(true);
-    expect(model.monetaryBasis).toBe("NONE");
+    for (const figure of ECONOMIC_FIGURES) {
+      expect(model.figures[figure].basis, figure).toBe("NONE");
+    }
+    expect(model.capital.eligible).toBe(false);
   });
 });
 
@@ -353,7 +403,7 @@ describe("expected net profit, or an explicit refusal to rank", () => {
     expect(expectation.rankable).toBe(true);
     if (!expectation.rankable) return;
     expect(expectation.summary).toMatch(/estimate, not revenue/i);
-    expect(expectation.basis).toBe("RECORDED");
+    expect(expectation.basis).toBe("STATED");
   });
 
   it("ranks by rate and keeps the unrankable OUT of the ordering", () => {
@@ -428,17 +478,18 @@ describe("the portfolio is bounded by capital, attention and evidence", () => {
   it("A MODEL'S NUMBERS NEVER RESERVE MONEY", () => {
     // The central guard of the phase. The figures are excellent; the basis is
     // a model's unsupported proposal; the answer is corroborate, not fund.
-    const modelOnly = fundable();
-    const weakened: OpportunityModelView = {
-      ...modelOnly,
-      monetaryBasis: "MODEL_SUGGESTED",
-    };
-    const expectation = expectedValueOf(weakened);
+    //
+    // [P6-B] The lever is now a FIGURE rather than the row-level roll-up: the
+    // worst-case loss alone is model-suggested and the other six are stated.
+    // That is a stricter version of the same guard — one weak figure out of
+    // seven is enough, and the deferral names which one.
+    const expectation = expectedValueOf(weakenFigure(fundable(), "MAX_LOSS_CENTS", "MODEL_SUGGESTED"));
     expect(expectation.rankable && expectation.capitalEligible).toBe(false);
 
     const p = plan([expectation]);
     expect(p.selected).toHaveLength(0);
     expect(p.deferred[0].reason).toBe("BASIS_TOO_WEAK");
+    expect(p.deferred[0].blockingFigures.map((b) => b.figure)).toEqual(["MAX_LOSS_CENTS"]);
     expect(p.proposedTotalCents).toBe(0);
   });
 
@@ -588,12 +639,12 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       opportunityId: opportunity.id,
       predictedNetCents: 50_000,
       predictedProbability: 0.4,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 30,
     });
     expect(result.recorded).toBe(true);
     if (!result.recorded) return;
-    expect(result.prediction.predictedBasis).toBe("RECORDED");
+    expect(result.prediction.predictedBasis).toBe("STATED");
     expect(result.prediction.observedNetCents).toBeNull();
   });
 
@@ -610,7 +661,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 50_000,
       predictedProbability: 0.4,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 30,
     });
     expect(first.recorded).toBe(true);
@@ -621,7 +672,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 1_000,
       predictedProbability: 0.9,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 30,
     });
     expect(second.recorded).toBe(false);
@@ -657,7 +708,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
         opportunityId: opportunity.id,
         predictedNetCents: 1_000,
         predictedProbability: 0.5,
-        predictedBasis: "RECORDED",
+        predictedBasis: "STATED",
         horizonDays: 7,
         ...bad,
       });
@@ -674,7 +725,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       opportunityId: opportunity.id,
       predictedNetCents: 1_000,
       predictedProbability: 0.5,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 7,
     });
     expect(result.recorded === false && result.reason).toBe("OPPORTUNITY_NOT_FOUND");
@@ -685,7 +736,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       opportunityId: "o1",
       predictedNetCents: 50_000,
       predictedProbability: 0.4,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 30,
     };
     const original = predictionDigest(base);
@@ -711,7 +762,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 50_000,
       predictedProbability: 0.5,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 30,
     });
     if (!recorded.recorded) throw new Error("fixture failed");
@@ -763,7 +814,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 10_000,
       predictedProbability: 0.5,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 7,
     });
     if (!recorded.recorded) throw new Error("fixture failed");
@@ -786,7 +837,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 5_000,
       predictedProbability: 0.5,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 7,
     });
     if (!recorded.recorded) throw new Error("fixture failed");
@@ -854,7 +905,8 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
     const owner = await createTestUser();
     const calibration = await getCalibration(owner.id);
     const bases = calibration.byBasis.map((b) => b.basis);
-    expect(bases).toEqual(["MODEL_SUGGESTED", "COMPARABLE", "RECORDED", "MEASURED"]);
+    // [P6-B] Reordered with `BASIS_RANK`: STATED now sits below COMPARABLE.
+    expect(bases).toEqual(["MODEL_SUGGESTED", "STATED", "COMPARABLE", "MEASURED"]);
     // NONE is absent: a prediction on no basis is never recorded.
     expect(bases).not.toContain("NONE");
   });
@@ -870,7 +922,7 @@ describe("a prediction is frozen, and scored only against the ledger", () => {
       experimentId: experiment.id,
       predictedNetCents: 1_000,
       predictedProbability: 0.5,
-      predictedBasis: "RECORDED",
+      predictedBasis: "STATED",
       horizonDays: 7,
     });
     if (r.recorded) await reconcilePrediction(a.id, r.prediction.id);

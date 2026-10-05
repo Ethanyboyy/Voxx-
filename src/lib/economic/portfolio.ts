@@ -46,8 +46,10 @@
 import { CONCENTRATION_FRACTION, RESERVE_FRACTION } from "@/lib/volara/governor";
 import { formatCents } from "@/lib/economic/money";
 import { CAPITAL_MINIMUM_BASIS, describeBasis, type EstimateBasis } from "@/lib/economic/estimate";
+import { describeCapitalBlock, type CapitalBlockReason } from "@/lib/economic/figures";
 import type { Expectation, RankableExpectation, UnrankableExpectation } from "@/lib/economic/expectedValue";
 import { rankByExpectedValue } from "@/lib/economic/expectedValue";
+import type { EconomicFigure } from "@/generated/prisma/enums";
 
 /**
  * How many experiments may be active at once.
@@ -97,6 +99,15 @@ export interface PortfolioDeferral {
   detail: string;
   /** Present when the opportunity was rankable and still not selected. */
   expectedNetPerDayCents: number | null;
+  /**
+   * [P6-B] THE FIGURES THAT BLOCKED IT, NAMED.
+   *
+   * Populated for `BASIS_TOO_WEAK` and empty otherwise. The P6-A deferral said
+   * "its weakest monetary input is a model's proposal" — true, unactionable, and
+   * therefore the kind of refusal a person overrides rather than fixes. Naming
+   * the figure turns it into a task: corroborate the worst-case loss.
+   */
+  blockingFigures: { figure: EconomicFigure; basis: EstimateBasis; reason: CapitalBlockReason }[];
 }
 
 export interface PortfolioPlan {
@@ -157,12 +168,17 @@ export function selectPortfolio(input: PortfolioInput): PortfolioPlan {
   let slots = concurrencySlots;
 
   for (const expectation of ranked) {
-    const defer = (reason: DeferralReason, detail: string) =>
+    const defer = (
+      reason: DeferralReason,
+      detail: string,
+      blockingFigures: PortfolioDeferral["blockingFigures"] = []
+    ) =>
       deferred.push({
         opportunityId: expectation.opportunityId,
         reason,
         detail,
         expectedNetPerDayCents: expectation.expectedNetPerDayCents,
+        blockingFigures,
       });
 
     // ---- THE HALT, FIRST -------------------------------------------------
@@ -187,10 +203,24 @@ export function selectPortfolio(input: PortfolioInput): PortfolioPlan {
     }
 
     // ---- A MODEL'S NUMBERS CANNOT RESERVE MONEY -------------------------
+    //
+    // [P6-B] Keyed on EACH ev-material figure's own basis, not on a roll-up.
+    // The gate itself lives in `figures.ts#capitalBasisGate()` and ran when the
+    // expectation was computed; this is where its verdict binds. Two properties
+    // of the old behaviour are deliberately preserved:
+    //
+    //   AN UNKNOWN CAPITAL REQUIREMENT IS NOT A ZERO ONE. An opportunity whose
+    //     bill nobody has worked out is blocked here rather than funded at an
+    //     assumed zero, and the blocking figure says which.
+    //   A SINGLE WEAK FIGURE IS ENOUGH TO BLOCK. The gate requires every
+    //     material figure to clear the bar, so a measured probability cannot
+    //     carry an invented profit past it.
+    const blocked = expectation.provenance.capital.blocking;
     if (!expectation.capitalEligible) {
       defer(
         "BASIS_TOO_WEAK",
-        `Its weakest monetary input is ${describeBasis(expectation.basis)}, which is below the minimum for committing capital (${describeBasis(CAPITAL_MINIMUM_BASIS)}). Corroborate it before funding it.`
+        `Not fundable yet: ${blocked.map(describeCapitalBlock).join("; ")}. The minimum for committing capital is ${describeBasis(CAPITAL_MINIMUM_BASIS)}, and every figure the expectation rests on has to clear it on its own evidence.`,
+        blocked
       );
       continue;
     }
@@ -203,11 +233,24 @@ export function selectPortfolio(input: PortfolioInput): PortfolioPlan {
       continue;
     }
 
+    // [P6-B] `want = required ?? 0` USED TO LIVE HERE, and it is exactly the bug
+    // this phase exists to remove: an unknown bill read as a free opportunity.
+    // The capital gate above already refuses an unestablished capital
+    // requirement, so this branch is unreachable — it is asserted rather than
+    // assumed, because the whole point of the refusal is that nothing downstream
+    // substitutes a number for an absence.
     const required = expectation.terms.requiredCapitalCents;
-    // An opportunity with no capital requirement established is still
-    // selectable — plenty of genuine opportunities need time rather than money —
-    // but it is proposed ZERO capital rather than an assumed amount.
-    const want = required ?? 0;
+    if (required === null) {
+      defer(
+        "BASIS_TOO_WEAK",
+        "Nobody has established what this costs. An unknown bill is not a zero one, so no capital can be proposed for it.",
+        [{ figure: "REQUIRED_CAPITAL_CENTS", basis: "NONE", reason: "ABSENT" }]
+      );
+      continue;
+    }
+    // A genuine zero is a real answer and stays selectable: plenty of
+    // opportunities need time rather than money.
+    const want = required;
 
     if (want > concentrationCapCents) {
       defer(
@@ -235,8 +278,11 @@ export function selectPortfolio(input: PortfolioInput): PortfolioPlan {
       expectation,
       proposedCapitalCents: want,
       rationale:
-        `Ranked on expected net per day (${formatCents(expectation.expectedNetPerDayCents)}/day), ` +
-        `basis ${describeBasis(expectation.basis)}. ` +
+        `Ranked on expected net per day (${formatCents(expectation.expectedNetPerDayCents)}/day). ` +
+        `Every figure it rests on clears the capital minimum on its own evidence; the weakest is ${describeBasis(expectation.basis)}. ` +
+        (expectation.provenance.compatibilityFigures.length > 0
+          ? `${expectation.provenance.compatibilityFigures.length} figure${expectation.provenance.compatibilityFigures.length === 1 ? "" : "s"} still read from the opportunity's own columns rather than a recorded estimate. `
+          : "") +
         (want === 0
           ? "Needs no capital, so none is proposed."
           : `Proposes ${formatCents(want)}, within the ${formatCents(concentrationCapCents)} per-opportunity cap.`),

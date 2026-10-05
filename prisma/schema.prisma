@@ -105,6 +105,7 @@ model User {
   experimentMeasurements ExperimentMeasurement[]
   commercialActions      CommercialAction[]
   profitPredictions      ProfitPrediction[]
+  opportunityEstimates   OpportunityEstimate[]
   researchItems          ResearchItem[]
   knowledgeNodes         KnowledgeNode[]
   knowledgeEdges         KnowledgeConnection[]
@@ -732,6 +733,7 @@ model Experiment {
   measurement ExperimentMeasurement?
   commercialAction CommercialAction?
   profitPrediction ProfitPrediction?
+  supportedEstimates OpportunityEstimate[]
 
   @@index([userId, executionStatus])
 }
@@ -854,6 +856,8 @@ model ExperimentMeasurement {
   digest     String
   observedAt DateTime @default(now())
 
+  supportedEstimates OpportunityEstimate[]
+
   @@index([userId, rule])
 }
 
@@ -907,6 +911,129 @@ enum CommercialActionStatus {
 ///
 /// None of them is sufficient alone, and the third is what stops a parameter
 /// being edited in the window between an approval and its use.
+/// [P6-B] Which economic figure an estimate is about.
+///
+/// A CLOSED SET. Each member is a quantity that materially moves expected
+/// value, portfolio sizing or action selection — so "which figures need their
+/// own provenance" is answered by a reviewable enum rather than by whoever
+/// writes the next estimate.
+enum EconomicFigure {
+  /// Capital that must be deployed. Integer cents.
+  REQUIRED_CAPITAL_CENTS
+  /// Gross revenue over the payout horizon. Integer cents.
+  EXPECTED_REVENUE_CENTS
+  /// Net profit on success. Integer cents.
+  EXPECTED_PROFIT_CENTS
+  /// Worst realistic loss. Integer cents.
+  MAX_LOSS_CENTS
+  /// 0-1 chance of success.
+  PROBABILITY_OF_SUCCESS
+  /// 0-1 share of revenue retained.
+  MARGIN_FRACTION
+  /// Days until the result is knowable. The per-day normaliser.
+  TIME_TO_PAYOUT_DAYS
+}
+
+/// [P6-B] How well-founded one figure is.
+///
+/// NOTE WHAT IS ABSENT: there is no `NONE`. A figure nobody has established has
+/// NO ROW — the absence of provenance is the absence of a record, not a record
+/// saying "unknown". That is the schema-level expression of the same rule
+/// `Estimate<T>`'s unknown arm enforces in the type system, and it means a
+/// query for "what do we actually know" cannot return a row that knows nothing.
+///
+/// Ordered weakest to strongest. `MODEL_SUGGESTED` and `STATED` are both
+/// "somebody said so", and keeping them apart is the whole point: one is a
+/// person putting their own knowledge behind a figure, the other is a language
+/// model producing a plausible one.
+enum EvidenceBasis {
+  /// A model proposed it and nothing corroborates it. NOT economically authoritative.
+  MODEL_SUGGESTED
+  /// A person stated it from their own knowledge.
+  STATED
+  /// Derived from the measured outcome of a comparable opportunity VOX ran.
+  COMPARABLE
+  /// VOX observed it in an external system of record, through the P5-E/F path.
+  MEASURED
+}
+
+/// [P6-B] ONE economic figure, with its own provenance.
+///
+/// Replaces the P6-A heuristic in which a single `Opportunity.source` column
+/// decided the basis of EVERY figure on the row at once. That was wrong in both
+/// directions: a human correcting a model's guess could not upgrade it, and one
+/// well-founded figure made its neighbours look well-founded too.
+///
+/// Each row answers the six questions a figure has to answer before it may
+/// influence money:
+///
+///   1. what is the value?            valueCents / valueRatio / valueDays
+///   2. what is its basis?            basis
+///   3. where did that basis come from? provenance
+///   4. when was it established?      establishedAt
+///   5. what evidence supports it?    the four evidence references below
+///   6. may it influence capital?     DERIVED from basis, never stored
+///
+/// (6) is deliberately not a column. A stored "may spend" flag is a flag
+/// someone can set; deriving it from the basis on every read means the only way
+/// to make a figure fundable is to improve its evidence.
+model OpportunityEstimate {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  opportunity   Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  opportunityId String
+  figure        EconomicFigure
+
+  /// EXACTLY ONE of these three is set, chosen by the figure's own kind — see
+  /// `FIGURE_KIND` in src/lib/economic/figures.ts. Money is integer cents
+  /// because a float monetary comparison at a boundary is a coin flip; a ratio
+  /// is a float because 0-1 fractions have no exact integer representation; a
+  /// duration is whole days.
+  valueCents Int?
+  valueRatio Float?
+  valueDays  Int?
+
+  basis EvidenceBasis
+  /// Where the basis came from, in words. Required — a number with no source is a rumour.
+  provenance String
+  /// When this basis was established. NOT `createdAt`: a figure can be recorded
+  /// today on the strength of a measurement taken last month.
+  establishedAt DateTime
+
+  // --- WHAT EVIDENCE SUPPORTS IT. Real references only. ------------------
+  //
+  // Every one is a foreign key, so an evidence id that does not exist cannot be
+  // stored. That is what stops a confident-sounding provenance string from
+  // standing in for evidence: a COMPARABLE or MEASURED basis has to NAME the
+  // thing it came from, and the database checks it is there.
+  /// The experiment whose reconciled outcome supports this figure.
+  experiment     Experiment?            @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  experimentId   String?
+  /// The measurement that supports it, for a MEASURED basis.
+  measurement    ExperimentMeasurement? @relation(fields: [measurementId], references: [id], onDelete: SetNull)
+  measurementId  String?
+  /// The research result that supports it.
+  researchItem   ResearchItem?          @relation(fields: [researchItemId], references: [id], onDelete: SetNull)
+  researchItemId String?
+  /// The comparable opportunity a COMPARABLE basis was derived from.
+  comparable     Opportunity?           @relation("EstimateComparable", fields: [comparableId], references: [id], onDelete: SetNull)
+  comparableId   String?
+
+  /// The basis this figure held before the last upgrade, for the audit trail.
+  /// Null means it has never been upgraded.
+  previousBasis EvidenceBasis?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// ONE estimate per figure per opportunity. The current state of knowledge
+  /// about one quantity is a single fact; upgrade history lives in the Event log.
+  @@unique([opportunityId, figure])
+  @@index([userId, basis])
+}
+
 /// [P6-A] What VOX predicted, frozen at the moment it decided.
 ///
 /// NOTHING IN VOX RECORDED A PREDICTION BEFORE THIS. `Opportunity.probabilityOfSuccess`
@@ -1073,6 +1200,7 @@ model ResearchItem {
   memorySources    MemorySource[]
   knowledgeNode    KnowledgeNode?
   labResearchLinks LabResearchLink[]
+  supportedEstimates OpportunityEstimate[]
 }
 
 // ---------------------------------------------------------------------------
@@ -2191,6 +2319,8 @@ model Opportunity {
   /// on Experiment. Extends the existing chain rather than forking it.
   experiments        Experiment[]
   profitPredictions  ProfitPrediction[]
+  estimates          OpportunityEstimate[]
+  comparableFor      OpportunityEstimate[] @relation("EstimateComparable")
 }
 
 // ---------------------------------------------------------------------------

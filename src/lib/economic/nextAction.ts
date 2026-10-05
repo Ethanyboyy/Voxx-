@@ -55,11 +55,11 @@ import { db } from "@/lib/db";
 import { formatCents } from "@/lib/economic/money";
 import { getPolicySpendPosition } from "@/lib/economic/accounting";
 import { listOpportunityModels } from "@/lib/economic/opportunityModel";
-import { expectedValueOf, opportunityCostPerDayCents, type RankableExpectation } from "@/lib/economic/expectedValue";
+import { expectedValueOf, opportunityCostPerDayCents } from "@/lib/economic/expectedValue";
 import { selectPortfolio, type PortfolioPlan } from "@/lib/economic/portfolio";
 import { getCalibration, listReconcilablePredictions, type CalibrationReport } from "@/lib/economic/calibration";
 import { deriveEvidenceStage } from "@/lib/economic/evidence";
-import { describeBasis } from "@/lib/economic/estimate";
+import { FIGURE_SPECS, describeCapitalBlock } from "@/lib/economic/figures";
 
 /**
  * What VOX should do next. A closed set — a recommendation VOX cannot express
@@ -316,21 +316,26 @@ export async function nextBestEconomicAction(userId: string): Promise<EconomicPo
   // needs the numbers found from scratch.
   const weakBasis = plan.deferred.find((d) => d.reason === "BASIS_TOO_WEAK");
   if (weakBasis) {
-    const expectation = plan.selected
-      .map((s) => s.expectation)
-      .concat(
-        expectations.filter(
-          (e): e is RankableExpectation => e.rankable && e.opportunityId === weakBasis.opportunityId
-        )
-      )
-      .find((e) => e.opportunityId === weakBasis.opportunityId);
+    // [P6-B] NAME THE FIGURE. "Its weakest monetary input is a model's
+    // proposal" was true and unactionable; "the worst-case loss rests on a
+    // model's proposal" is a task. The figures come from the deferral the
+    // portfolio already produced, so the recommendation and the plan cannot
+    // disagree about which figure is the problem.
+    const blocking = weakBasis.blockingFigures;
+    const named =
+      blocking.length === 0
+        ? "a figure below the capital minimum"
+        : blocking.map(describeCapitalBlock).join("; ");
     return {
       ...base,
       recommendation: {
         kind: "CORROBORATE_OPPORTUNITY",
-        action: `Corroborate the figures on opportunity ${weakBasis.opportunityId}.`,
-        reason: `It ranks well but its weakest monetary input is ${expectation ? describeBasis(expectation.basis) : "below the capital minimum"}. A model's unsupported number is worth researching and is not worth funding — one measured comparable or one figure you can stand behind makes it eligible.`,
-        path: "research.run through the executor, or record the figure yourself on the opportunity",
+        action:
+          blocking.length === 0
+            ? `Corroborate the figures on opportunity ${weakBasis.opportunityId}.`
+            : `Establish better evidence for the ${blocking.map((b) => FIGURE_SPECS[b.figure].label).join(" and ")} on opportunity ${weakBasis.opportunityId}.`,
+        reason: `It ranks well, and it is not fundable because ${named}. A model's unsupported number is worth researching and is not worth funding — a measurement, or a comparable VOX has actually run, or a figure you will stand behind yourself, makes that one figure eligible. The rest of the figures are unaffected: provenance is per figure, so corroborating this one does not lift anything else.`,
+        path: "research.run through the executor, then recordEstimate()/upgradeEstimate() for the specific figure",
         opportunityId: weakBasis.opportunityId,
         experimentId: null,
         predictionId: null,
