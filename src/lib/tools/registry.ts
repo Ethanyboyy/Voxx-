@@ -13,6 +13,7 @@ import { formatMinor } from "@/lib/integrations/decimal";
 import { executeCommercialAction, observeCommercialAction } from "@/lib/commerce/execute";
 import { evaluateSpendPolicy } from "@/lib/economic/policy";
 import { recordEvent } from "@/lib/observability/events";
+import { DISCOVERY_CAPABILITY, DISCOVERY_LEVEL } from "@/lib/discovery/service";
 import {
   listDirectory,
   patchWorkspaceFile,
@@ -1042,6 +1043,72 @@ register({
         strategyId: result.allocation.strategyId,
       },
       summary: `Reserved ${(result.approvedCents / 100).toFixed(2)} USD for allocation ${result.allocation.id}.`,
+    };
+  },
+});
+
+/**
+ * [P6-C] DISCOVERY, through the executor.
+ *
+ * Registered so an agent run reaches discovery the same way it reaches
+ * research: via the policy gate and a capability the account has to have been
+ * granted. `discovery.scan` is classified as a WRITE with untrusted output, so
+ * the gate HOLDs it and a human's approval is required before it runs.
+ *
+ * It returns the run's outcome, INCLUDING the refusals. A planner that sees
+ * "0 accepted, PROVIDER_NOT_STRUCTURED" can say so; one that saw an empty list
+ * would report that VOX looked and found nothing.
+ */
+register({
+  name: "discovery.scan",
+  description:
+    "Propose candidate income opportunities for an objective. Every figure is recorded as a model hypothesis and none can reserve capital.",
+  category: "research",
+  capability: DISCOVERY_CAPABILITY,
+  requiredLevel: DISCOVERY_LEVEL,
+  inputSchema: z.object({
+    objectiveId: z.string().min(1).max(80),
+    brief: z.string().min(10).max(2000),
+    focus: z.string().min(1).max(200).optional(),
+  }),
+  execute: async (userId, input) => {
+    const { runDiscovery } = await import("@/lib/discovery/service");
+    const result = await runDiscovery({
+      userId,
+      objectiveId: input.objectiveId,
+      brief: input.brief,
+      focus: input.focus,
+    });
+
+    const accepted = result.outcomes.filter((o) => o.status === "ACCEPTED");
+    if (result.refused) {
+      return {
+        output: {
+          runId: result.run.id,
+          accepted: 0,
+          refusalReason: result.run.refusalReason,
+          refusalDetail: result.run.refusalDetail,
+        },
+        // Named rather than reported as an empty result: "found nothing" and
+        // "could not look" are different facts.
+        summary: `Discovery produced no candidates — ${result.run.refusalReason}. ${result.run.refusalDetail ?? ""}`.trim(),
+      };
+    }
+
+    return {
+      output: {
+        runId: result.run.id,
+        accepted: accepted.length,
+        rejected: result.outcomes.length - accepted.length,
+        opportunityIds: accepted.map((o) => o.opportunityId),
+        rejections: result.outcomes
+          .filter((o) => o.status === "REJECTED")
+          .map((o) => ({ reason: o.reason, detail: o.detail })),
+        basis: "MODEL_SUGGESTED",
+      },
+      summary:
+        `Discovery proposed ${result.outcomes.length} candidate${result.outcomes.length === 1 ? "" : "s"}, accepted ${accepted.length}. ` +
+        `Every figure is recorded as a model hypothesis (MODEL_SUGGESTED) and none can reserve capital until it is corroborated figure by figure.`,
     };
   },
 });

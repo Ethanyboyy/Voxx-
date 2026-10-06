@@ -779,6 +779,146 @@ PREDICTION STAYS FROZEN WHEN PROVENANCE LATER CHANGES*.
 
 ---
 
+## I20 — Discovery proposes; it cannot promote what it proposed
+
+P6-C is the first thing in VOX that generates economic figures from nothing,
+which makes it the first real test of I19's boundary. The attack is not subtle
+and it is very easy to commit by accident:
+
+```ts
+await db.opportunity.create({ data: {
+  title, description,
+  expectedProfitCents: 50_000,     // "just for compatibility"
+  probabilityOfSuccess: 0.3,
+}});
+```
+
+Those two columns route through `legacyColumnBasis()`. A row with no `source`
+reads as `STATED`, and `STATED` **is** the capital minimum — so a model's
+invention would clear `capitalBasisGate()` without the provenance layer ever
+being touched. Four structural guards exist for that one line.
+
+### 1. A proposal has no field in which to claim a basis
+
+`ProposedFigure` in `discovery/contract.ts` carries `figure`, `value` and the
+model's `reasoning`. There is **no** `basis`, no evidence reference and no
+confidence — not an optional one, no property at all. So the persister has
+nothing to read a basis FROM: it writes `MODEL_SUGGESTED` as a literal, because
+that is the only value in scope. Same move as the P5-E refusal that carries no
+value and the I19 unknown arm that carries no value — **the way to stop a
+dangerous assignment is to delete the field it would be assigned to.**
+
+That handles our code and does nothing about the model, which will return
+`"basis": "MEASURED"` if it decides that is what a good answer looks like. So
+`CLAIM_KEYS` is checked **before** parsing and a proposal carrying any of them is
+REJECTED with that reason recorded. A permissive parse would drop the key
+silently, which is nearly as bad as honouring it: the pass would look like it
+worked while the model's actual claim went unrecorded.
+
+### 2. The forbidden columns are derived from the registry
+
+`LEGACY_ECONOMIC_COLUMNS` is built from `FIGURE_SPECS` — every `legacyColumn`
+plus every `legacyFallbackColumn` — so a figure added to the registry cannot be
+forgotten. `assertNoLegacyEconomicColumns()` runs on the real `Opportunity`
+create input before it reaches the database.
+
+`legacyFallbackColumn` exists because of this invariant.
+`TIME_TO_PAYOUT_DAYS` resolves from `timeToPayoutDays ?? estimatedTimeToRevenueDays`,
+and a forbidden list built from `legacyColumn` alone would have left the second
+column open — a hole exactly one write wide.
+
+### 3. The discovery source is asserted against the single definition
+
+`isHumanSource()` is exported from `opportunityModel.ts` and `DISCOVERY_SOURCE`
+is checked against it **at module load**, so a rename that made discovery look
+human fails the application's start rather than quietly promoting every
+legacy-read figure on every discovered row. A copied list is a list that drifts,
+and this drift would be silent.
+
+### 4. A citation is a claim even when the basis does not need one
+
+`recordEstimate()` now verifies **every** supplied evidence reference, not only
+the one the basis requires. Two reasons, the second being the point: a bogus id
+used to reach the foreign key and come back as an unhandled constraint error
+rather than a refusal; and a pass attaching `researchItemId: "r-whatever"` to a
+model-suggested figure **is asserting that a research result supports it**. That
+assertion is displayed and a later corroboration step would read it, so an
+invented id is refused even at a basis that requires nothing.
+
+A real `ResearchItem` still cannot satisfy a `MEASURED` claim. **Source
+observation is not economic evidence about a figure** — a blog post saying 40%
+margins are typical is a thing somebody wrote, not a thing VOX measured.
+
+### What a discovered opportunity can and cannot do
+
+| it can | it cannot |
+|---|---|
+| exist, with a thesis and a rationale | carry a figure above `MODEL_SUGGESTED` |
+| have every figure recorded and audited | write an `Opportunity` economic column |
+| be ranked by expected net per day | pass `capitalBasisGate()` |
+| name its own uncertainty | reserve capital or enter a commercial action |
+| route to `CORROBORATE_OPPORTUNITY` with the blocking figures named | upgrade itself |
+
+The ranking matters and is not a consolation: a model-suggested candidate with a
+large expectation is worth looking at first, and that is the entire economic
+value discovery adds. What it does not add is authority.
+
+### Repetition and consensus are not corroboration
+
+`proposalDigest()` is taken over the **title and figure values only, not the
+prose**. Two passes that reword the same thesis around the same numbers are the
+same proposal, and the second is rejected as `DUPLICATE_OF_EXISTING`. Without
+that, five passes proposing the same idea would produce five opportunities with
+five sets of `MODEL_SUGGESTED` estimates, which reads as five independent
+candidates agreeing — and **model consensus is not evidence**. There is no
+column for model confidence anywhere in the discovery schema, so there is
+nothing for a future gate to be tempted by.
+
+### Discovery grants nothing
+
+`discovery/` imports no `grantPermission`, no `createApprovalGrant`, no
+`requestCapital`, no `recordSpend`, no `approveCapitalAllocation` — and not
+`capitalBasisGate` either, because a layer that could call the gate is a layer
+that could be rewritten to interpret it. The gate is reached only through
+`listOpportunityModels()`, read-only.
+
+`economic.discover` at `RECOMMEND` is above `DEFAULT_GRANTED_LEVEL`, so
+discovery is **off** until somebody grants it. `discovery.scan` is classified
+`WRITE` / `PARTIALLY_REVERSIBLE` / `untrustedOutput: true`, which the gate
+evaluates to **HOLD** — an agent run reaching discovery needs a human's approval
+first, exactly like `research.run`.
+
+There is no `corroborate()` function in the discovery layer. Upgrading a figure
+goes through `upgradeEstimate()`, which refuses anything that is not a rank
+increase. A convenience wrapper would be a second door onto the same lock, and
+the second door is where the bolt gets left off.
+
+### And it refuses rather than inventing
+
+A provider that cannot return structured proposals produces
+`PROVIDER_NOT_STRUCTURED` and zero candidates. **That is the state of this
+repository**: the mock provider runs here and in any deployment without a key,
+so `runDiscovery()` currently records a refusal every time. The run row says
+which refusal, and the surface renders the reason — because "found nothing" and
+"could not look" are identical as an empty list and completely different facts.
+
+**Tests:** `tests/p6-c-discovery.test.ts` — *A PROPOSED FIGURE HAS NO BASIS FIELD
+TO SET*, *REJECTS EVERY CLAIM KEY, AT EITHER LEVEL, BY ENUMERATION*, *THE
+FORBIDDEN COLUMN LIST COVERS EVERY COLUMN THE COMPATIBILITY PATH READS*, *THROWS
+ON ANY ATTEMPT TO WRITE AN ECONOMIC COLUMN*, *THE DISCOVERY SOURCE IS NOT A
+HUMAN SOURCE*, *NOTHING ON THE ECONOMIC PATH READS THE RAW MODEL PROPOSAL*,
+*RECORDS EVERY FIGURE AT MODEL_SUGGESTED, ONE AT A TIME*, *WRITES NO ECONOMIC
+COLUMN ON THE OPPORTUNITY*, *REFUSES RATHER THAN INVENTING WHEN THE PROVIDER
+CANNOT ANSWER*, *A FAVOURABLE EXPECTED VALUE IS NOT PROOF OF ANYTHING*,
+*CORROBORATE_OPPORTUNITY NAMES THE FIGURES, not the confidence*, *REPEATED
+DISCOVERY DOES NOT ACCUMULATE OR UPGRADE*, *MODEL AGREEMENT IS NOT EVIDENCE*,
+*CANNOT CITE A RESEARCH RESULT THAT DOES NOT EXIST, AT ANY BASIS*, *A RESEARCH
+RESULT IS NOT A MEASUREMENT*, *A PERSON CAN CORROBORATE ONE FIGURE, AND ONLY
+THAT ONE MOVES*, *CORROBORATING EVERY MATERIAL FIGURE IS WHAT MAKES IT
+FUNDABLE*, *NEVER DESCRIBES AN UNCHECKED FIGURE AS CHECKED*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -804,15 +944,20 @@ honest:
   this repository, so `getCalibration()` reports NO BASIS and every expected-value
   figure is unadjusted. The machinery for learning exists and has learned
   nothing yet.
-- **VOX discovers no opportunities on its own.** Opportunities are still created
-  by a person or an earlier pipeline. **Discovery is deliberately excluded from
-  P6-A and P6-B both.** Building it before the ranker could refuse ungrounded
-  numbers would have flooded it with model-invented figures, which the pre-P6
-  scorer would have ranked happily; building it before provenance was per figure
-  would have meant every number a discovery run produced shared one basis with
-  every number beside it. P6-B is the precondition, not the feature: a generated
-  opportunity now arrives with each figure independently marked
-  `MODEL_SUGGESTED`, and no figure marked that way can reserve capital.
+- **VOX can propose opportunities, and has never actually proposed one.** P6-C
+  built the discovery layer and it is architecturally complete: a pass creates
+  `Opportunity` rows with every figure recorded at `MODEL_SUGGESTED` through the
+  provenance layer, writes no economic column, and cannot reserve capital. It
+  has produced **zero candidates in this repository**, because the mock provider
+  cannot return structured proposals and `runDiscovery()` refuses with
+  `PROVIDER_NOT_STRUCTURED` rather than inventing any. Every accepted-candidate
+  test drives hand-written proposals through the same `recordCandidates()` the
+  model path uses, so the persistence and safety behaviour is exercised and the
+  **generation** is not.
+- **Discovery does not run on its own schedule.** There is no cron, no agent
+  loop and no trigger that starts a pass. A person starts one, or a supervised
+  agent run does — and that run's `discovery.scan` step is a HOLD, so it waits
+  for a human's approval. Nothing in VOX decides on its own to go looking.
 - **Causation is still unproven, and P5-G does not change that.** A discount code
   is an intervention that can be identified, which is a precondition for
   attribution rather than attribution itself. Orders carrying the code are

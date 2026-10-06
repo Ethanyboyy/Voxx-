@@ -68,6 +68,17 @@ export interface FigureSpec {
    * column world and the new estimate world is written down once.
    */
   legacyColumn: string;
+  /**
+   * A SECOND `Opportunity` column the compatibility path falls back to.
+   *
+   * Only `TIME_TO_PAYOUT_DAYS` has one (`estimatedTimeToRevenueDays`, which
+   * predates the economic columns). Declared here rather than left implicit in
+   * `opportunityModel.ts` so `LEGACY_ECONOMIC_COLUMNS` below is the COMPLETE
+   * set of columns a write could use to reach the compatibility path — a
+   * fallback column missing from that set is a hole an automated writer could
+   * walk through.
+   */
+  legacyFallbackColumn?: string;
 }
 
 export const FIGURE_SPECS: Readonly<Record<EconomicFigure, FigureSpec>> = Object.freeze({
@@ -123,6 +134,7 @@ export const FIGURE_SPECS: Readonly<Record<EconomicFigure, FigureSpec>> = Object
     materialToExpectedValue: true,
     absenceIsConservative: true,
     legacyColumn: "timeToPayoutDays",
+    legacyFallbackColumn: "estimatedTimeToRevenueDays",
   }),
 });
 
@@ -133,6 +145,27 @@ export const ECONOMIC_FIGURES: readonly EconomicFigure[] = Object.freeze(
 /** The figures that must be well-founded before capital may be committed. */
 export const EV_MATERIAL_FIGURES: readonly EconomicFigure[] = Object.freeze(
   ECONOMIC_FIGURES.filter((f) => FIGURE_SPECS[f].materialToExpectedValue)
+);
+
+/**
+ * [P6-C] EVERY `Opportunity` COLUMN THE COMPATIBILITY PATH READS.
+ *
+ * The list an automated writer must not touch. Writing an economic figure into
+ * one of these columns routes it through `legacyColumnBasis()`, which reads a
+ * row with no `source` — or a human-looking one — as `STATED`, and `STATED` is
+ * capital-eligible. So a discovery pass that filled in `expectedProfitCents`
+ * "just for compatibility" would have promoted its own invention to a basis
+ * that can reserve money, without touching the provenance layer at all.
+ *
+ * DERIVED from the registry rather than typed out, so a figure added above
+ * cannot be forgotten here.
+ */
+export const LEGACY_ECONOMIC_COLUMNS: readonly string[] = Object.freeze(
+  ECONOMIC_FIGURES.flatMap((figure) =>
+    [FIGURE_SPECS[figure].legacyColumn, FIGURE_SPECS[figure].legacyFallbackColumn].filter(
+      (column): column is string => column !== undefined
+    )
+  )
 );
 
 export function figureSpec(figure: EconomicFigure): FigureSpec {

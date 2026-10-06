@@ -121,13 +121,71 @@ async function verifyEvidence(
   basis: EvidenceBasis,
   evidence: EvidenceRefs | undefined
 ): Promise<{ ok: true } | { ok: false; reason: BasisTransitionRefusal; detail: string }> {
+  // ---- STEP 1: EVERY SUPPLIED REFERENCE MUST EXIST ----------------------
+  //
+  // [P6-C] Checked for every reference the caller passes, not only for the one
+  // the basis requires. Two reasons, and the second is the one that matters:
+  //
+  //   The foreign keys would throw rather than refuse. A bogus id on a
+  //     MODEL_SUGGESTED figure used to reach the database and come back as an
+  //     unhandled constraint error, which reads to a caller as a bug rather
+  //     than as a rejected claim.
+  //   A CITATION IS A CLAIM EVEN WHEN THE BASIS DOES NOT NEED ONE. A discovery
+  //     pass that attaches `researchItemId: "r-whatever"` to a model-suggested
+  //     figure is asserting that a research result supports it. That assertion
+  //     is displayed, and a later corroboration step would read it, so an
+  //     invented id has to be refused here even though MODEL_SUGGESTED requires
+  //     no evidence at all.
+  const supplied: [keyof EvidenceRefs, string, () => Promise<{ id: string } | null>][] = [];
+  if (evidence?.measurementId) {
+    const id = evidence.measurementId;
+    supplied.push([
+      "measurementId",
+      "measurement",
+      () => db.experimentMeasurement.findFirst({ where: { id, userId }, select: { id: true } }),
+    ]);
+  }
+  if (evidence?.experimentId) {
+    const id = evidence.experimentId;
+    supplied.push([
+      "experimentId",
+      "experiment",
+      () => db.experiment.findFirst({ where: { id, userId }, select: { id: true } }),
+    ]);
+  }
+  if (evidence?.researchItemId) {
+    const id = evidence.researchItemId;
+    supplied.push([
+      "researchItemId",
+      "research result",
+      () => db.researchItem.findFirst({ where: { id, userId }, select: { id: true } }),
+    ]);
+  }
+  if (evidence?.comparableId) {
+    const id = evidence.comparableId;
+    supplied.push([
+      "comparableId",
+      "comparable opportunity",
+      () => db.opportunity.findFirst({ where: { id, userId }, select: { id: true } }),
+    ]);
+  }
+
+  for (const [, label, lookup] of supplied) {
+    if ((await lookup()) === null) {
+      return {
+        ok: false,
+        reason: "EVIDENCE_NOT_FOUND",
+        detail: `That ${label} does not exist for this user.`,
+      };
+    }
+  }
+
+  // ---- STEP 2: THE BASIS'S OWN REQUIREMENT ------------------------------
   const required = requiredEvidenceFor(basis);
   if (required === "NONE") return { ok: true };
 
   if (required === "MEASUREMENT_OR_EXPERIMENT") {
-    const measurementId = evidence?.measurementId ?? null;
-    const experimentId = evidence?.experimentId ?? null;
-    if (!measurementId && !experimentId) {
+    if (!evidence?.measurementId && !evidence?.experimentId) {
       return {
         ok: false,
         reason: "EVIDENCE_REQUIRED",
@@ -135,37 +193,19 @@ async function verifyEvidence(
           "A MEASURED basis has to name the measurement or experiment it came from. Without that, the strongest basis in the system would be the easiest one to assert.",
       };
     }
-    if (measurementId) {
-      const row = await db.experimentMeasurement.findFirst({
-        where: { id: measurementId, userId },
-        select: { id: true },
-      });
-      if (!row) {
-        return { ok: false, reason: "EVIDENCE_NOT_FOUND", detail: "That measurement does not exist for this user." };
-      }
-    }
-    if (experimentId) {
-      const row = await db.experiment.findFirst({ where: { id: experimentId, userId }, select: { id: true } });
-      if (!row) {
-        return { ok: false, reason: "EVIDENCE_NOT_FOUND", detail: "That experiment does not exist for this user." };
-      }
-    }
+    // A research result is NOT a measurement. It can accompany one as context;
+    // it cannot stand in for one, which is why it is not checked here.
     return { ok: true };
   }
 
   // COMPARABLE_OPPORTUNITY
-  const comparableId = evidence?.comparableId ?? null;
-  if (!comparableId) {
+  if (!evidence?.comparableId) {
     return {
       ok: false,
       reason: "EVIDENCE_REQUIRED",
       detail:
         "A COMPARABLE basis has to name the opportunity it was derived from, so the comparison can be checked rather than taken on trust.",
     };
-  }
-  const row = await db.opportunity.findFirst({ where: { id: comparableId, userId }, select: { id: true } });
-  if (!row) {
-    return { ok: false, reason: "EVIDENCE_NOT_FOUND", detail: "That comparable opportunity does not exist for this user." };
   }
   return { ok: true };
 }

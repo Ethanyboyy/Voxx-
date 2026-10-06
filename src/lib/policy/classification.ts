@@ -309,6 +309,35 @@ export const TOOL_CLASSIFICATIONS: Readonly<Record<string, ActionClassification>
     externalSystemOfRecord: false,
   },
 
+  // [P6-C] DISCOVERY. Classified exactly like `research.run`, for the same
+  // reasons and one more.
+  //
+  // WRITE: it creates `Opportunity` rows and `OpportunityEstimate` rows that
+  // the economic layer then reads and ranks.
+  //
+  // PARTIALLY_REVERSIBLE: the rows delete, but a ranking a person has already
+  // read has already been influenced.
+  //
+  // untrustedOutput: TRUE, and this is the entry that matters. Everything a
+  // discovery pass produces is model text — titles, theses and NUMBERS. Those
+  // numbers reach the expected-value engine, so the gate must treat this output
+  // as untrusted even though it never leaves VOX. What stops the numbers
+  // acquiring authority is not this flag but `recordEstimate()`'s hardcoded
+  // MODEL_SUGGESTED; the flag is what stops the PROSE being treated as
+  // reliable input to a later planning pass.
+  //
+  // externalSystemOfRecord: FALSE. An AI provider is not a system of record
+  // about the user's business, and marking it so would put this action in
+  // `policy-gate.test.ts`'s external allowlist, which is reserved for actions
+  // that read or write someone else's records.
+  "discovery.scan": {
+    effect: "WRITE",
+    reversibility: "PARTIALLY_REVERSIBLE",
+    financial: false,
+    untrustedOutput: true,
+    externalSystemOfRecord: false,
+  },
+
   // --- Money. ---
   //
   // WHAT THIS OPERATION ACTUALLY IS. Traced end to end after the audit:

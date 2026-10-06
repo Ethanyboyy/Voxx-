@@ -247,7 +247,24 @@ export const REQUIRED_FOR_EXPECTATION: readonly (keyof OpportunityDimensions)[] 
  *
  * Used ONLY by `legacyColumnBasis()` below.
  */
-const HUMAN_SOURCES: readonly string[] = Object.freeze(["user", "human", "owner", "manual"]);
+export const HUMAN_SOURCES: readonly string[] = Object.freeze(["user", "human", "owner", "manual"]);
+
+/**
+ * Whether a discovery source means "a person put their own knowledge behind
+ * this".
+ *
+ * [P6-C] Exported so automated discovery can ASSERT that its own source is not
+ * one of these, against the single definition rather than a copy. A copied list
+ * is a list that drifts, and the drift here would be silent: an automated pass
+ * whose source happened to match would have every legacy-read figure on its
+ * rows promoted to STATED, which is capital-eligible.
+ */
+export function isHumanSource(source: string | null): boolean {
+  if (source === null) return true;
+  const trimmed = source.trim().toLowerCase();
+  // An empty source reads as human below, so it reads as human here too.
+  return trimmed.length === 0 || HUMAN_SOURCES.includes(trimmed);
+}
 
 /**
  * [P6-B] THE COMPATIBILITY PATH. NOT A SOURCE OF PROVENANCE.
@@ -284,13 +301,10 @@ const HUMAN_SOURCES: readonly string[] = Object.freeze(["user", "human", "owner"
  * error — it asks for corroboration rather than releasing capital.
  */
 export function legacyColumnBasis(source: string | null): "STATED" | "MODEL_SUGGESTED" {
-  if (source === null || source.trim().length === 0) {
-    // No source recorded at all. Treated as human, because the pre-P4-F rows
-    // and everything a person creates through the UI legitimately have none,
-    // and assuming a model wrote them would block capital on every older row.
-    return "STATED";
-  }
-  return HUMAN_SOURCES.includes(source.trim().toLowerCase()) ? "STATED" : "MODEL_SUGGESTED";
+  // No source recorded at all reads as human, because the pre-P4-F rows and
+  // everything a person creates through the UI legitimately have none, and
+  // assuming a model wrote them would block capital on every older row.
+  return isHumanSource(source) ? "STATED" : "MODEL_SUGGESTED";
 }
 
 // ---------------------------------------------------------------------------

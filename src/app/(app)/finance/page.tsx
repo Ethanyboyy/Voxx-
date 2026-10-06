@@ -11,6 +11,9 @@ import { listExperimentEvidence, verifyEvidenceIntegrity } from "@/lib/economic/
 import { getMeasuredProbability } from "@/lib/economic/probability";
 import { CommercialActionPanel } from "@/components/economic/CommercialActionPanel";
 import { PosturePanel } from "@/components/economic/PosturePanel";
+import { DiscoveryPanel } from "@/components/economic/DiscoveryPanel";
+import { listDiscoveryRuns } from "@/lib/discovery/service";
+import { corroborationPlan } from "@/lib/discovery/corroboration";
 import { nextBestEconomicAction } from "@/lib/economic/nextAction";
 import { listCommercialActions } from "@/lib/commerce/execute";
 import { toPanelData } from "@/lib/economic/panelData";
@@ -20,7 +23,7 @@ export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions, posture] =
+  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions, posture, discoveryRuns, corroboration] =
     await Promise.all([
       listEconomicAssets(user.id),
       getEconomicOverview(user.id),
@@ -33,6 +36,8 @@ export default async function FinancePage() {
       verifyEvidenceIntegrity(user.id),
       listCommercialActions(user.id),
       nextBestEconomicAction(user.id),
+      listDiscoveryRuns(user.id),
+      corroborationPlan(user.id),
     ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -46,6 +51,26 @@ export default async function FinancePage() {
       />
 
       <PosturePanel posture={posture} />
+
+      <div className="mt-6">
+        <DiscoveryPanel
+          runs={discoveryRuns.map((run) => ({
+            ...run,
+            startedAt: run.startedAt.toISOString(),
+            candidates: run.candidates.map((candidate) => ({
+              id: candidate.id,
+              title: candidate.title,
+              thesis: candidate.thesis,
+              category: candidate.category,
+              uncertainty: candidate.uncertainty,
+              status: candidate.status,
+              rejectionReason: candidate.rejectionReason,
+              opportunityId: candidate.opportunityId,
+            })),
+          }))}
+          corroboration={corroboration}
+        />
+      </div>
 
       <div className="mt-6">
         <ProfitLossPanel initial={toPanelData(pnl)} />

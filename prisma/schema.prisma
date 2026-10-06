@@ -106,6 +106,8 @@ model User {
   commercialActions      CommercialAction[]
   profitPredictions      ProfitPrediction[]
   opportunityEstimates   OpportunityEstimate[]
+  discoveryRuns          DiscoveryRun[]
+  discoveryCandidates    DiscoveryCandidate[]
   researchItems          ResearchItem[]
   knowledgeNodes         KnowledgeNode[]
   knowledgeEdges         KnowledgeConnection[]
@@ -2146,6 +2148,7 @@ model Objective {
 
   opportunities  Opportunity[]
   supervisorRuns SupervisorRun[]
+  discoveryRuns  DiscoveryRun[]
   knowledgeNode  KnowledgeNode?
   /// Evidence gathered specifically BECAUSE this objective is being pursued.
   /// The durable answer to "what do I know because of this goal?" — the
@@ -2321,6 +2324,7 @@ model Opportunity {
   profitPredictions  ProfitPrediction[]
   estimates          OpportunityEstimate[]
   comparableFor      OpportunityEstimate[] @relation("EstimateComparable")
+  discoveryCandidate DiscoveryCandidate?
 }
 
 // ---------------------------------------------------------------------------
@@ -3959,4 +3963,140 @@ model ApprovalGrant {
 
   @@index([userId, registry, actionId])
   @@index([userId, consumedAt])
+}
+
+// ---------------------------------------------------------------------------
+// [P6-C] DISCOVERY
+// ---------------------------------------------------------------------------
+
+/// How a discovery pass ended.
+enum DiscoveryStatus {
+  RUNNING
+  /// Candidates were proposed and processed. May still have accepted none.
+  COMPLETED
+  /// Nothing was proposed, and the reason is recorded rather than filled in.
+  REFUSED
+  /// The pass errored. Distinct from REFUSED: a refusal is a decision.
+  FAILED
+}
+
+/// Why a discovery pass produced no candidates.
+///
+/// A CLOSED SET, because "discovery found nothing" and "discovery could not
+/// run" are different facts and a surface that conflates them would show an
+/// empty list as a considered judgement about the market.
+enum DiscoveryRefusal {
+  /// The active AI provider cannot return structured proposals — the mock
+  /// provider is the usual case. Refusing is the only honest answer: inventing
+  /// candidates here is precisely what this milestone exists to prevent.
+  PROVIDER_NOT_STRUCTURED
+  /// The model answered, and the answer was not a list of candidates.
+  UNPARSEABLE_OUTPUT
+  /// Candidates were proposed and every one failed validation.
+  ALL_CANDIDATES_INVALID
+  /// No objective to attach an opportunity to. Discovery is always in service
+  /// of a goal the user set; it does not invent its own.
+  NO_OBJECTIVE
+}
+
+/// What happened to one proposed candidate.
+enum CandidateStatus {
+  /// Became an Opportunity, with every figure recorded at MODEL_SUGGESTED.
+  ACCEPTED
+  /// Did not. `rejectionReason` says why, and no Opportunity exists for it.
+  REJECTED
+}
+
+/// [P6-C] ONE DISCOVERY PASS, recorded whether or not it found anything.
+///
+/// The run is the provenance of the SEARCH. It is deliberately NOT provenance
+/// of any figure: which model proposed a number, how confident it sounded, and
+/// how many passes agreed are all recorded here and read by NOTHING on the
+/// economic path. A figure's evidence lives on `OpportunityEstimate`, and the
+/// only thing a discovery pass can put there is MODEL_SUGGESTED.
+model DiscoveryRun {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// The goal discovery was serving. Required in practice — discovery does not
+  /// invent its own objectives — but nullable so an objective can be deleted
+  /// without erasing the audit trail of what was searched for.
+  objective   Objective? @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
+  objectiveId String?
+
+  /// The brief the pass was run against. The question, frozen.
+  brief String
+  /// Free text: what kind of opportunity was being looked for. Open taxonomy.
+  focus String?
+
+  /// Which provider and model produced the candidates. Provenance of the run.
+  provider String
+  model    String
+
+  status        DiscoveryStatus   @default(RUNNING)
+  refusalReason DiscoveryRefusal?
+  refusalDetail String?
+
+  proposedCount Int @default(0)
+  acceptedCount Int @default(0)
+  rejectedCount Int @default(0)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  candidates DiscoveryCandidate[]
+
+  @@index([userId, startedAt])
+}
+
+/// [P6-C] ONE PROPOSED OPPORTUNITY, accepted or rejected.
+model DiscoveryCandidate {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  run   DiscoveryRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId String
+
+  title    String
+  /// Why the model thinks this could make money.
+  thesis   String
+  category String?
+  rationale String?
+  /// What the model says it does NOT know.
+  ///
+  /// Recorded because an honest candidate names its own gaps, and read by
+  /// nothing that decides anything. The inverse — model confidence — is not
+  /// stored at all: there is no column for it, so there is nothing for a future
+  /// gate to be tempted by.
+  uncertainty String?
+
+  status          CandidateStatus
+  rejectionReason String?
+
+  /// sha256 over the canonical proposal. "What the model actually proposed"
+  /// survives any later edit to the opportunity or its estimates, for the same
+  /// reason `ProfitPrediction.digest` exists.
+  proposalDigest String
+  /// The model's proposal verbatim.
+  ///
+  /// INERT AUDIT TEXT. Nothing under src/lib/economic/ parses this column —
+  /// `tests/p6-c-discovery.test.ts` fails the build if anything does. The
+  /// authoritative figures are `OpportunityEstimate` rows; this is kept so a
+  /// rejected candidate's numbers are recoverable for review.
+  rawProposal String
+
+  /// The Opportunity this became. Null for a rejected candidate.
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?      @unique
+
+  createdAt DateTime @default(now())
+
+  /// The same proposal twice in one pass is one candidate.
+  @@unique([runId, proposalDigest])
+  @@index([userId, status])
+  @@index([userId, proposalDigest])
 }
