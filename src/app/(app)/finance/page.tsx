@@ -12,6 +12,8 @@ import { getMeasuredProbability } from "@/lib/economic/probability";
 import { CommercialActionPanel } from "@/components/economic/CommercialActionPanel";
 import { PosturePanel } from "@/components/economic/PosturePanel";
 import { DiscoveryPanel } from "@/components/economic/DiscoveryPanel";
+import { MeasurementLoopPanel } from "@/components/economic/MeasurementLoopPanel";
+import { listLoopStates } from "@/lib/economic/measurementLoop";
 import { listDiscoveryRuns } from "@/lib/discovery/service";
 import { corroborationPlan } from "@/lib/discovery/corroboration";
 import { nextBestEconomicAction } from "@/lib/economic/nextAction";
@@ -23,7 +25,7 @@ export default async function FinancePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions, posture, discoveryRuns, corroboration] =
+  const [assets, overview, opportunities, budget, autonomyMode, pnl, evidence, probability, integrity, commercialActions, posture, discoveryRuns, corroboration, loopStates] =
     await Promise.all([
       listEconomicAssets(user.id),
       getEconomicOverview(user.id),
@@ -38,6 +40,7 @@ export default async function FinancePage() {
       nextBestEconomicAction(user.id),
       listDiscoveryRuns(user.id),
       corroborationPlan(user.id),
+      listLoopStates(user.id),
     ]);
 
   const unpromoted = opportunities.filter((o) => !assets.some((a) => a.opportunityId === o.id));
@@ -51,6 +54,10 @@ export default async function FinancePage() {
       />
 
       <PosturePanel posture={posture} />
+
+      <div className="mt-6">
+        <MeasurementLoopPanel states={loopStates} />
+      </div>
 
       <div className="mt-6">
         <DiscoveryPanel

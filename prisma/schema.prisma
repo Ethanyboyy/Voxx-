@@ -854,11 +854,24 @@ model ExperimentMeasurement {
   /// cross-checked against every order summed. Never defaulted, never assumed.
   observedCurrency    String?
 
+  /// [P6-D] WHAT THIS MEASUREMENT DOES NOT ESTABLISH, in the observer's words.
+  ///
+  /// A machine observation gets this from its frozen `OBSERVATION_RULES` entry
+  /// (`doesNotEstablish`). A human-entered one has no rule, so the limitation
+  /// had nowhere to live and the honest caveats a person would volunteer —
+  /// "counted by hand, refunds not deducted" — were lost. Optional, because a
+  /// measurement with no stated limitation is a real state; what is not
+  /// acceptable is having no field to put one in.
+  limitations String?
+
   /// Hash over everything that makes this measurement mean what it means.
   digest     String
   observedAt DateTime @default(now())
 
   supportedEstimates OpportunityEstimate[]
+  /// [P6-D] The ledger rows settled from this measurement, at most one a side.
+  revenueEntry EconomicRevenue?
+  expenseEntry EconomicExpense?
 
   @@index([userId, rule])
 }
@@ -1081,6 +1094,19 @@ model ProfitPrediction {
   /// sha256 over the predicted terms. A prediction edited after the fact is a
   /// prediction that was never made.
   digest String
+  /// [P6-D] THE PER-FIGURE PROVENANCE THE PREDICTION WAS COMPUTED FROM, frozen.
+  ///
+  /// JSON: each ev-material figure with its value, its basis and whether it was
+  /// authoritative at prediction time. `predictedBasis` above is the WEAKEST of
+  /// them, which is the honest one-word label and loses which figure was weak.
+  /// Keeping the snapshot is what will eventually make "VOX's model-suggested
+  /// PROFIT figures run optimistic while its measured probabilities are close"
+  /// an answerable question rather than a guess.
+  ///
+  /// Written once and never updated — I18's immutability applies to this column
+  /// exactly as it does to the figures beside it. Improving a figure's
+  /// provenance later must not rewrite what the prediction rested on.
+  predictedInputs String?
 
   // --- THE OUTCOME, from the ledger only -------------------------------
   /// Measured net in cents, summed from the experiment's own EconomicRevenue
@@ -2543,6 +2569,21 @@ model EconomicRevenue {
   notes       String?
   createdAt   DateTime         @default(now())
 
+  /// [P6-D] The measurement this row was settled from, when it came from one.
+  ///
+  /// A FOREIGN KEY, and UNIQUE. Both matter. The key means a settled row cannot
+  /// cite a measurement that does not exist — the P6-B argument about evidence
+  /// identifiers, applied to the ledger. The uniqueness means one measurement
+  /// can produce at most ONE revenue row, so double-settling an experiment is
+  /// refused by the database rather than by a check-then-write.
+  ///
+  /// Null for every pre-existing row and for anything a person logs directly:
+  /// those are history somebody recorded, not the outcome of a measured
+  /// experiment, and conflating them would make the ledger claim an evidence
+  /// chain it does not have.
+  measurement   ExperimentMeasurement? @relation(fields: [measurementId], references: [id], onDelete: SetNull)
+  measurementId String?                @unique
+
   @@index([assetId, occurredAt])
 }
 
@@ -2559,6 +2600,10 @@ model EconomicExpense {
   occurredAt  DateTime
   notes       String?
   createdAt   DateTime         @default(now())
+
+  /// [P6-D] The measurement this row was settled from. See EconomicRevenue.
+  measurement   ExperimentMeasurement? @relation(fields: [measurementId], references: [id], onDelete: SetNull)
+  measurementId String?                @unique
 
   @@index([assetId, occurredAt])
   /// The index the atomic spend guard reads. Its WHERE clause sums this

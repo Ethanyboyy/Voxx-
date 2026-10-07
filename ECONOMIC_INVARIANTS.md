@@ -919,6 +919,140 @@ FUNDABLE*, *NEVER DESCRIBES AN UNCHECKED FIGURE AS CHECKED*.
 
 ---
 
+## I21 — A measurement is observed; a prediction is frozen before it
+
+P6-A through P6-C built the capacity to REFUSE and nothing had ever been
+measured. `getCalibration()` had reported NO BASIS since the day it was
+written, because no prediction had ever been scored against a real ledger. P6-D
+is the join:
+
+```
+corroborated -> experiment -> PREDICTION -> observed outcome
+             -> MEASURED figure -> ledger -> reconciliation -> 1 calibration point
+```
+
+Every link already existed. `measurementLoop.ts` composes them and declares no
+new gate, no second lifecycle and no new provenance vocabulary.
+
+### The ordering is the whole invariant
+
+**A measurement cannot be recorded for an experiment that has no frozen
+prediction.** That single refusal makes the ordering STRUCTURAL rather than
+conventional: the prediction row had to exist before the measurement call could
+succeed, and `ProfitPrediction.experimentId` is UNIQUE so there is exactly one
+and it cannot be swapped afterwards. An explicit
+`prediction.createdAt < measurement` comparison is made as well, and a
+backdated `occurredAt` that would violate it is **refused, not clamped**.
+
+Without this the exercise is theatre. A system that can write the prediction
+after seeing the result will always look well calibrated, and "VOX predicted
+$8.00 and the ledger says $9.00" is the only sentence in this repository that
+makes a forecast worth anything.
+
+### What makes a figure MEASURED
+
+An `ExperimentMeasurement` row, and only that. `upgradeEstimate()` demands it
+and checks it exists and belongs to the user (I19), so `MEASURED` is reachable
+from this module only by way of evidence a person or a provider actually
+produced. **Model reasoning is not an argument to any function in the loop** —
+there is nowhere to put it, and `OperatorOutcomeInput` has no `basis`,
+`confidence`, `reasoning`, `externalProvider` or `responseDigest` field. The
+route's schema is `.strict()`, so a request carrying one is rejected rather than
+trimmed: an operator entry cannot be dressed up as a store's own answer.
+
+**ONE FIGURE IS PROMOTED, NOT THE ROW.** The operator observes an amount, so
+`EXPECTED_REVENUE_CENTS` becomes MEASURED and nothing else moves. A measured
+revenue says nothing about the probability, the worst case or the capital
+requirement, and I19 exists so that cannot be fudged. The promotion is also
+CONSERVATIVE where the measured window is shorter than the figure's horizon:
+the value becomes what arrived in the window, which can only be less than or
+equal to the full horizon's total.
+
+### Human-entered is not external-observed
+
+| | source | ledger provenance | VOX observed it |
+|---|---|---|---|
+| operator entry | `HUMAN_ENTERED` | `USER_RECORDED` | **no** |
+| P5-E/F observation | `EXTERNAL_OBSERVED` | `USER_RECORDED` | yes |
+| model reasoning | — | — | never sufficient |
+
+Every external field on a human-entered measurement stays **null**: no
+provider, no scope, no response digest, no retrieval time, no window. The
+amount goes inside the measurement's existing digest (the P5-F tagged money
+block), so a hand-entered figure is as frozen as a machine-observed one.
+`REALIZED` stays unreachable (I1) — nothing here confirms anything against an
+external system of record, and the operator's own stated limitations are
+returned with the result rather than filed away.
+
+### Zero settles to nothing, and that is correct
+
+`toCents()` refuses zero because a zero entry is not a transaction. So an
+experiment that observed **zero** revenue writes **no ledger row**, the ledger
+sums to zero, and `reconcilePrediction()` reads exactly that. OBSERVED ZERO and
+NO LEDGER stay distinct, one layer further out than I12 drew the same line: the
+asset exists and the sum is genuinely zero, whereas an experiment with no asset
+is refused `NO_LEDGER` and writes nothing at all.
+
+An observed zero is the single most useful measurement there is, because it is
+how an optimistic forecast gets caught. It is reported as a result, never as a
+failed measurement.
+
+### Currency is a gate, not a default
+
+The ledger is USD at scale 2. A measurement in another currency or at another
+scale is **refused** (`CURRENCY_NOT_SETTLEABLE`), never converted: converting
+needs an exchange rate, VOX has none, and inventing one would fabricate the
+most load-bearing number in the chain. Even USD at the wrong scale is refused —
+1250 at scale 3 is $1.25, not $12.50.
+
+### One observation is not a track record
+
+`getCalibration()` reports `totalResolved: 1` and `insufficientSample: true`
+with `overallFactor: null`. The correction factor is **withheld**, not computed
+weakly, because a factor derived from one result would be applied to every
+future forecast with the authority of statistics. Buckets stay separate by
+basis, so "a person's figures were 12% out" and "a model's were 100% out" are
+never averaged into one meaningless number. The caveat is returned in the
+operator's own result, in words.
+
+And an **unscored** prediction is not an observation: `totalUnresolved` counts
+it and no basis bucket claims it. That assertion exists because mutation M12
+(reading an unresolved prediction as `observedNetCents ?? 0`) passed every other
+test in the suite — the shape of "increment calibration without reconciling",
+and a forecast counted as a hit before anyone looked.
+
+### The loop moves no money
+
+It creates no `CapitalAllocation`, no `ApprovalGrant`, no `CommercialAction` and
+no `Permission`, and imports no allocator, grant, executor or AI provider. The
+ledger rows it writes carry `measurementId` — a FOREIGN KEY, and UNIQUE, so a
+settled row cannot cite a measurement that does not exist and one measurement
+cannot settle twice on either side.
+
+Duplicate protection is three independent layers: the loop's own check,
+`recordExternalMeasurement()`'s check, and
+`ExperimentMeasurement.experimentId @unique`. Removing both application checks
+changes nothing observable — the database refuses with the same reason. That was
+verified by mutation rather than assumed.
+
+**Tests:** `tests/p6-d-measurement-loop.test.ts` — *CLOSES: corroborated ->
+prediction -> operator outcome -> MEASURED -> reconciled -> one calibration
+point*, *promotes ONLY the observed figure*, *REFUSES A MEASUREMENT FOR AN
+EXPERIMENT NOBODY PREDICTED*, *PROVES prediction.createdAt < measurement time*,
+*REFUSES A BACKDATED MEASUREMENT*, *THE MEASUREMENT CANNOT CREATE OR EDIT THE
+PREDICTION*, *IMPROVING A FIGURE LATER DOES NOT REWRITE THE PREDICTION*, *A
+MODEL_SUGGESTED FIGURE CANNOT BECOME MEASURED WITHOUT A MEASUREMENT*, *CANNOT
+CITE ANOTHER USER'S MEASUREMENT*, *THE OPERATOR PATH TAKES NO FIELD A MODEL
+COULD FILL*, *CREATES NO ALLOCATION, GRANT OR COMMERCIAL ACTION*, *NEVER WRITES
+REALIZED PROVENANCE*, *A DUPLICATE MEASUREMENT*, *A DUPLICATE RECONCILIATION*,
+*A CURRENCY OR SCALE THE LEDGER CANNOT HOLD*, *RECORDS A ZERO OUTCOME, WRITES NO
+LEDGER ROW, AND RECONCILES*, *AN OBSERVED ZERO AND AN ABSENT FIGURE STAY
+DISTINCT*, *AN UNSCORED PREDICTION IS NOT AN OBSERVATION*, *ONE RECONCILIATION
+IS ONE OBSERVATION, AND NOT A TRACK RECORD*, *DOES NOT AVERAGE ACROSS BASES*,
+*MARKS THE SOURCE AS HUMAN AND INVENTS NO EXTERNAL PROVENANCE*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -939,11 +1073,17 @@ honest:
   anywhere in VOX, and the policy gate's money-moving cell (external + financial
   + irreversible) is still empty — `tests/policy-gate.test.ts` fails the build if
   that changes.
-- **No estimate has ever been validated.** P6-A can rank opportunities and
-  record predictions; zero predictions have been scored against a real ledger in
-  this repository, so `getCalibration()` reports NO BASIS and every expected-value
-  figure is unadjusted. The machinery for learning exists and has learned
-  nothing yet.
+- **The loop closes, and it has never closed on live external evidence.** P6-D
+  can carry an opportunity from corroborated to a scored prediction, and the
+  tests do it end to end. Every one of those measurements is **operator-entered
+  test data**: no live store credentials exist here, so VOX has never observed a
+  figure in an external system of record and no `ExperimentMeasurement` in this
+  repository has `source: EXTERNAL_OBSERVED` from a real provider call.
+- **Calibration has no basis and will not have one soon.** `MIN_CALIBRATION_SAMPLE`
+  is 5 and a correction factor is withheld below it, so even a handful of closed
+  loops leaves every expected-value figure unadjusted. The machinery for
+  learning exists, is exercised, and has learned nothing yet — which is the
+  honest state of a system with one data point, not a defect.
 - **VOX can propose opportunities, and has never actually proposed one.** P6-C
   built the discovery layer and it is architecturally complete: a pass creates
   `Opportunity` rows with every figure recorded at `MODEL_SUGGESTED` through the

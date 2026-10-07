@@ -162,6 +162,16 @@ export interface AddEconomicLedgerEntryInput {
   occurredAt: Date;
   notes?: string;
   /**
+   * [P6-D] The `ExperimentMeasurement` this row was settled from.
+   *
+   * A FOREIGN KEY and UNIQUE in the schema, so the id cannot be invented and
+   * one measurement cannot settle twice on the same side of the ledger. Absent
+   * for every ordinary entry — a person logging revenue they already had is
+   * recording history, not the outcome of a measured experiment, and the two
+   * must stay distinguishable.
+   */
+  measurementId?: string;
+  /**
    * How much this row can be trusted as money. Defaults to USER_RECORDED —
    * the honest description of a number a human typed in.
    *
@@ -215,6 +225,7 @@ export async function addEconomicRevenue(
       assetId,
       amountUsd: amount.usd,
       amountCents: amount.cents,
+      measurementId: input.measurementId ?? null,
       source: input.source,
       provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,
@@ -250,6 +261,7 @@ export async function addEconomicExpense(
       assetId,
       amountUsd: amount.usd,
       amountCents: amount.cents,
+      measurementId: input.measurementId ?? null,
       category: input.category,
       provenance: input.provenance ?? "USER_RECORDED",
       occurredAt: input.occurredAt,

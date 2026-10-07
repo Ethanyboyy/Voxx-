@@ -91,6 +91,18 @@ export interface RecordPredictionInput {
   /** The WEAKEST basis among the inputs. See `weakestBasis()`. */
   predictedBasis: EstimateBasis;
   horizonDays: number;
+  /**
+   * [P6-D] The per-figure snapshot the prediction was computed from, as JSON.
+   *
+   * `predictedBasis` above is the weakest of them and is the honest one-word
+   * label; it loses WHICH figure was weak. Keeping the snapshot is what makes
+   * "its model-suggested profit figures run optimistic while its measured
+   * probabilities are close" an answerable question later.
+   *
+   * Written once with the row and never updated — a prediction's inputs are as
+   * frozen as its terms.
+   */
+  predictedInputs?: string;
 }
 
 /**
@@ -153,6 +165,7 @@ export async function recordPrediction(input: RecordPredictionInput): Promise<Re
         predictedProbability: input.predictedProbability,
         predictedBasis: input.predictedBasis,
         horizonDays: input.horizonDays,
+        predictedInputs: input.predictedInputs ?? null,
         digest,
       },
     });

@@ -81,7 +81,7 @@ import { recordEvent } from "@/lib/observability/events";
 import { createAgentRun, cancelAgentRun, getAgentRun } from "@/lib/agents/service";
 import { executeRun } from "@/lib/agents/executor";
 import { observationContractDigestOf, resolveObservationWindow } from "@/lib/economic/observationContract";
-import { formatMinor, MAX_MONEY_SCALE } from "@/lib/integrations/decimal";
+import { formatMinor, MAX_AMOUNT_MINOR, MAX_MONEY_SCALE } from "@/lib/integrations/decimal";
 
 /**
  * Whether VOX itself produced this figure, as opposed to a person reporting one.
@@ -1073,6 +1073,31 @@ export interface ExternalMeasurementInput {
   unit: string;
   /** Where the person got this figure. Required — a number with no source is a rumour. */
   provenance: string;
+  /**
+   * [P6-D] THE MONETARY AMOUNT A PERSON OBSERVED, when the figure is money.
+   *
+   * The P5-F columns already existed and this path could not write them, so an
+   * operator could report "12 orders" and had nowhere to put "$412.50". That
+   * made the human path unable to close the economic loop at all, which is the
+   * gap P6-D exists to fill.
+   *
+   * ALL THREE OR NONE, hashed together, for exactly the P5-F reason: 1250 is
+   * $12.50, ¥1,250 and KWD 1.250, and every one of those renders plausibly.
+   *
+   * A ZERO AMOUNT IS ACCEPTED, and that is deliberate. "The shop earned nothing
+   * over the window" is a real observation and the single most valuable one for
+   * catching an optimistic forecast. It is NOT a transaction, so it writes no
+   * ledger row — see `settleMeasurement()`.
+   */
+  money?: { amountMinor: number; amountScale: number; currency: string };
+  /**
+   * [P6-D] What this measurement does not establish, in the observer's words.
+   *
+   * A machine observation gets this from its frozen rule's `doesNotEstablish`.
+   * A human-entered one has no rule, so the caveats a careful person volunteers
+   * had nowhere to go.
+   */
+  limitations?: string;
 }
 
 /**
@@ -1097,6 +1122,21 @@ export async function recordExternalMeasurement(
   if (input.provenance.trim().length === 0 || input.unit.trim().length === 0) {
     return { recorded: false, reason: "INVALID_VALUE" };
   }
+  // ALL THREE OR NONE, validated before anything is written. A partially
+  // specified amount is the P5-F hazard: an integer with no scale is not an
+  // amount, it is a number somebody will render as dollars.
+  if (input.money !== undefined) {
+    const { amountMinor, amountScale, currency } = input.money;
+    if (!Number.isInteger(amountMinor) || amountMinor < 0 || amountMinor > MAX_AMOUNT_MINOR) {
+      return { recorded: false, reason: "INVALID_VALUE" };
+    }
+    if (!Number.isInteger(amountScale) || amountScale < 0 || amountScale > MAX_MONEY_SCALE) {
+      return { recorded: false, reason: "INVALID_VALUE" };
+    }
+    if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) {
+      return { recorded: false, reason: "INVALID_VALUE" };
+    }
+  }
 
   const experiment = await db.experiment.findFirst({
     where: { id: experimentId, userId },
@@ -1116,6 +1156,9 @@ export async function recordExternalMeasurement(
     observedValue: input.observedValue,
     observedTotal: input.observedTotal,
     provenance: input.provenance,
+    // Inside the hash, so a human-entered amount cannot be restated after the
+    // fact any more than a machine-observed one can.
+    money: input.money ?? null,
   });
 
   let measurement: ExperimentMeasurement;
@@ -1132,6 +1175,10 @@ export async function recordExternalMeasurement(
         unit: input.unit,
         rule: "HUMAN_ENTERED",
         provenance: input.provenance,
+        observedAmountMinor: input.money?.amountMinor ?? null,
+        observedAmountScale: input.money?.amountScale ?? null,
+        observedCurrency: input.money?.currency ?? null,
+        limitations: input.limitations?.trim() || null,
         digest,
       },
     });
@@ -1152,6 +1199,8 @@ export async function recordExternalMeasurement(
       observedValue: input.observedValue,
       observedTotal: input.observedTotal,
       provenance: input.provenance,
+      money: input.money ?? null,
+      limitations: input.limitations ?? null,
       digest,
     },
   });
