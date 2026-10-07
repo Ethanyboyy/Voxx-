@@ -398,6 +398,12 @@ register({
         amountScale: outcome.amountScale,
         currency: outcome.currency,
         orderCount: outcome.orderCount,
+        // [P6-F] When the window attributes to the experiment's own
+        // intervention, the sum is over the orders carrying that code and this
+        // is how many there were. `orderCount` stays the whole window, which is
+        // what proves the subset was drawn from a complete read.
+        attributedOrderCount: outcome.attributedOrderCount,
+        subject: outcome.subject,
         unit: outcome.unit,
         provider: outcome.provider,
         scope: outcome.scope,

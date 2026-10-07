@@ -1166,6 +1166,124 @@ CANDIDATE THROUGH THE EXISTING PATH*.
 
 ---
 
+## I23 — A window measures the intervention, not the store
+
+Most of this chain existed before I23, and saying which part did not is the
+point. P5-G gave `CommercialAction` an `experimentId` (UNIQUE, so one
+intervention per experiment), froze it by `contractDigest`, put execution behind
+`integration.shopify.write` at ACT with a policy HOLD and therefore an
+argument-bound `ApprovalGrant`, bound `executionRunId`/`executionStepId`
+uniquely, and returned applied / refused / **unknown** with only the applied arm
+carrying an `externalId`.
+
+**The `externalId` went nowhere.** The observation contract named a store, a
+window and a rule — no subject — so a declared window meant "every order this
+store took in this period". That is a measurement OF THE STORE: an experiment
+could be credited with a week of ordinary trading it had nothing to do with, and
+the discount code it created was decoration.
+
+### The subject's identity and its existence are different facts
+
+The binding has an ordering problem. A frozen contract must be declared BEFORE
+the experiment runs — `declareObservationContract()` refuses once an execution
+identity exists, because choosing the question with the answer in view is what
+the freeze prevents — but an `externalId` only exists AFTER the intervention has
+run. It resolves by separating two things:
+
+| | what it is | when | in the digest? |
+|---|---|---|---|
+| `observationSubject` | the discount code — **what is being asked about** | chosen at declare time, already frozen in the action's own `contractDigest` | **yes** |
+| `observationSubjectExternalId` | the provider's id — **did the thing get made** | after execution, via `bindObservationSubject()` | no |
+
+So the question stays frozen and the confirmation arrives late, which is the
+correct shape. The subject is appended to the contract digest **tagged and only
+when present**, the P5-F money-block pattern, so every contract frozen before
+I23 hashes exactly as it did and `verifyEvidenceIntegrity()` does not report
+historical experiments as altered.
+
+**A WINDOW MAY ONLY NAME A CODE ITS OWN INTERVENTION CREATES.**
+`declareObservationContract()` compares the subject against the experiment's own
+declared `CommercialAction` and refuses `SUBJECT_MISMATCH` otherwise — including
+when there is no intervention at all. Without that check attribution is a
+free-text filter, and a window could claim another experiment's orders.
+
+### This is what keeps an UNKNOWN write unknown
+
+`openDeclaredWindow()` refuses a subject-naming window until the subject's
+existence is confirmed. An ambiguous execution returns no `externalId`, so
+nothing can be bound, so **the store is never asked**, so no measurement exists
+to be mistaken for a result. The ambiguity stays ambiguous instead of resolving
+itself into a zero — and `bindObservationSubject()` says so in the refusal
+rather than silently declining:
+
+> The intervention's outcome is UNKNOWN — it may or may not have been created.
+> Confirming a subject from an unknown outcome would invent exactly the certainty
+> the write port refuses to supply.
+
+PLANNED, SUBMITTED and FAILED are refused by the same rule. Binding is
+idempotent **by refusal, not by overwrite**: a second call is `ALREADY_BOUND`
+even when it would write the identical value, because the external identity of
+what was measured is established once, and a function that rewrites it can be
+made to point a past measurement at a different subject. The write is a
+conditional `updateMany` on the null column — the compare-and-set shape P5-G
+uses for its execution claim, not a check-then-write.
+
+### Attribution does not weaken the completeness proof
+
+The provider still reads the WHOLE declared window and still checks it against
+the store's own `ordersCount`. `orderCount` keeps its exact meaning — every
+order in the window — and `attributedOrderCount` is new beside it. The attributed
+subset is only trustworthy BECAUSE the full read is proven complete; summing a
+filtered query instead would produce a smaller total with nothing to check it
+against.
+
+Attribution uses `Order.discountCodes: [String!]!`, verified against the live
+Admin GraphQL schema rather than assumed, and matches case-insensitively
+because Shopify's codes are case-insensitive at checkout — comparing exactly
+would under-attribute, and a short sum looks exactly like a real one. **A
+malformed `discountCodes` is a REFUSAL**, never "this order carried no code",
+for the same reason.
+
+**AN UNREDEEMED CODE IS AN OBSERVED ZERO.** The code existed, the window was
+read completely, nobody used it. `sumDecimals([])` is an exact zero at scale 0 —
+asserting no decimal scale it never observed — and that is the single most
+useful result an intervention experiment can produce, so it is reported as a
+result rather than as a refusal. OBSERVED ZERO and UNAVAILABLE stay distinct
+(I12), one layer further along.
+
+### And none of it is a second path
+
+`intervention.ts` imports no `executeCommercialAction`, no
+`declareCommercialAction`, no grant function, no `enforceCapability`, no
+`executeRun`, and performs no `fetch`. It reads an action that has ALREADY
+succeeded through the existing gated path and copies one identifier onto the
+experiment that action already names. Declaring stays
+`POST /api/commerce/actions`, executing stays the `commerce.create_discount_code`
+tool through the executor, and asking the store whether the code exists stays
+`POST /api/commerce/actions/[id]/observe`. The confirm endpoint takes **no body**,
+so there is nowhere for a caller to supply an external id of their own choosing.
+
+**Attribution over a declared window is not causation.** Orders carrying a code
+are redemptions. Whether the code caused the purchase is a counterfactual VOX
+cannot observe, and nothing in this chain claims otherwise.
+
+**Tests:** `tests/p6-f-experiment-intervention.test.ts` — *DECLARES AN
+INTERVENTION BOUND TO THE EXPERIMENT*, *REFUSES A SECOND INTERVENTION FOR THE
+SAME EXPERIMENT*, *REFUSES A WINDOW ATTRIBUTING TO A CODE THIS EXPERIMENT DID
+NOT CREATE*, *A SUBJECTLESS WINDOW STILL WORKS, AND ITS DIGEST IS UNCHANGED*,
+*AN UNAPPROVED INTERVENTION DOES NOT EXECUTE AND CALLS NOTHING*, *A GRANT FOR
+DIFFERENT PARAMETERS DOES NOT AUTHORIZE THIS ONE*, *THE INTERVENTION MODULE
+OPENS NO SECOND EXECUTION OR AUTHORIZATION PATH*, *EXECUTES ONCE AND CARRIES THE
+FULL EXECUTION IDENTITY*, *BINDS THE EXTERNAL ID AS THE WINDOW'S CONFIRMED
+SUBJECT*, *THE OBSERVATION ATTRIBUTES ONLY TO THE INTERVENTION'S OWN CODE*, *AN
+UNREDEEMED CODE IS AN OBSERVED ZERO, NOT A FAILURE*, *AN UNREADABLE DISCOUNT
+LIST IS A REFUSAL*, *AN UNKNOWN WRITE CANNOT BE BOUND AS A SUBJECT*, *AND THE
+WINDOW CANNOT BE OBSERVED, SO NO MEASUREMENT IS FABRICATED*, *BINDS ONCE*,
+*REPLAYING THE EXECUTION CREATES NO SECOND COMMERCIAL EFFECT*, *REPOINTING THE
+SUBJECT AFTER THE FREEZE BREAKS THE CONTRACT*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
@@ -1174,12 +1292,19 @@ honest:
 - **The engine is not autonomous.** It cannot transact. Every `SCALE` stops at a
   human — I22 makes the scale/kill decision *askable* on demand and changes
   nothing about who may act on it.
-- **VOX still executes no economic action of its own.** The loop runs
-  opportunity -> corroboration -> experiment -> prediction -> operator-entered
-  observation -> measured figure -> ledger -> reconciliation -> verdict ->
-  decision. The ACTION in the middle is the gap: P5-G's bounded commercial write
-  exists, is triply authorized and is not bound to an experiment, so the thing
-  being measured is always something a person did.
+- **The intervention path is complete and has never been run against a real
+  store.** I23 closed the architectural gap: an experiment declares one bounded
+  discount code, a human's `ApprovalGrant` authorizes it, the executor creates
+  it, its `externalId` becomes the window's confirmed subject, and the
+  observation attributes only to orders carrying that code. Every test drives it
+  through a stubbed `fetch`. **No live Shopify credentials exist in this
+  repository**, so the path is architecturally complete and empirically
+  unexercised — the same honest state P5-G and P5-E were left in, now joined
+  end to end.
+- **One action type, deliberately.** A percentage discount code is the only
+  commercial intervention VOX can declare. It charges nobody, transfers nothing
+  and is reversible. There is still no payment, banking, card, transfer, refund
+  or purchasing integration anywhere in VOX.
 - **VOX can now measure an amount, and an amount is not revenue.** `EXTERNAL_ORDER_VALUE`
   retrieves gross order value at order time, from the merchant's own store, over
   a window declared in advance. That is a real monetary fact about the world. It

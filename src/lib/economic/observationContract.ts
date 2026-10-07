@@ -49,6 +49,15 @@ export interface ObservationContractTerms {
   scope: string;
   windowStart: Date;
   windowMinutes: number;
+  /**
+   * [P6-F] The external subject the window attributes to — a discount code.
+   *
+   * Part of WHAT IS BEING ASKED, so it is inside the freeze. "How much did this
+   * store take last week" and "how much of it carried the code this experiment
+   * created" are different questions, and only the second one is a measurement
+   * of the intervention.
+   */
+  subject?: string | null;
 }
 
 /**
@@ -67,7 +76,19 @@ export function observationContractDigestOf(terms: ObservationContractTerms): st
     terms.windowStart.toISOString(),
     String(terms.windowMinutes),
   ].join("|");
-  return createHash("sha256").update(canonical).digest("hex");
+  // [P6-F] APPENDED AND TAGGED, ONLY WHEN PRESENT.
+  //
+  // The same shape as P5-F's money block, for the same reason: every contract
+  // frozen before the subject existed must still hash to the digest already
+  // stored against it, or `verifyEvidenceIntegrity()` would report every
+  // historical experiment as altered. A subject-less contract is therefore
+  // byte-identical to what it was, and a subject can never be dropped silently
+  // — removing it changes the digest just as adding one does.
+  const withSubject =
+    terms.subject !== undefined && terms.subject !== null && terms.subject.length > 0
+      ? `${canonical}|SUBJECT:${terms.subject}`
+      : canonical;
+  return createHash("sha256").update(withSubject).digest("hex");
 }
 
 export interface ResolvedWindow {

@@ -709,6 +709,37 @@ model Experiment {
   /// sha256 over (rule, scope, windowStart, windowMinutes). The freeze.
   observationContractDigest String?
 
+  /// [P6-F] THE EXTERNAL SUBJECT THE WINDOW ATTRIBUTES TO.
+  ///
+  /// The discount code an experiment's own intervention creates. Without it the
+  /// declared window means "every order this store took in this period", which
+  /// is a measurement OF THE STORE and not of the intervention — so an
+  /// experiment could be credited with a week of ordinary trading it had
+  /// nothing to do with.
+  ///
+  /// DECLARED BEFORE DISPATCH and inside `observationContractDigest`, because
+  /// the subject is part of WHAT IS BEING ASKED. The code is knowable in
+  /// advance: it is chosen when the `CommercialAction` is declared and frozen in
+  /// that action's own `contractDigest`. Repointing the window at a different
+  /// code after dispatch breaks the digest and the store is never asked.
+  ///
+  /// Null for every experiment that measures a whole window on purpose — the
+  /// P5-E/F behaviour, unchanged, and the digest is byte-identical for those
+  /// rows because the subject is appended only when present.
+  observationSubject String?
+  /// [P6-F] PROOF THAT THE SUBJECT ACTUALLY EXISTS EXTERNALLY.
+  ///
+  /// The `externalId` the provider returned, copied here from the APPLIED
+  /// `CommercialAction` by `bindObservationSubject()`. NOT in the digest: it is
+  /// unknowable at declare time, and it answers a different question — not
+  /// "what are we asking" but "did the thing we are asking about get made".
+  ///
+  /// A window naming a subject may not be observed until this is set. That one
+  /// rule is what keeps an UNKNOWN write unknown: an ambiguous execution returns
+  /// no `externalId`, so nothing can be bound, so no observation is possible and
+  /// no measurement exists to mistake for a result.
+  observationSubjectExternalId String?
+
   /// Why the last observation attempt produced nothing. DIAGNOSTIC ONLY.
   ///
   /// Nothing computes from this. It exists so a surface can say "observation

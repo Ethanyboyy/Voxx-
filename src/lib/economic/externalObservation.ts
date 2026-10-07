@@ -22,6 +22,7 @@ import {
   type ValueObservationOutcome,
 } from "@/lib/integrations/economic";
 import { SHOPIFY_REQUIRED_SCOPE } from "@/lib/integrations/shopify";
+import { parseStoredParameters } from "@/lib/commerce/contract";
 import {
   classifyWindowTiming,
   observationContractDigestOf,
@@ -89,6 +90,10 @@ async function openDeclaredWindow(userId: string, experimentId: string, expected
     scope: experiment.externalScope,
     windowStart: window.start,
     windowMinutes: window.minutes,
+    // [P6-F] Inside the re-derivation, so repointing the window at a different
+    // discount code after dispatch breaks the digest exactly as widening the
+    // window does.
+    subject: experiment.observationSubject,
   });
   if (current !== experiment.observationContractDigest) {
     return {
@@ -96,6 +101,27 @@ async function openDeclaredWindow(userId: string, experimentId: string, expected
       refusal: refusal(
         "CONTRACT_ALTERED",
         "The observation rule, store or window changed after this experiment was dispatched. Asking now would answer a different question from the one the experiment declared."
+      ),
+    };
+  }
+
+  // ---- THE SUBJECT MUST EXIST BEFORE ITS ORDERS CAN BE ASKED FOR ----------
+  //
+  // [P6-F] A window naming a subject is a question about something the
+  // experiment's own intervention created. Until that creation is CONFIRMED —
+  // an APPLIED `CommercialAction` with an `externalId`, copied here by
+  // `bindObservationSubject()` — there is nothing to attribute to.
+  //
+  // THIS IS WHAT KEEPS AN UNKNOWN WRITE UNKNOWN. An ambiguous execution returns
+  // no `externalId`, so nothing is bound, so the store is never asked, so no
+  // measurement exists to be mistaken for a result. The ambiguity stays
+  // ambiguous instead of resolving itself into a zero.
+  if (experiment.observationSubject !== null && experiment.observationSubjectExternalId === null) {
+    return {
+      open: false,
+      refusal: refusal(
+        "NO_CONTRACT",
+        "This experiment's window attributes to a subject whose external existence has not been confirmed. Either the intervention has not run, or it ran ambiguously and no external identity came back. Asking the store now would attribute orders to something that may not exist."
       ),
     };
   }
@@ -166,6 +192,7 @@ async function openDeclaredWindow(userId: string, experimentId: string, expected
       accessToken: resolution.credential.accessToken,
       windowStart: window.start,
       windowEnd: window.end,
+      subject: experiment.observationSubject,
     },
   };
 }
@@ -212,6 +239,14 @@ export interface DeclareContractInput {
   /** INCLUSIVE lower bound. */
   windowStart: Date;
   windowMinutes: number;
+  /**
+   * [P6-F] The external subject to attribute to — a discount code.
+   *
+   * Must be the code of the experiment's own declared `CommercialAction`, and
+   * is checked against it. Omit it to measure the whole window, which is every
+   * P5-E/F observation and stays exactly as it was.
+   */
+  observationSubject?: string;
 }
 
 export type DeclareRefusal =
@@ -219,10 +254,20 @@ export type DeclareRefusal =
   /** Already dispatched. Declaring the question after the run is the thing this prevents. */
   | "ALREADY_DISPATCHED"
   | "INVALID_WINDOW"
-  | "INVALID_SCOPE";
+  | "INVALID_SCOPE"
+  /**
+   * [P6-F] The subject is not the code this experiment's own intervention
+   * creates — or there is no intervention to take a subject from.
+   *
+   * The check that makes the attribution an EXPERIMENT binding rather than a
+   * free-text filter: without it, a window could attribute to any code at all,
+   * including one another experiment created, and credit this experiment with
+   * another intervention's orders.
+   */
+  | "SUBJECT_MISMATCH";
 
 export type DeclareResult =
-  | { declared: true; digest: string; windowStart: Date; windowEnd: Date }
+  | { declared: true; digest: string; windowStart: Date; windowEnd: Date; subject: string | null }
   | { declared: false; reason: DeclareRefusal };
 
 /**
@@ -235,7 +280,10 @@ export type DeclareResult =
 export async function declareObservationContract(input: DeclareContractInput): Promise<DeclareResult> {
   const { userId, experimentId } = input;
 
-  const experiment = await db.experiment.findFirst({ where: { id: experimentId, userId } });
+  const experiment = await db.experiment.findFirst({
+    where: { id: experimentId, userId },
+    include: { commercialAction: true },
+  });
   if (!experiment) return { declared: false, reason: "NOT_FOUND" };
   if (experiment.executionRunId !== null) return { declared: false, reason: "ALREADY_DISPATCHED" };
 
@@ -246,11 +294,25 @@ export async function declareObservationContract(input: DeclareContractInput): P
   if (!probe) return { declared: false, reason: "INVALID_WINDOW" };
   if (input.externalScope.trim().length === 0) return { declared: false, reason: "INVALID_SCOPE" };
 
+  // ---- THE SUBJECT IS THE EXPERIMENT'S OWN INTERVENTION, OR NOTHING -------
+  const subject = input.observationSubject?.trim() || null;
+  if (subject !== null) {
+    const declaredCode = experiment.commercialAction
+      ? parseStoredParameters(experiment.commercialAction.parameters)?.code ?? null
+      : null;
+    // No intervention, or a code that is not this intervention's. Either way
+    // the subject is not something this experiment creates.
+    if (declaredCode === null || declaredCode.trim().toLowerCase() !== subject.toLowerCase()) {
+      return { declared: false, reason: "SUBJECT_MISMATCH" };
+    }
+  }
+
   const digest = observationContractDigestOf({
     rule: input.rule,
     scope: input.externalScope,
     windowStart: probe.start,
     windowMinutes: probe.minutes,
+    subject,
   });
 
   await db.experiment.update({
@@ -260,9 +322,10 @@ export async function declareObservationContract(input: DeclareContractInput): P
       externalScope: input.externalScope,
       observationWindowStart: probe.start,
       observationWindowMinutes: probe.minutes,
+      observationSubject: subject,
       observationContractDigest: digest,
     },
   });
 
-  return { declared: true, digest, windowStart: probe.start, windowEnd: probe.end };
+  return { declared: true, digest, windowStart: probe.start, windowEnd: probe.end, subject };
 }

@@ -149,8 +149,26 @@ export interface ValueObservationSuccess {
   amountScale: number;
   /** The single currency that held across the shop and every order summed. */
   currency: string;
-  /** How many orders went into the sum. Equal to the store's own count. */
+  /**
+   * How many orders the window held. Equal to the store's own count.
+   *
+   * THE COMPLETENESS PROOF, and its meaning is unchanged by attribution: it is
+   * still "every order in the declared window", still checked against
+   * `ordersCount`, and it is still what proves nothing was missed.
+   */
   orderCount: number;
+  /**
+   * [P6-F] How many of those orders carried the declared subject.
+   *
+   * NULL when the contract names no subject — the P5-F case, where the sum is
+   * the whole window. A number when it does, and then `amountMinor` is the
+   * total of THOSE orders only. Zero is a real answer: the code existed and
+   * nobody used it, which is exactly the result an honest experiment has to be
+   * able to report.
+   */
+  attributedOrderCount: number | null;
+  /** [P6-F] The subject the sum was attributed to, echoed back. */
+  subject: string | null;
   unit: string;
   provider: string;
   scope: string;
@@ -178,6 +196,15 @@ export interface OrderCountQuery {
   windowStart: Date;
   /** EXCLUSIVE. */
   windowEnd: Date;
+  /**
+   * [P6-F] Attribute the sum to orders carrying this discount code.
+   *
+   * Absent means "the whole window", which is what every P5-E/F observation
+   * asked. Present means the provider must sum only the orders that carry it —
+   * and must still read the whole window, because the completeness proof is
+   * what makes the attributed subset trustworthy.
+   */
+  subject?: string | null;
 }
 
 /**

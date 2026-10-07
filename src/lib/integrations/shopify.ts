@@ -174,6 +174,7 @@ const ORDER_VALUE_QUERY = `query VoxOrderValue($filter: String!, $after: String)
       node {
         id
         totalPriceSet { shopMoney { amount currencyCode } }
+        discountCodes
       }
     }
   }
@@ -191,7 +192,40 @@ const ORDER_VALUE_QUERY = `query VoxOrderValue($filter: String!, $after: String)
 const MAX_VALUE_PAGES = 40;
 
 interface OrderEdge {
-  node?: { id?: unknown; totalPriceSet?: { shopMoney?: { amount?: unknown; currencyCode?: unknown } } };
+  node?: {
+    id?: unknown;
+    totalPriceSet?: { shopMoney?: { amount?: unknown; currencyCode?: unknown } };
+    /** [P6-F] `Order.discountCodes: [String!]!` — verified against the live schema. */
+    discountCodes?: unknown;
+  };
+}
+
+/**
+ * [P6-F] Whether one order carries the declared subject.
+ *
+ * CASE-INSENSITIVE, and that is a decision rather than laziness: Shopify's
+ * discount codes are case-insensitive at checkout, so an order placed with
+ * "save10" against a code created as "SAVE10" is the same redemption. Comparing
+ * exactly would under-attribute, and under-attribution here produces a smaller
+ * total that looks exactly like a real one — the error this file refuses
+ * everywhere else.
+ *
+ * A MALFORMED LIST IS A REFUSAL, not an absence. Reading an unparseable
+ * `discountCodes` as "this order carried no code" would silently drop a real
+ * redemption from the sum.
+ */
+function orderCarriesSubject(
+  codes: unknown,
+  subject: string
+): { ok: true; carries: boolean } | { ok: false } {
+  if (!Array.isArray(codes)) return { ok: false };
+  const wanted = subject.trim().toLowerCase();
+  let carries = false;
+  for (const code of codes) {
+    if (typeof code !== "string") return { ok: false };
+    if (code.trim().toLowerCase() === wanted) carries = true;
+  }
+  return { ok: true, carries };
 }
 
 export class ShopifyOrderCountProvider implements EconomicObservationProvider {
@@ -398,6 +432,13 @@ export class ShopifyOrderCountProvider implements EconomicObservationProvider {
     const filter = buildWindowFilter(query.windowStart, query.windowEnd);
 
     const amounts: ParsedDecimal[] = [];
+    // [P6-F] The subset carrying the declared subject. Collected ALONGSIDE the
+    // full window rather than instead of it, so the completeness proof below is
+    // unchanged: every order is still read and still counted against the
+    // store's own `ordersCount`, and the attributed subset is only trustworthy
+    // because of that.
+    const subject = query.subject?.trim() || null;
+    const attributed: ParsedDecimal[] = [];
     const seenOrderIds = new Set<string>();
     const rawPages: string[] = [];
     let currency: string | null = null;
@@ -499,6 +540,17 @@ export class ShopifyOrderCountProvider implements EconomicObservationProvider {
           );
         }
         amounts.push(parsed);
+
+        if (subject !== null) {
+          const match = orderCarriesSubject(edge?.node?.discountCodes, subject);
+          if (!match.ok) {
+            return this.refusal(
+              "PROVIDER_UNAVAILABLE",
+              "An order in this window carried an unreadable discount-code list, so it could not be decided whether it belongs to the declared subject. A sum that skipped it would be smaller and would look exactly like a real one."
+            );
+          }
+          if (match.carries) attributed.push(parsed);
+        }
       }
 
       const hasNextPage = data.orders?.pageInfo?.hasNextPage === true;
@@ -540,7 +592,18 @@ export class ShopifyOrderCountProvider implements EconomicObservationProvider {
       );
     }
 
-    const summed = sumDecimals(amounts);
+    // [P6-F] THE SUM IS OVER THE ATTRIBUTED SET WHEN A SUBJECT IS DECLARED.
+    //
+    // An EMPTY attributed set is a real answer and sums to zero: the code
+    // existed, the window was read completely, and nobody used it. That is the
+    // single most useful result an intervention experiment can produce, so it
+    // is reported as an observed zero rather than as a refusal — the P5-E
+    // distinction between OBSERVED ZERO and UNAVAILABLE, holding here.
+    // `sumDecimals([])` is `{ minor: 0, scale: 0 }` — an exact zero that asserts
+    // no decimal scale it never observed, which is the right answer and the
+    // reason this needs no special case.
+    const summable = subject !== null ? attributed : amounts;
+    const summed = sumDecimals(summable);
     if (!summed.summed) {
       return this.refusal(
         summed.failure,
@@ -556,6 +619,8 @@ export class ShopifyOrderCountProvider implements EconomicObservationProvider {
       amountScale: summed.scale,
       currency,
       orderCount: amounts.length,
+      attributedOrderCount: subject !== null ? attributed.length : null,
+      subject,
       unit: this.valueUnit,
       provider: this.provider,
       scope: query.scope,
