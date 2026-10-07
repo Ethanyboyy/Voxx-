@@ -409,7 +409,16 @@ async function evaluateClaimedTick(
 }
 
 /** Reads an experiment's real ledger. No asset means nothing has moved. */
-async function measureExperiment(economicAssetId: string | null) {
+/**
+ * The measured performance of one experiment's own asset.
+ *
+ * [P6-E] EXPORTED so the human-facing decision surface reads the SAME ledger
+ * definition the autonomous tick does. A second copy of this query is a second
+ * answer to "is this experiment losing money", and the two would diverge on the
+ * first change to the provenance list — which is exactly the number a
+ * maximum-loss constraint is compared against.
+ */
+export async function measureExperiment(economicAssetId: string | null) {
   if (!economicAssetId) return { netUsd: 0, revenueUsd: 0, expenseUsd: 0 };
 
   const [revenue, expense] = await Promise.all([

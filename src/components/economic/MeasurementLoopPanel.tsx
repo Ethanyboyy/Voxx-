@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { InstrumentPanel, PanelHeader, Seam } from "@/components/ui/Instrument";
 import type { LoopState, LoopStep } from "@/lib/economic/measurementLoop";
+import type { ComparableCandidate } from "@/lib/economic/experimentDecision";
 
 /**
  * [P6-D] THE OPERATOR WORKFLOW THAT CLOSES THE LOOP.
@@ -66,7 +67,14 @@ interface OutcomeResponse {
   error?: string;
 }
 
-export function MeasurementLoopPanel({ states }: { states: LoopState[] }) {
+export function MeasurementLoopPanel({
+  states,
+  comparables = [],
+}: {
+  states: LoopState[];
+  /** [P6-E] Where one reconciled experiment could inform another opportunity. */
+  comparables?: ComparableCandidate[];
+}) {
   const router = useRouter();
   const [openFor, setOpenFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -287,6 +295,44 @@ export function MeasurementLoopPanel({ states }: { states: LoopState[] }) {
               {closed.length} loop{closed.length === 1 ? "" : "s"} closed. Each one is a single scored prediction, not a
               demonstration of profitability.
             </p>
+          )}
+
+          {/* [P6-E] The learning link across opportunities. Candidates only —
+              whether two opportunities are genuinely comparable is a judgement
+              about the world, and nothing here applies one. */}
+          {comparables.length > 0 && (
+            <>
+              <Seam />
+              <h4 className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                Measured elsewhere ({comparables.length})
+              </h4>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+                These figures rest on a model&apos;s proposal, and a reconciled experiment on another opportunity has
+                measured the same kind of figure. That makes a comparable <em>available</em> — it does not make the two
+                opportunities comparable. Only you can judge that.
+              </p>
+              <ul className="mt-1.5 space-y-1.5">
+                {comparables.map((candidate) => (
+                  <li
+                    key={`${candidate.opportunityId}:${candidate.figure}:${candidate.sourceOpportunityId}`}
+                    className="text-[11px] leading-relaxed"
+                  >
+                    <span className="text-white/70">{candidate.opportunityTitle}</span>
+                    <span className="text-white/35"> · {candidate.figureLabel} is </span>
+                    <span className="font-mono uppercase tracking-wide text-amber-300/80">model hypothesis</span>
+                    <p className="text-white/40">
+                      Measured on{" "}
+                      <span className="text-white/60">{candidate.sourceOpportunityTitle}</span>, whose experiment you
+                      reconciled as{" "}
+                      <span className="font-mono uppercase tracking-wide text-white/60">
+                        {candidate.sourceVerdict}
+                      </span>
+                      .
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </>
       )}

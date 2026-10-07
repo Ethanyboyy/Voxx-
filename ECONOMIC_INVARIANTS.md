@@ -1053,13 +1053,133 @@ IS ONE OBSERVATION, AND NOT A TRACK RECORD*, *DOES NOT AVERAGE ACROSS BASES*,
 
 ---
 
+## I22 — A decision is only as accepted as the ledger under it
+
+P6-D closed the loop to a measured, reconciled, ledger-backed result and nothing
+consumed it. Three facts about the repository before I22:
+
+- `deriveEvidenceStage()` terminates at `RECONCILED`, and `nextAction.ts` read
+  `AWAITING_OBSERVATION` and `MEASUREMENT_RECORDED` and **not that** — so a
+  reconciled experiment fell through to "fund something new" at the one point in
+  the chain where VOX had the most evidence it will ever have about a live
+  contract.
+- `EconomicActionKind` **declared** `DECIDE_EXPERIMENT` and `PosturePanel`
+  labelled it, and nothing in the codebase could produce it.
+- `decide()` was reachable only from `runEconomicTick()`. A person looking at a
+  finished experiment could not ask the question the apparatus exists to answer.
+
+So VOX could measure and could not learn. `experimentDecision.ts` is the join,
+and it is **read-only**.
+
+### Why read-only, and why that is not a shortcut
+
+`applyDecision()` in `scheduler.ts` already writes decision state, and writes it
+carefully: the lesson is recorded BEFORE a KILL is marked terminal, so a crash
+between the two loses neither; a KILL is auto-applied because stopping needs no
+capability VOX lacks; a SCALE is parked at `AWAITING_HUMAN` because I7 holds.
+The tick is its one caller.
+
+A second writer would make "when did VOX last decide, and has the kill been
+applied" ambiguous on `Experiment.lastDecisionAt` — the column an operator reads
+to find out. `decide()` is **pure**, so the decision is derivable on demand from
+the contract and the ledger; there is nothing to persist that is not already
+recoverable. Deriving it is strictly safer than storing it twice.
+
+### The new invariant: an unaccepted ledger is not accepted evidence
+
+`decide()` is arithmetic over the ledger. It will return SCALE on a ledger
+nobody has looked at, and it is right to — the tick has no human to ask and is
+bounded by its own gates. But a RECOMMENDATION TO A PERSON has to say whether a
+person has accepted the measurement underneath it:
+
+| class | means | recommended? |
+|---|---|---|
+| `ACCEPTED` | `outcomeRecordedAt` set — a human recorded a verdict | **yes** |
+| `PROVISIONAL` | a measurement exists, nobody accepted it | no — routed to reconcile |
+| `NO_MEASUREMENT` | nothing observed this experiment at all | no |
+
+The classification reads `outcomeRecordedAt`, never the `outcome` enum — P5-D's
+own distinction between "a human decided this" and "the enum happens to hold a
+value" (I10), one layer further down the chain.
+
+A `HOLD` is skipped rather than recommended: it is a real decision and
+recommending "hold" as the next best action would displace work worth doing.
+
+### One ledger definition, not two
+
+`measureExperiment()` is now **exported** from `scheduler.ts` and called by both
+the tick and the decision surface. A second copy of that query is a second
+answer to "is this experiment losing money", and the two would diverge on the
+first change to `POLICY_CONSUMING_PROVENANCES` — which is exactly the number a
+maximum-loss constraint is compared against. A test asserts the module contains
+no ledger aggregate of its own.
+
+### The posture could not see the operator path at all
+
+`experimentStages()` filtered on `executionRunId: { not: null }` — only
+experiments VOX had DISPATCHED. That was right when every measurement came from
+an execution, and P6-D's operator path produces experiments with **no execution**
+(a person observed the world and typed what they saw). Those were invisible, so
+the posture could not recommend reconciling one either. `deriveEvidenceStage()`
+had always handled the undispatched case explicitly; nothing was passing it one.
+The filter is widened to include a measurement or a recorded outcome.
+
+### The learning link across opportunities
+
+`getMeasuredProbability()` already lifts an opportunity's OWN probability to
+MEASURED once a verdict is recorded, so learning WITHIN one opportunity has
+worked since P6-A. Across them it never did: a reconciled experiment on
+opportunity A was invisible to opportunity B, so the second experiment anybody
+ran was no better informed than the first.
+
+`comparableCandidates()` surfaces where a comparison is **available** and
+applies nothing. Both halves must be real: a target figure actually on
+`MODEL_SUGGESTED`, and a source figure actually `MEASURED` and backed by an
+experiment a human **reconciled**. An unjudged measurement is not citable, for
+the same reason a PROVISIONAL decision is not recommended.
+
+**AUTO-APPLYING THESE WOULD BE THE LAUNDERING I19 FORBIDS.** Whether two
+opportunities are comparable is a judgement about the world — a print-on-demand
+test and a consulting retainer share a figure name and nothing else — and
+applying one automatically would promote an invented number because two rows
+happened to sit in the same table. The upgrade stays `upgradeEstimate()`, which
+demands the comparable id and verifies it.
+
+The candidate scan covers EVERY figure, not only the ev-material ones. Scanning
+`EV_MATERIAL_FIGURES` excluded `EXPECTED_REVENUE_CENTS` — `materialToExpectedValue:
+false`, because revenue matters only as an input to the derived profit — and that
+is the ONLY figure the P6-D loop ever promotes to MEASURED. The one comparison
+the measurement loop can produce was the one comparison the function could never
+offer.
+
+**Tests:** `tests/p6-e-decision-loop.test.ts` — *ANSWERS SCALE, HOLD OR KILL ON
+DEMAND*, *READS THE SAME LEDGER DEFINITION THE AUTONOMOUS TICK DOES*, *KILLS A
+LOSER*, *REPORTS AN EMPTY LEDGER AS A REAL ZERO, NOT A GAP*, *CLASSIFIES A
+MEASUREMENT NOBODY ACCEPTED AS PROVISIONAL*, *CLASSIFIES A DECISION WITH NO
+MEASUREMENT AT ALL*, *WAS A DECLARED ACTION KIND WITH NO PRODUCER, AND NOW HAS
+ONE*, *DOES NOT RECOMMEND A DECISION ON A PROVISIONAL MEASUREMENT*, *SKIPS A HOLD
+RATHER THAN RECOMMENDING ONE*, *ASKING FOR A DECISION CHANGES NO STATE*, *A SCALE
+REMAINS A RECOMMENDATION*, *OFFERS A COMPARABLE ONLY WHERE BOTH HALVES ARE REAL*,
+*APPLIES NOTHING — THE CANDIDATE IS NOT AN UPGRADE*, *OFFERS NOTHING FROM AN
+UNRECONCILED MEASUREMENT EVEN WHEN ANOTHER IS RECONCILED*, *A HUMAN CAN ACT ON A
+CANDIDATE THROUGH THE EXISTING PATH*.
+
+---
+
 ## What is still NOT true
 
 Stated plainly, because the point of this document is that the numbers are
 honest:
 
 - **The engine is not autonomous.** It cannot transact. Every `SCALE` stops at a
-  human.
+  human — I22 makes the scale/kill decision *askable* on demand and changes
+  nothing about who may act on it.
+- **VOX still executes no economic action of its own.** The loop runs
+  opportunity -> corroboration -> experiment -> prediction -> operator-entered
+  observation -> measured figure -> ledger -> reconciliation -> verdict ->
+  decision. The ACTION in the middle is the gap: P5-G's bounded commercial write
+  exists, is triply authorized and is not bound to an experiment, so the thing
+  being measured is always something a person did.
 - **VOX can now measure an amount, and an amount is not revenue.** `EXTERNAL_ORDER_VALUE`
   retrieves gross order value at order time, from the merchant's own store, over
   a window declared in advance. That is a real monetary fact about the world. It

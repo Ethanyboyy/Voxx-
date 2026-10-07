@@ -45,7 +45,10 @@
  *   2. SCORE WHAT WAS PREDICTED. A resolved prediction improves every future
  *      forecast, which compounds.
  *   3. DECIDE WHAT THE EVIDENCE NOW SUPPORTS. Scaling a winner and killing a
- *      loser are both worth more than any new candidate.
+ *      loser are both worth more than any new candidate. [P6-E] This step was
+ *      documented here from the start and had no implementation: the action
+ *      kind existed, `decide()` was reachable only from the autonomous tick,
+ *      and the RECONCILED stage was read by nothing.
  *   4. ONLY THEN COMMIT NEW CAPITAL, to the best-ranked eligible opportunity.
  *   5. OTHERWISE BUY INFORMATION — research the unrankable, corroborate the
  *      model-suggested. Cheap, and it is what makes step 4 possible later.
@@ -59,6 +62,7 @@ import { expectedValueOf, opportunityCostPerDayCents } from "@/lib/economic/expe
 import { selectPortfolio, type PortfolioPlan } from "@/lib/economic/portfolio";
 import { getCalibration, listReconcilablePredictions, type CalibrationReport } from "@/lib/economic/calibration";
 import { deriveEvidenceStage } from "@/lib/economic/evidence";
+import { experimentDecisionState } from "@/lib/economic/experimentDecision";
 import { FIGURE_SPECS, describeCapitalBlock } from "@/lib/economic/figures";
 
 /**
@@ -125,6 +129,8 @@ export interface EconomicPosture {
     activeExperiments: number;
     awaitingObservation: number;
     awaitingReconciliation: number;
+    /** [P6-E] Reconciled experiments whose scale/kill decision is available. */
+    awaitingDecision: number;
     unresolvedPredictions: number;
   };
 }
@@ -140,8 +146,25 @@ interface ExperimentStage {
  * `deriveEvidenceStage()` rather than re-deciding what "finished" means.
  */
 async function experimentStages(userId: string): Promise<ExperimentStage[]> {
+  // [P6-E] WIDENED FROM `executionRunId: { not: null }`.
+  //
+  // The original filter saw only experiments VOX had DISPATCHED, which was
+  // right when every measurement came from an execution. P6-D's operator path
+  // produces experiments with no execution at all — a person observed the world
+  // and typed what they saw — and those were invisible here, so the posture
+  // could not recommend reconciling one and (once P6-E added the branch) could
+  // not recommend deciding one either. `deriveEvidenceStage()` has always
+  // handled the undispatched case explicitly; nothing was ever passing it one.
   const experiments = await db.experiment.findMany({
-    where: { userId, executionRunId: { not: null } },
+    where: {
+      userId,
+      OR: [
+        { executionRunId: { not: null } },
+        // Measured or judged without a dispatch — the P6-D path.
+        { measurement: { isNot: null } },
+        { outcomeRecordedAt: { not: null } },
+      ],
+    },
     include: { measurement: { select: { id: true } } },
     orderBy: { updatedAt: "desc" },
     take: 50,
@@ -196,6 +219,11 @@ export async function nextBestEconomicAction(userId: string): Promise<EconomicPo
 
   const awaitingObservation = stages.filter((s) => s.stage === "AWAITING_OBSERVATION");
   const awaitingReconciliation = stages.filter((s) => s.stage === "MEASUREMENT_RECORDED");
+  // [P6-E] `deriveEvidenceStage()` has always terminated at RECONCILED and
+  // nothing read it, so a reconciled experiment fell through to "fund something
+  // new" — the one point in the chain where VOX had the most evidence it will
+  // ever have about a live contract and did nothing with it.
+  const reconciled = stages.filter((s) => s.stage === "RECONCILED");
 
   const counts = {
     opportunitiesConsidered: models.length,
@@ -204,6 +232,7 @@ export async function nextBestEconomicAction(userId: string): Promise<EconomicPo
     activeExperiments,
     awaitingObservation: awaitingObservation.length,
     awaitingReconciliation: awaitingReconciliation.length,
+    awaitingDecision: reconciled.length,
     unresolvedPredictions: reconcilable.length,
   };
 
@@ -283,7 +312,55 @@ export async function nextBestEconomicAction(userId: string): Promise<EconomicPo
     };
   }
 
-  // ---- 4. NEW CAPITAL, to the best eligible opportunity ------------------
+  // ---- 4. DECIDE WHAT THE EVIDENCE NOW SUPPORTS -------------------------
+  //
+  // [P6-E] The step this module's own header has documented since P6-A and
+  // which nothing implemented: `DECIDE_EXPERIMENT` was a declared action kind
+  // with no producer, and `decide()` was reachable only from the autonomous
+  // tick. Scaling a winner and killing a loser are both worth more than any new
+  // candidate, because they act on evidence that already exists rather than
+  // buying more.
+  //
+  // ONLY ON ACCEPTED EVIDENCE. The `RECONCILED` stage already guarantees a
+  // human recorded a verdict, and `experimentDecisionState()` re-derives that
+  // as `evidence: "ACCEPTED"` from the same column. A PROVISIONAL decision is
+  // deliberately not recommended — it is routed to reconciliation by step 3
+  // above, which is the honest order.
+  for (const target of reconciled) {
+    const decision = await experimentDecisionState(userId, target.experimentId);
+    // A refusal is skipped rather than reported: an incoherent contract or a
+    // terminal experiment is not an action, and the next reconciled experiment
+    // may well be one.
+    if (!decision.available) continue;
+    const { view } = decision;
+    if (view.result.decision === "HOLD") continue;
+
+    return {
+      ...base,
+      recommendation: {
+        kind: "DECIDE_EXPERIMENT",
+        action:
+          view.result.decision === "KILL"
+            ? `Kill experiment ${target.experimentId} — ${view.result.bindingConstraint.replace(/_/g, " ").toLowerCase()}.`
+            : `Scale experiment ${target.experimentId} — it cleared its own threshold.`,
+        reason:
+          `${view.result.reasons.find((r) => r.binding)?.detail ?? view.result.bindingConstraint} ` +
+          `The measurement behind this was accepted by you${view.humanVerdict ? ` as ${view.humanVerdict}` : ""}, so the decision rests on evidence rather than on arithmetic alone. ` +
+          `Acting on evidence that already exists is worth more than buying more of it.`,
+        path: view.actionPath,
+        opportunityId: view.opportunityId,
+        experimentId: target.experimentId,
+        predictionId: null,
+        // Deliberately null. A scale/kill decision is not denominated in
+        // expected profit per day — inventing a figure for it would be exactly
+        // the dishonesty the expected-value engine refuses elsewhere.
+        expectedNetPerDayCents: null,
+        opportunityCostPerDayCents: null,
+      },
+    };
+  }
+
+  // ---- 5. NEW CAPITAL, to the best eligible opportunity ------------------
   if (plan.selected.length > 0) {
     const top = plan.selected[0];
     const rankedOnly = plan.selected.map((s) => s.expectation);
@@ -309,7 +386,7 @@ export async function nextBestEconomicAction(userId: string): Promise<EconomicPo
     };
   }
 
-  // ---- 5. BUY INFORMATION ------------------------------------------------
+  // ---- 6. BUY INFORMATION ------------------------------------------------
   //
   // Corroboration before research: an opportunity with numbers that merely lack
   // a credible source is one step from being fundable, while an unrankable one
