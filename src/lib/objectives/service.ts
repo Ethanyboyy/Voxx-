@@ -501,6 +501,32 @@ function factorPenalty(level: RiskLevel | null): number {
 }
 
 /**
+ * Exactly the fields the score is computed from, and nothing else.
+ *
+ * Widened from the whole `OpportunityDTO` because this function reads twelve
+ * numeric/enum columns and demanding a fully-hydrated DTO — including a parsed
+ * `evidence` array it never looks at — forced callers that had a narrow database
+ * projection to cast. A cast is a lie about what the function needs. Every
+ * existing caller passes a complete DTO, which still satisfies this
+ * structurally, so this only loosens the requirement.
+ */
+export type OpportunityScoreInput = Pick<
+  OpportunityDTO,
+  | "estimatedValue"
+  | "effort"
+  | "confidence"
+  | "risk"
+  | "estimatedStartupCost"
+  | "estimatedOperatingCost"
+  | "estimatedMargin"
+  | "estimatedTimeToRevenueDays"
+  | "complexity"
+  | "competition"
+  | "scalability"
+  | "requiredHumanInvolvement"
+>;
+
+/**
  * Score = (estimatedValue, or 1 if unset so effort/confidence still rank it)
  *         / effort weight
  *         * confidence weight
@@ -518,7 +544,7 @@ function factorPenalty(level: RiskLevel | null): number {
  * zero or as "bad", only as "not yet known". Purely a re-ranking of numbers
  * already on the row; never generates a value that wasn't already there.
  */
-export function scoreOpportunity(o: OpportunityDTO): number {
+export function scoreOpportunity(o: OpportunityScoreInput): number {
   const value = o.estimatedValue ?? 1;
   const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
   const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
@@ -582,7 +608,7 @@ export interface OpportunityScoreBreakdown {
  * differently than scoreOpportunity() does; this is that function with its
  * work shown, so "why did this rank #1" always has a real, decomposable answer.
  */
-export function explainOpportunityScore(o: OpportunityDTO): OpportunityScoreBreakdown {
+export function explainOpportunityScore(o: OpportunityScoreInput): OpportunityScoreBreakdown {
   const effortWeight = o.effort ? EFFORT_WEIGHT[o.effort] : 2;
   const riskPenalty = o.risk ? RISK_PENALTY[o.risk] : 0.15;
   const confidenceWeight = CONFIDENCE_WEIGHT[o.confidence];

@@ -153,6 +153,8 @@ model User {
   artifacts      Artifact[]
   capabilityRuns CapabilityRun[]
   approvalGrants ApprovalGrant[]
+
+  outreachAttempts OutreachAttempt[]
 }
 
 /// Server-side sessions (not JWTs) so they can be listed, inspected and
@@ -2382,6 +2384,8 @@ model Opportunity {
   estimates          OpportunityEstimate[]
   comparableFor      OpportunityEstimate[] @relation("EstimateComparable")
   discoveryCandidate DiscoveryCandidate?
+  /// [SPRINT] Named people who were actually asked to buy this.
+  outreachAttempts   OutreachAttempt[]
 }
 
 // ---------------------------------------------------------------------------
@@ -4175,4 +4179,117 @@ model DiscoveryCandidate {
   @@unique([runId, proposalDigest])
   @@index([userId, status])
   @@index([userId, proposalDigest])
+}
+
+// ---------------------------------------------------------------------------
+// [SPRINT] Outreach — the pipeline for a near-term revenue push.
+//
+// WHY THIS EXISTS AT ALL, since the repository already has an opportunity
+// ledger, an experiment engine and a money ledger: none of them records the
+// one thing a revenue sprint actually consists of, which is *asking specific
+// named people to buy something and writing down what they said*. Opportunity
+// is a category ("AI automation for local service businesses"); this is a
+// person at a business, a message sent on a date, and their answer.
+//
+// WHAT IT DELIBERATELY IS NOT: a CRM, a sequencer, or anything that sends. It
+// has no send path, no template engine and no scheduler. VOX does not contact
+// anybody — a human sends every message and records what came back. A table
+// that could send would be a table that could spam under a model's judgment.
+//
+// AND IT IS NOT A REVENUE SOURCE. `paidAt` + `paymentReference` record that a
+// human went and looked at a payment processor and saw money. The money itself
+// is an `EconomicRevenue` row written through the existing
+// `addEconomicRevenue()` at USER_RECORDED — because a human asserting that a
+// payment landed is a human assertion, not an external confirmation, and
+// REALIZED still means what it has always meant here. See I1 and I25.
+// ---------------------------------------------------------------------------
+
+/// How the prospect was contacted. Recorded for honesty about response rates,
+/// never used to decide anything.
+enum OutreachChannel {
+  /// Someone the owner already knows. Tracked separately because warm and cold
+  /// response rates differ by an order of magnitude and averaging them together
+  /// would make the pipeline unreadable.
+  WARM_PERSONAL
+  EMAIL
+  SMS
+  PHONE
+  DM_SOCIAL
+  IN_PERSON
+  MARKETPLACE
+  OTHER
+}
+
+/// Where a conversation actually got to.
+///
+/// NO_RESPONSE is the honest default and is NOT a failure state — it is the
+/// most common outcome of any real outreach and the one a pipeline must be able
+/// to show without flattering itself.
+enum OutreachOutcome {
+  /// Sent, nothing back yet. Distinct from DECLINED: silence is not a no.
+  NO_RESPONSE
+  /// They replied and the reply was not a yes or a no.
+  REPLIED
+  /// Explicitly interested, no commitment.
+  INTERESTED
+  /// Agreed to buy. NOT money — see PAID.
+  AGREED
+  /// A human verified that payment arrived at a payment processor or bank.
+  PAID
+  DECLINED
+  /// Not a fit, bounced, wrong person, business closed.
+  DISQUALIFIED
+}
+
+model OutreachAttempt {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// The opportunity category this prospect was approached under, so a
+  /// pipeline's results attach to the thing that was being tested. Optional:
+  /// a first dollar is worth recording even if nobody filed an Opportunity row
+  /// for it first.
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  opportunityId String?
+
+  /// Who was contacted. Free text — a real pipeline is messy and forcing it
+  /// into a contact schema would lose rows.
+  prospect     String
+  organization String?
+  channel      OutreachChannel
+  /// What was actually offered, in the owner's own words, and the price asked.
+  /// Stored per attempt rather than per opportunity because the offer moves
+  /// during a sprint and the record has to say what THIS person was told.
+  offer        String?
+  askedPriceCents Int?
+
+  outcome   OutreachOutcome @default(NO_RESPONSE)
+  sentAt    DateTime
+  /// When they answered. Null while NO_RESPONSE.
+  respondedAt DateTime?
+  notes       String?
+
+  // --- Payment, verified by a person ------------------------------------
+  //
+  // Set only by `confirmOutreachPayment()`. `paymentReference` is REQUIRED by
+  // that function: an unreferenced "yes they paid" is the exact claim this
+  // system exists not to make.
+  paidAt           DateTime?
+  paidAmountCents  Int?
+  /// The processor the human looked at — "stripe", "paypal", "zelle", "cash".
+  paymentProcessor String?
+  /// The transaction id/reference the human read off that processor. Not
+  /// verified by VOX; recorded so the claim is checkable by someone else.
+  paymentReference String?
+  /// The ledger row this payment produced. UNIQUE, so one confirmed payment
+  /// cannot be banked twice — the database refuses it rather than a
+  /// check-then-write.
+  revenueId        String?   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, outcome])
+  @@index([userId, sentAt])
 }

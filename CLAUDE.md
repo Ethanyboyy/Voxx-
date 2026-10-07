@@ -127,6 +127,16 @@ every change, not just Phase 1/2.
   this do and can it be undone". Never derive one from the other, never give a
   classification a permission field, and never let a model's text reach the
   decision: `evaluatePolicy()` takes enums and booleans only. See `POLICY_GATE.md`.
+- `src/lib/revenue/` — the near-term revenue sprint (`REVENUE_SPRINT.md`):
+  `sprintRank.ts` ranks opportunities on a 72-hour horizon (a SECOND ranker —
+  `scoreOpportunity()` clamps time-to-revenue at 7 days and so cannot tell
+  "pays tomorrow" from "pays next week"; it is deliberately left untouched), and
+  `outreach.ts` records who was asked to buy, what they said, and payments a
+  human verified. It **has no send path** and must never get one — a module that
+  could send would put a model's judgement between a stranger and their inbox.
+  `confirmOutreachPayment()` writes `USER_RECORDED`, never `REALIZED`: a person
+  reading a payment processor is a human assertion, so `REALIZED` stays
+  unreachable until a provider integration reads the charge itself. See I1/I25.
 - `src/lib/knowledge/`, `src/lib/permissions/`, `src/lib/observability/` — domain services
 - `src/lib/integrations/` — provider-agnostic external-integration abstraction (catalog +
   stub provider); `src/lib/connections/` — the Connections Hub service layer (lifecycle,

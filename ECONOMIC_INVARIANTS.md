@@ -28,6 +28,11 @@ nothing in VOX may claim it.
 A future payment provider writes `REALIZED` from inside its own module — a
 separate, reviewable code path, not this one.
 
+**`confirmOutreachPayment()` is NOT that module** (I25). It records that a human
+went and looked at a processor, which is a human assertion however good the
+evidence, so it writes `USER_RECORDED` with a mandatory transaction reference.
+`REALIZED` is still written by nothing, anywhere.
+
 **Tests:** `economic-adversarial.test.ts` → *attempted REALIZED injection (I1)*.
 
 ---
@@ -1394,6 +1399,126 @@ opens no second authorization path*; *GRANT ACCESS FIRST, THEN CONNECT — the
 other order breaks the connection*; *the documented order reaches
 LIVE_CONNECTED*.
 
+## I25 — A human who verified a payment is still a human, not a system of record
+
+The revenue sprint (`REVENUE_SPRINT.md`) needed one thing the economic engine did
+not have: a way to record that **a specific named person was asked to buy
+something, and what they said.** `Opportunity` is a category, `Experiment` is a
+test, `EconomicRevenue` is money — none of them is a pipeline. `OutreachAttempt`
+is, and it brought exactly one new question with it.
+
+### The temptation, and why it was refused
+
+`confirmOutreachPayment()` is the "record revenue only when payment is verified"
+path. The owner goes to Stripe, sees $450, copies the charge id, and records it.
+Everything about that is genuine, and `LedgerProvenance` has a member that means
+"confirmed" — so writing `REALIZED` would have felt like the accurate choice.
+
+**It is written `USER_RECORDED`.** `REALIZED` means *VOX confirmed it against an
+external system of record*, and VOX did not: a person did, and then typed the
+result in. That is the enum's own definition of `USER_RECORDED` — "true as far as
+VOX knows, unverified by anything" — and it describes this situation exactly.
+Promoting it would be the same provenance laundering the P6-B figure layer
+refuses: a human assertion upgraded to an external measurement because the human
+sounded certain. I1 already said where `REALIZED` comes from when it comes at
+all — a payment provider reading the charge itself, from inside its own module —
+and this is not that module. **I1 is unchanged and `REALIZED` remains unreachable
+from every API in the system.**
+
+What makes the row worth having anyway is that the evidence is **mandatory**:
+`processor` and `reference` are both required, with no default and no optional
+path, so the claim is checkable by somebody other than the person who made it.
+An unreferenced "they paid, trust me" is refused `EVIDENCE_INCOMPLETE` and writes
+nothing. The write goes through the existing `addEconomicRevenue()` rather than
+touching the ledger, so there is no second way in and the amount passes the same
+`normalizeAmount()` validation as every other row.
+
+### `AGREED` is not money, and `PAID` is not a status
+
+The gap between "they said yes" and "the money arrived" is where optimistic
+pipelines report revenue they do not have, so the two are different enum members
+and only one has a ledger row behind it.
+
+**`PAID` cannot be set as a status at all.** `recordOutreachResponse()` refuses
+it (`PAID_NEEDS_CONFIRMATION`) and the HTTP schema omits it from the enum
+entirely, so a caller cannot mark revenue without a processor and a reference
+even by accident. Money has one door and that door demands evidence.
+
+`NO_RESPONSE` is the default and is **not a failure state** — it is the most
+common outcome of real outreach, it is tracked separately from `DECLINED`
+because silence is not a no, and `respondedAt` stays null while it holds.
+`verifiedRevenueCents` is **null, not zero**, until something is paid: same
+reasoning as the Observer's `UNRECORDED`, one layer out. A sprint dashboard
+showing `$0.00` on day one reads as a result rather than an absence.
+
+### One payment, one ledger row — and the claim has to test what it sets
+
+Confirmation is idempotent by refusal (`ALREADY_PAID`), and concurrent
+confirmations are excluded by a compare-and-set.
+
+**The first implementation of that guard was wrong, and the bug is worth
+recording because it is subtle and the test caught it.** The conditional update
+tested `revenueId: null` — but `revenueId` is only attachable *after* the ledger
+row exists, so two concurrent callers both saw null, both passed the claim, and
+both banked $450. Compare-and-set only excludes a second writer when the
+condition is the column the winner *changes*. It now tests and sets `paidAt`, in
+one statement, and the concurrency test fails against the old version.
+
+### The module cannot contact anybody
+
+`src/lib/revenue/outreach.ts` has no send path: no SMTP, no provider client, no
+template renderer, no scheduler, and it imports nothing that reaches the network
+— asserted by source scan. `recordOutreach()` records that a human **already
+sent** something. The ordering is the whole point: a module that could send would
+put a model's judgement about who deserves a cold pitch between a stranger and
+their inbox, at whatever volume the model chose. There is also deliberately no
+bulk-import endpoint, because an endpoint that accepted a thousand prospects is
+the first half of a spammer.
+
+### The sprint ranker is a second ranker, not a replacement
+
+`scoreOpportunity()` already weighs every criterion a revenue sprint cares about,
+and `src/lib/revenue/sprintRank.ts` reuses its columns rather than inventing a
+parallel set. It exists for one reason: that function computes
+`speedMultiplier = 30 / max(7, days)`, **clamped at seven**, so a one-day and a
+seven-day opportunity score identically — and inside a three-day window that is
+the only distinction that matters. A test asserts the general scorer genuinely
+cannot tell those two apart.
+
+`scoreOpportunity()` was left alone. Re-tuning a shared formula to answer one
+time-boxed question would silently re-rank every opportunity in the system and
+change what the Brain's "Why?" panel explains. The two rankers are expected to
+disagree; the `/api/revenue/rank` response returns **both**, because showing one
+would hide which question was asked. The ranker is a pure function over a row —
+no database, no clock, no model, no network, asserted by source scan — because a
+ranker that could reach any of those could rank on something it made up. An
+unknown margin is assumed to be **0.5, not 1.0**: a service business keeping
+every dollar it bills is the optimistic case, and defaulting to the optimistic
+case is how a ranking starts flattering itself.
+
+**A rank is not a forecast and a forecast is not a sale.** Every input is an
+estimate somebody typed or a model suggested; the sprint candidates in
+`prisma/seedRevenueSprint.ts` are `MODEL_SUGGESTED` throughout and no confidence
+level implies more than a 65% chance of payment, because `CONFIRMED` on an
+opportunity means the *opportunity* is corroborated, not that the person messaged
+on Tuesday will pay by Friday.
+
+### What is still not true
+
+**No revenue exists.** `EconomicRevenue` holds zero rows, no prospect has been
+contacted, and nothing in the sprint has been validated against a customer. The
+72-hour probability stated in `REVENUE_SPRINT.md` is judgement, not measurement,
+and it rests on one unverified assumption — that the owner's warm list exists.
+
+**Tests:** `tests/revenue-sprint.test.ts` — *SEPARATES ONE DAY FROM SEVEN, WHERE
+THE GENERAL SCORER CANNOT*; *AN UNKNOWN MARGIN IS NOT ASSUMED TO BE 100%*; *the
+ranker reads rows and cannot write one*; *THE MODULE HAS NO SEND PATH*; *PAID
+CANNOT BE SET AS A STATUS*; *REFUSES A PAYMENT WITH NO PROCESSOR OR NO
+REFERENCE*; *A VERIFIED PAYMENT IS USER_RECORDED, NEVER REALIZED*; *BANKS ONE
+PAYMENT ONCE*; *concurrent confirmations bank one row, not two*; *DECLINED AND
+NO_RESPONSE STAY DIFFERENT FACTS*; *NO MONEY YET IS NULL, NOT ZERO*; *an AGREED
+prospect is not revenue*; *refuses to book revenue against another user's asset*.
+
 ---
 
 ## What is still NOT true
@@ -1492,7 +1617,13 @@ honest:
   each verdict rested on — precisely so a caller cannot render "1 of 1" as
   "100%".
 - **`REALIZED` profit is $0 and will stay $0** until an external system of
-  record exists to confirm anything.
+  record exists to confirm anything. The revenue-sprint payment path does not
+  change this: a human who checked Stripe writes `USER_RECORDED` (I25).
+- **No revenue of any provenance exists yet.** `EconomicRevenue` holds zero
+  rows. The 72-hour sprint in `REVENUE_SPRINT.md` has a ranked plan, sendable
+  assets and a pipeline to record results in — and no customer, no outreach sent
+  and no dollar. Its stated probability of a first sale is judgement, not
+  measurement.
 - **Available capital is `null`**, not zero — VOX has no account balance to read
   and does not synthesize one.
 - **The spend ceiling is a policy limit, not money.** It bounds what VOX may
