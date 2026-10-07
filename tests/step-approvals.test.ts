@@ -965,7 +965,15 @@ describe("P4-C2 — structural guarantees", () => {
       // The definition itself lives in approvals.ts; every other mention of the
       // call is a place that can turn something into an authorization.
       if (file.endsWith("policy/approvals.ts")) continue;
-      if (source.includes("createApprovalGrant(")) callers.push(file);
+      // [P6-G] COMMENTS STRIPPED FIRST, and the reason matters. A module that
+      // documents "this deliberately does not call createApprovalGrant()" was
+      // being reported as a caller, which puts the pressure on the prose rather
+      // than on the code — the next author's cheapest fix is to delete the
+      // sentence that says the module is safe. Stripping comments costs this
+      // scan nothing: a real call is still `createApprovalGrant(` in code, and
+      // a call written inside a comment is not a call.
+      const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      if (code.includes("createApprovalGrant(")) callers.push(file);
     }
 
     expect(callers).toEqual(["src/lib/policy/step-approvals.ts"]);

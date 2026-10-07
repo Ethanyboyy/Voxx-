@@ -1282,6 +1282,118 @@ WINDOW CANNOT BE OBSERVED, SO NO MEASUREMENT IS FABRICATED*, *BINDS ONCE*,
 *REPLAYING THE EXECUTION CREATES NO SECOND COMMERCIAL EFFECT*, *REPOINTING THE
 SUBJECT AFTER THE FREEZE BREAKS THE CONTRACT*.
 
+## I24 — The live path is reachable, and reachability is not authority
+
+P6-G's objective was to conduct VOX's first real commercial experiment. It did
+not happen, and the reason is recorded here rather than worked around:
+
+> **There is no live Shopify access in this environment by any route.** No
+> Shopify environment variable is set (`env | grep -ci shopify` → 0), no
+> `ConnectionCredential` row exists, and the only supported door —
+> `connectShopifyStore()` — requires a custom-app Admin API token pasted in by a
+> person. Autonomous credential acquisition is forbidden and was not attempted.
+> Separately, the session's own Shopify tooling returns `operation_not_allowed`
+> ("This shop is unavailable for API access"), so even that route is closed.
+>
+> `liveReadiness()` reports **`CREDENTIAL_MISSING`**. **No live Shopify write
+> and no live Shopify observation has occurred.** There is no experiment id, no
+> code identifier, no observation window, no order count and no observed order
+> value, because none of those things exist.
+
+So P6-G is plumbing: it made the path **reachable**, documented it in
+`LIVE_EXPERIMENT_RUNBOOK.md`, and stopped before the external call.
+
+### Two steps of the live path had no door at all
+
+This is the part worth recording, because it was invisible from the tests:
+
+| step | before P6-G | why that is a safety problem, not a convenience one |
+|---|---|---|
+| declaring the frozen observation window | `declareObservationContract()` existed since P5-E, took a subject since P6-F, and **its only callers were test files** | a window could be frozen in a spec and nowhere else — an operator conducting a real experiment could not declare the question through the application |
+| dispatching the intervention | the only HTTP route into the executor is `POST /api/agents`, which hands an objective to a **PLANNER** | reaching the one write tool in VOX meant hoping a model chose `commerce.create_discount_code` and composed the right `actionId` and the right 64-hex `contractDigest`. The arguments to a real-store write should be derived from the frozen row, not written by a language model |
+
+The P6-F tests build their run by hand, which is precisely why they could run
+and the application could not. `POST .../contract` and
+`POST /api/commerce/actions/{id}/dispatch` close those two gaps and nothing else.
+
+### And neither one adds any authority
+
+`dispatchIntervention()` is the same shape as P5-D's
+`requestExperimentExecution()`: build one run with one step bound to one tool,
+hand it to the EXISTING `executeRun()`, report where it stopped. It does not
+call `executeCommercialAction()`, `enforceCapability()`, `grantPermission()`,
+`createApprovalGrant()`, `evaluatePolicy()` or `approveAgentStep()`, and it
+performs no `fetch`. The preflight imports no mutator either. Both are asserted
+by source scan over comment-stripped code.
+
+**A DISPATCH THAT PARKS IS A SUCCESSFUL DISPATCH.** `WAITING_FOR_PERMISSION`
+with the action still `PLANNED` is the normal first response and it means nothing
+was sent. Reporting it as an error is how an operator learns to retry past the
+gate — the same reasoning P5-D applies to its own dispatch. The step is a policy
+HOLD at `integration.shopify.write` / ACT and the grant is minted only at
+`POST /api/agents/{runId}/steps/{stepId}/approve`, the one HTTP surface in VOX
+where a person's decision becomes an `ApprovalGrant`. There is no threshold below
+which approval is skipped, and P6-G introduced no bypass of any kind.
+
+The dispatch route takes **no body**, so there is nowhere for a caller to name an
+action's arguments; the confirm route takes no body for the same reason. The
+test that exercises the whole sequence mints its grant against the step the
+dispatch actually parked, with the arguments the dispatch actually built — so a
+dispatch that composed the wrong arguments fails at `matchesApproval()` rather
+than being papered over.
+
+### The preflight answers one question and leaks nothing
+
+`liveReadiness()` is **read-only, local, and makes no external call** — a
+diagnostic that phoned Shopify to prove the token still works would itself be
+the live request it is meant to be checking the preconditions for. Liveness was
+proven once, at connect time, and is not re-proven. `CREDENTIAL_INVALID`
+therefore means "a credential exists and cannot be used", **never** "Shopify
+rejected it".
+
+Its six stages are strictly ordered and it reports the **earliest** unmet one,
+because five simultaneous complaints read as five problems when there is one next
+step. It returns the shop domain, which is public and which an operator needs in
+order to see WHICH store is about to be written to — and nothing else about the
+credential: not the token, not a prefix, not a length, not a hash. Before the
+credential resolves it returns `shopDomain: null` rather than a guess, because
+the domain lives inside the encrypted payload.
+
+`AUTHORIZATION_REQUIRED` — one bounded action prepared, waiting for a person —
+**is the expected resting state of a correctly-gated system, and it is reported
+as success rather than as a blocker.**
+
+### The operator ordering is a real trap, so it is a test
+
+`grantAccess()` is the Connections Hub path, and the Hub's registered SHOPIFY
+provider is the stub, so it **always** finishes by setting the connection row to
+`ERROR`. Granting write access *after* connecting therefore puts a store that
+verified against the live API into `ERROR`, and the preflight correctly reports
+`CREDENTIAL_MISSING`. Grant first, connect second. `connectShopifyStore()` also
+resets the Hub's `writeEnabled` flag to false, and that flag is not what
+authorizes the write — the ACT capability and the credential's `grantedScope`
+are. Both facts are asserted so neither can quietly stop being true.
+
+### What is still unexercised, unchanged by P6-G
+
+The write scope is **declared by the operator, not proven**: VOX cannot prove a
+write scope without performing a write. The three write outcomes still do not
+collapse — APPLIED, REFUSED and **UNKNOWN**, with only APPLIED carrying an
+`externalId`, and an UNKNOWN is never retried and never resolved into a zero.
+An unredeemed code is still an OBSERVED ZERO and still a result. And attribution
+over a declared window is still not causation (I23).
+
+**Tests:** `tests/p6-g-live-readiness.test.ts` — the six states in operator
+order; *NEVER RETURNS THE TOKEN, IN ANY STATE*; *MAKES NO EXTERNAL CALL*;
+*WRITES NOTHING AND AUTHORIZES NOTHING*; *imports no executor, grant minter or
+provider*; *the grant's MATCH is still decided at execution, not here*; *PARKS
+WITHOUT A GRANT AND SENDS NOTHING*; *THE STEP'S ARGUMENTS COME FROM THE FROZEN
+ROW, NOT FROM THE CALLER*; *refuses a second dispatch of the same action*;
+*REFUSES TO DISPATCH AN ACTION WHOSE OUTCOME IS UNKNOWN*; *the dispatch module
+opens no second authorization path*; *GRANT ACCESS FIRST, THEN CONNECT — the
+other order breaks the connection*; *the documented order reaches
+LIVE_CONNECTED*.
+
 ---
 
 ## What is still NOT true
@@ -1355,7 +1467,9 @@ honest:
   through a stubbed `fetch`. The write path is architecturally complete and
   **empirically unexercised**, and the write SCOPE is declared by the operator
   rather than proven — because proving it would require creating an unrequested
-  discount.
+  discount. P6-G made that path **reachable** through the application and
+  documented it in `LIVE_EXPERIMENT_RUNBOOK.md`; reachable is not exercised, and
+  `liveReadiness()` reports `CREDENTIAL_MISSING`.
 - **No live Shopify observation has ever been performed in this repository.** The
   provider is real and the code path is real, but every test drives it through a
   stubbed `fetch`. No live store credentials exist here, so the integration is

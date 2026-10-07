@@ -143,12 +143,14 @@ Shopify, read-only.** Every other service remains stubbed by construction.
   performs one authenticated Admin GraphQL query — `ordersCount` over a
   declared time window — against a merchant's own store. Its safety rests on
   properties enforced in code, not on intention:
-  - **No write mode exists.** Shopify is the only catalog entry whose
-    `writeCapability` is `null` — not a write capability defaulting to off.
-    `grantAccess()` cannot grant what the catalog does not define, and the
-    OAuth scope requested is `read_orders` alone. A test fails the build if a
-    GraphQL mutation appears in the provider, or if a second method is added
-    to the observation port.
+  - **The observation provider has no write mode.** `src/lib/integrations/shopify.ts`
+    requests `read_orders` alone, and a test fails the build if a GraphQL
+    mutation appears in it or if a third method is added to the observation
+    port. P5-G introduced exactly one write, in a **separate** provider
+    (`shopifyCommerce.ts`) behind a separate capability — see the P5-G bullet
+    below. The catalog's `writeCapability` is therefore no longer `null`; what
+    has not changed is that it is **off**, granted only when a person
+    explicitly asks for write, and granted at ACT.
   - **The request target cannot be redirected.** The shop domain comes out of
     the database and is interpolated into a URL carrying a live access token,
     so it is validated whole-string against
@@ -208,6 +210,32 @@ Shopify, read-only.** Every other service remains stubbed by construction.
     it would require creating an unrequested discount, so the write path fails
     closed on the declaration and then fails closed again on Shopify's own
     rejection.
+  - **The readiness preflight returns no part of the credential (P6-G).**
+    `liveReadiness()` answers "what stands between VOX and its first real
+    commercial action" from VOX's own rows: it is read-only, makes **no external
+    call** — a diagnostic that phoned Shopify to prove the token still works
+    would itself be the live request it is checking the preconditions for — and
+    it returns the shop domain, which is public, and nothing else about the
+    credential: no token, no prefix, no length, no hash. Before the credential
+    resolves it returns `shopDomain: null` rather than a guess, because the
+    domain lives inside the encrypted payload. A test serializes the result in
+    every state and asserts no substring of the token appears.
+  - **Making the path reachable granted nothing (P6-G).** Two steps of the live
+    procedure had no HTTP surface: declaring the frozen observation window, and
+    dispatching a declared intervention. Both now have one
+    (`POST /api/economic/experiments/{id}/contract`,
+    `POST /api/commerce/actions/{id}/dispatch`), and neither adds authority.
+    The dispatch route takes **no body** — the action id is the path and the
+    contract digest is read off the frozen row — builds one run with one step
+    bound to the one write tool, and hands it to the existing `executeRun()`.
+    It imports no `executeCommercialAction`, no `enforceCapability`, no
+    `grantPermission`, no `createApprovalGrant` and no `evaluatePolicy`, and
+    performs no `fetch`; a source scan asserts it. An account without
+    `integration.shopify.write` at ACT parks at `WAITING_FOR_PERMISSION` and
+    sends nothing, and the grant is still minted only at
+    `POST /api/agents/{runId}/steps/{stepId}/approve`. The operator procedure is
+    `LIVE_EXPERIMENT_RUNBOOK.md`; `liveReadiness()` in this repository reports
+    `CREDENTIAL_MISSING`.
 - **Lifecycle**: `NOT_CONNECTED → PROPOSED → AWAITING_APPROVAL → CONNECTING
   → CONNECTED → PAUSED / REVOKED` (plus `ERROR`). For every stubbed service a
   connection can only reach `CONNECTED` via that provider's `exchangeCode()`
