@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.116.0",
+    "@flydotio/litestream": "^1.0.1",
     "@prisma/adapter-better-sqlite3": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@react-three/drei": "^10.7.8",
@@ -51,5 +52,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^4"
+  },
+  "dockerfile": {
+    "litestream": true
   }
 }
