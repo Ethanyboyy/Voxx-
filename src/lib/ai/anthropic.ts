@@ -6,6 +6,7 @@ import type {
   ChatMessageInput,
   GenerateOptions,
   GenerateResult,
+  ProviderFailureReason,
   StreamEvent,
   ToolCall,
   ToolDefinition,
@@ -13,6 +14,83 @@ import type {
 
 const DEFAULT_MODEL = process.env.VOX_ANTHROPIC_MODEL ?? "claude-sonnet-5";
 const DEFAULT_MAX_TOKENS = 4096;
+
+/**
+ * Everything safe to say about a failed provider call.
+ *
+ * WHY THIS EXISTS. Production failed with a 401 and the log line said only
+ * `error: "invalid x-api-key"` — true, but it took an SSH probe into the
+ * running container to establish that the status was 401, that the key was
+ * present but refused, and which request id to quote. All of that was on the
+ * thrown error object the whole time and was being discarded.
+ *
+ * WHAT IS DELIBERATELY NOT RECORDED: the credential (never touched), the
+ * request body, the system prompt, and the conversation. The provider's
+ * `message` IS recorded, because it is the provider describing its own
+ * refusal — but it is truncated, since a 400 can quote the offending part of
+ * a request and that is the one path by which user content could reach a log.
+ */
+interface ProviderErrorDiagnostic {
+  /** The SDK's own class, e.g. `AuthenticationError`. */
+  errorClass: string;
+  status: number | null;
+  /** The provider's `error.type`, e.g. `authentication_error`. */
+  providerErrorType: string | null;
+  /** The provider's request id — what support can actually look up. */
+  requestId: string | null;
+  message: string;
+  reason: ProviderFailureReason;
+}
+
+const MAX_PROVIDER_MESSAGE = 300;
+
+function classify(status: number | null, message: string): ProviderFailureReason {
+  const text = message.toLowerCase();
+  // Checked before the status buckets: a billing failure arrives as a 400 and
+  // is nothing like a malformed request — one needs a payment, the other a
+  // code change.
+  if (text.includes("credit balance") || text.includes("quota") || text.includes("billing")) {
+    return "QUOTA_EXHAUSTED";
+  }
+  if (status === 401 || status === 403) return "CREDENTIAL_REJECTED";
+  if (status === 404) return "MODEL_UNAVAILABLE";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 400 || status === 422) return "REQUEST_REJECTED";
+  if (status !== null && status >= 500) return "PROVIDER_UNAVAILABLE";
+  if (text.includes("overloaded")) return "PROVIDER_UNAVAILABLE";
+  if (status === null) return "NETWORK";
+  return "UNKNOWN";
+}
+
+function describeProviderError(error: unknown): ProviderErrorDiagnostic {
+  const errorClass = error instanceof Error ? error.constructor.name : typeof error;
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = rawMessage.slice(0, MAX_PROVIDER_MESSAGE);
+
+  // `status`, `requestID` and `type` are real fields on the SDK's APIError —
+  // verified against node_modules/@anthropic-ai/sdk/core/error.d.ts rather
+  // than assumed. An APIConnectionError carries `status: undefined`, which is
+  // what distinguishes "never reached the provider" from "the provider said no".
+  if (error instanceof Anthropic.APIError) {
+    return {
+      errorClass,
+      status: error.status ?? null,
+      providerErrorType: error.type ?? null,
+      requestId: error.requestID ?? null,
+      message,
+      reason: classify(error.status ?? null, rawMessage),
+    };
+  }
+
+  return {
+    errorClass,
+    status: null,
+    providerErrorType: null,
+    requestId: null,
+    message,
+    reason: classify(null, rawMessage),
+  };
+}
 
 function toAnthropicTools(tools: ToolDefinition[] | undefined): Anthropic.Tool[] | undefined {
   if (!tools?.length) return undefined;
@@ -121,12 +199,20 @@ export class AnthropicProvider implements AIProvider {
         provider: this.id,
       };
     } catch (error) {
+      const diagnostic = describeProviderError(error);
       logger.error("ai.generate.failed", {
         provider: this.id,
         model,
         latencyMs: Date.now() - start,
-        error: error instanceof Error ? error.message : String(error),
+        errorClass: diagnostic.errorClass,
+        status: diagnostic.status,
+        providerErrorType: diagnostic.providerErrorType,
+        requestId: diagnostic.requestId,
+        reason: diagnostic.reason,
+        error: diagnostic.message,
       });
+      // Rethrown unchanged. This path's callers expect a throw, and swallowing
+      // it to return the diagnostic would turn a failure into a silent result.
       throw error;
     }
   }
@@ -212,14 +298,21 @@ export class AnthropicProvider implements AIProvider {
 
       yield { type: "message_stop", stopReason, usage, model };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const diagnostic = describeProviderError(error);
       logger.error("ai.stream.failed", {
         provider: this.id,
         model,
         latencyMs: Date.now() - start,
-        error: message,
+        // The fields that make this diagnosable from the log alone, instead of
+        // needing a shell inside the running container.
+        errorClass: diagnostic.errorClass,
+        status: diagnostic.status,
+        providerErrorType: diagnostic.providerErrorType,
+        requestId: diagnostic.requestId,
+        reason: diagnostic.reason,
+        error: diagnostic.message,
       });
-      yield { type: "error", message };
+      yield { type: "error", message: diagnostic.message, reason: diagnostic.reason };
     }
   }
 }

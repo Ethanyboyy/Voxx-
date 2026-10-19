@@ -6,6 +6,7 @@ import { decideChatAction, describePlan, describeRunOutcome } from "@/lib/chat/a
 import { driveRequest } from "@/lib/capabilities/orchestrator";
 import { getRunTrace } from "@/lib/capabilities/trace";
 import { chatRequestSchema } from "@/lib/validation/schemas";
+import type { ProviderFailureReason } from "@/lib/ai/types";
 import { requireUser, apiErrorResponse, ApiError } from "@/lib/api/helpers";
 import { logger } from "@/lib/observability/logger";
 
@@ -15,6 +16,43 @@ const NDJSON_HEADERS = {
   "Content-Type": "application/x-ndjson; charset=utf-8",
   "Cache-Control": "no-store",
 };
+
+/**
+ * What to tell the operator when the provider refuses.
+ *
+ * REPLACES "The model provider returned an error. Please try again." That
+ * sentence was wrong in the one case that actually happened: production was
+ * returning HTTP 401 `invalid x-api-key`, which will be returned identically
+ * on every retry forever. The instruction to try again sent the only person
+ * who could fix it in a loop past the fix.
+ *
+ * Each string names what is wrong and who can act on it, and none of them
+ * leaks anything: they are derived from an HTTP status and the provider's own
+ * error type, never from the credential, the prompt or the conversation. VOX
+ * is a single-operator system behind authentication, so the person reading
+ * this is the person who holds the key — withholding which class of failure
+ * occurred protects nobody and costs them the diagnosis.
+ */
+function describeProviderFailure(reason: ProviderFailureReason | undefined): string {
+  switch (reason) {
+    case "CREDENTIAL_REJECTED":
+      return "The AI provider rejected the configured API key. Retrying will not help — the key needs to be replaced (on Fly: `flyctl secrets set ANTHROPIC_API_KEY=... --app vox-ethansly04`).";
+    case "QUOTA_EXHAUSTED":
+      return "The AI provider refused the request for billing or quota reasons. The account needs credit before this will work.";
+    case "MODEL_UNAVAILABLE":
+      return "The configured model is not available to this provider account. Set VOX_ANTHROPIC_MODEL to a model the account can use.";
+    case "RATE_LIMITED":
+      return "The AI provider is rate-limiting this account. Waiting a moment and retrying should work.";
+    case "PROVIDER_UNAVAILABLE":
+      return "The AI provider is unavailable or overloaded right now. Retrying shortly should work.";
+    case "NETWORK":
+      return "VOX could not reach the AI provider at all — this looks like a network or egress problem, not a rejected request.";
+    case "REQUEST_REJECTED":
+      return "The AI provider rejected the shape of the request. This is a bug in VOX rather than a configuration problem; the details are in the server log.";
+    default:
+      return "The model provider returned an error. The server log records the status, provider error type and request id.";
+  }
+}
 
 /**
  * Runs an actionable request through the existing orchestrator and streams the
@@ -220,8 +258,12 @@ export async function POST(request: NextRequest) {
             });
             send({ type: "message_stop", messageId: saved.id, usage: event.usage, model: event.model, context: trace });
           } else if (event.type === "error") {
-            logger.error("chat.stream.provider_error", { conversationId: conversation.id, message: event.message });
-            send({ type: "error", message: "The model provider returned an error. Please try again." });
+            logger.error("chat.stream.provider_error", {
+              conversationId: conversation.id,
+              reason: event.reason ?? "UNKNOWN",
+              message: event.message,
+            });
+            send({ type: "error", message: describeProviderFailure(event.reason) });
           }
         }
       } catch (error) {

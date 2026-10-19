@@ -104,11 +104,46 @@ export interface GenerateResult {
   provider: string;
 }
 
+/**
+ * Why a provider call failed, classified into the few cases that call for
+ * DIFFERENT ACTION from whoever is reading.
+ *
+ * It exists because "the model provider returned an error. Please try again"
+ * is actively wrong for most of these: a rejected API key will be rejected
+ * identically forever, and telling the operator to retry sends them in a loop
+ * past the one thing they need to fix. Production failed this way — a 401
+ * `invalid x-api-key` presented as a generic retryable error.
+ *
+ * Every member is a non-sensitive classification derived from the HTTP status
+ * and the provider's own `error.type`. None of them carries a credential, a
+ * prompt, or any user content, which is what makes it safe to show.
+ */
+export type ProviderFailureReason =
+  /** 401/403. The configured credential was refused. Retrying cannot help. */
+  | "CREDENTIAL_REJECTED"
+  /** 404. The model id is not available to this account. */
+  | "MODEL_UNAVAILABLE"
+  /** 429. Too many requests; retrying later genuinely may work. */
+  | "RATE_LIMITED"
+  /** 400 whose message names billing/credit. Needs a top-up, not a retry. */
+  | "QUOTA_EXHAUSTED"
+  /** 400/422 the provider rejected as malformed — a bug in what VOX sent. */
+  | "REQUEST_REJECTED"
+  /** 5xx or overloaded. The provider's problem; retrying may work. */
+  | "PROVIDER_UNAVAILABLE"
+  /** Could not reach the provider at all. */
+  | "NETWORK"
+  | "UNKNOWN";
+
 export type StreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_call"; toolCall: ToolCall }
   | { type: "message_stop"; stopReason: string; usage: TokenUsage; model: string }
-  | { type: "error"; message: string };
+  /**
+   * `reason` is optional so no existing provider implementation breaks; a
+   * caller that does not recognise it still has `message`.
+   */
+  | { type: "error"; message: string; reason?: ProviderFailureReason };
 
 /**
  * Provider-agnostic AI abstraction. All model calls in VOX go through an

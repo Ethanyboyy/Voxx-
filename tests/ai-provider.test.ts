@@ -60,3 +60,99 @@ describe("AI provider abstraction", () => {
     expect(cost).toBeCloseTo(18, 5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Provider failure classification
+// ---------------------------------------------------------------------------
+//
+// These exist because of a real production outage. Chat failed with "The model
+// provider returned an error. Please try again" while Anthropic was returning
+// HTTP 401 `invalid x-api-key` — a failure that will recur identically on
+// every retry forever. The log recorded the message and discarded the status,
+// the provider's error type and the request id, so establishing the cause
+// needed a shell inside the running container.
+//
+// Driven through the real AnthropicProvider with a stubbed `fetch`, so the SDK
+// builds and throws its own typed error exactly as it does in production. A
+// hand-constructed error object would prove only that the switch statement
+// compiles.
+
+describe("a refused provider call is classified, not flattened", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  function stubStatus(status: number, body: unknown) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json", "request-id": "req_test_fixture" },
+      })) as unknown as typeof fetch;
+  }
+
+  async function streamError(status: number, body: unknown) {
+    const { AnthropicProvider } = await import("@/lib/ai/anthropic");
+    stubStatus(status, body);
+    // An obvious fixture, never a real credential.
+    const provider = new AnthropicProvider("sk-ant-fixture-not-a-real-key");
+    const events = [];
+    for await (const event of provider.stream({ messages: [{ role: "user", content: "hi" }] })) {
+      events.push(event);
+    }
+    const error = events.find((e) => e.type === "error");
+    if (!error || error.type !== "error") throw new Error(`expected an error event, got ${JSON.stringify(events)}`);
+    return error;
+  }
+
+  it("A 401 IS A REJECTED CREDENTIAL, NOT A RETRYABLE ERROR", async () => {
+    // The exact production failure, reproduced.
+    const error = await streamError(401, {
+      type: "error",
+      error: { type: "authentication_error", message: "invalid x-api-key" },
+    });
+    expect(error.reason).toBe("CREDENTIAL_REJECTED");
+  }, 30_000);
+
+  it("classifies the cases that need different action differently", async () => {
+    expect((await streamError(403, { type: "error", error: { type: "permission_error", message: "no" } })).reason).toBe(
+      "CREDENTIAL_REJECTED"
+    );
+    expect((await streamError(404, { type: "error", error: { type: "not_found_error", message: "model" } })).reason).toBe(
+      "MODEL_UNAVAILABLE"
+    );
+    expect((await streamError(429, { type: "error", error: { type: "rate_limit_error", message: "slow" } })).reason).toBe(
+      "RATE_LIMITED"
+    );
+    expect((await streamError(500, { type: "error", error: { type: "api_error", message: "boom" } })).reason).toBe(
+      "PROVIDER_UNAVAILABLE"
+    );
+  }, 60_000);
+
+  it("A BILLING FAILURE IS NOT A MALFORMED REQUEST, THOUGH BOTH ARRIVE AS 400", async () => {
+    // Anthropic reports an exhausted balance as a 400. Bucketing it with
+    // genuine schema rejections would tell the operator to go fix a bug in
+    // VOX when what they need is to add credit.
+    const quota = await streamError(400, {
+      type: "error",
+      error: { type: "invalid_request_error", message: "Your credit balance is too low to access the API." },
+    });
+    expect(quota.reason).toBe("QUOTA_EXHAUSTED");
+
+    const malformed = await streamError(400, {
+      type: "error",
+      error: { type: "invalid_request_error", message: "messages: at least one message is required" },
+    });
+    expect(malformed.reason).toBe("REQUEST_REJECTED");
+  }, 60_000);
+
+  it("the error event never carries the credential", async () => {
+    const error = await streamError(401, {
+      type: "error",
+      error: { type: "authentication_error", message: "invalid x-api-key" },
+    });
+    const serialized = JSON.stringify(error);
+    expect(serialized).not.toContain("sk-ant-fixture-not-a-real-key");
+    expect(serialized).not.toContain("fixture-not-a-real-key");
+  }, 30_000);
+});
