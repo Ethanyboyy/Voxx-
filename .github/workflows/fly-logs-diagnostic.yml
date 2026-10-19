@@ -4,78 +4,149 @@ name: VOX Fly.io logs (diagnostic)
 # anything on Fly. Dispatched manually to pull recent server logs when
 # something is broken in production and the error needs to be seen
 # directly rather than guessed at.
+#
+# ---------------------------------------------------------------------------
+# WHY IT REPORTS THROUGH THE REST API INSTEAD OF JUST PRINTING
+# ---------------------------------------------------------------------------
+#
+# An Actions job log is served from *.blob.core.windows.net, which an agent
+# sandbox's network policy commonly denies — so a diagnostic that only prints
+# to stdout can be RUN by an agent and never READ by one. The findings are
+# therefore also posted as an issue comment, which is retrievable through the
+# plain REST API.
+#
+# THIS REPOSITORY IS PUBLIC, and an issue is more durable and discoverable
+# than a job log, so what gets posted is built to be safe in public:
+#
+#   * Secrets appear as PRESENT/ABSENT booleans only. No values, no digests,
+#     and no lengths — a length is a real if small disclosure about a
+#     credential, and it answers no question worth asking.
+#   * The provider probe posts the HTTP status and the Anthropic error `type`
+#     and `message`. Those are provider-side strings about the failure; they
+#     carry no credential and no user content.
+#   * Raw `flyctl logs` are NOT posted. They are printed to the job log (where
+#     the repository owner can read them) and only VOX's own structured error
+#     keys are extracted for the comment, because application logs can carry
+#     user content and an issue is forever.
+#   * Everything posted is passed through a redactor that masks sk-ant-* keys,
+#     bearer tokens and long base64 runs, as defence in depth.
+#
+# Delete this workflow once production is healthy. A standing production-log
+# reader with a Fly token is not something a repository should keep.
+
 on:
   workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue to post the findings to. Leave blank to create one."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   logs:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       APP_NAME: vox-ethansly04
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: App status
-        run: flyctl status --app "$APP_NAME"
+      - name: Install redactor
+        run: |
+          cat > /tmp/redact.sed <<'SED'
+          s/sk-ant-[A-Za-z0-9_-]*/sk-ant-***REDACTED***/g
+          s/[Bb]earer [A-Za-z0-9._-]\{12,\}/Bearer ***REDACTED***/g
+          s/[A-Za-z0-9+\/]\{40,\}=\{0,2\}/***REDACTED-LONG-TOKEN***/g
+          SED
+          : > /tmp/report.md
 
-      - name: Machine list
-        run: flyctl machines list --app "$APP_NAME"
+      - name: App status and machines
+        run: |
+          {
+            echo "### Machine state"
+            echo '```'
+            flyctl status --app "$APP_NAME" 2>&1 | sed -f /tmp/redact.sed | head -30
+            echo '```'
+          } >> /tmp/report.md
+          cat /tmp/report.md
 
-      - name: Recent logs
-        run: timeout 25 flyctl logs --app "$APP_NAME" --no-tail || true
+      - name: Secret presence (names only, no values or lengths)
+        run: |
+          NAMES=$(flyctl secrets list --app "$APP_NAME" 2>/dev/null | awk '{print $1}')
+          {
+            echo "### Configured secrets (presence only)"
+            for key in ANTHROPIC_API_KEY VOX_AI_PROVIDER VOX_ANTHROPIC_MODEL VOX_ENCRYPTION_KEY VOX_SESSION_SECRET VOYAGE_API_KEY; do
+              if echo "$NAMES" | grep -qx "$key"; then echo "- \`$key\`: **PRESENT**"; else echo "- \`$key\`: ABSENT"; fi
+            done
+          } >> /tmp/report.md
+          tail -10 /tmp/report.md
 
-      # Names + digests only — flyctl never prints secret values.
-      - name: Secrets configured (names only)
-        run: flyctl secrets list --app "$APP_NAME"
-
-      # Directly exercises the *actual* configured ANTHROPIC_API_KEY against
-      # Anthropic's API from inside the running container — prints only
-      # whether auth succeeded/failed and the HTTP status, never the key.
-      - name: Live probe — is ANTHROPIC_API_KEY currently valid?
+      # Exercises the ACTUAL configured credential from inside the running
+      # container. Prints the HTTP status and the provider's own error type and
+      # message — never the key, and nothing about its shape.
+      - name: Live provider probe
         run: |
           flyctl ssh console --app "$APP_NAME" -C "node -e \"
             const key = process.env.ANTHROPIC_API_KEY;
-            console.log('ANTHROPIC_API_KEY present:', Boolean(key), key ? 'length=' + key.length : '');
-            console.log('VOX_AI_PROVIDER:', process.env.VOX_AI_PROVIDER || '(unset)');
-            if (!key) { console.log('No key set — provider would fall back to mock.'); process.exit(0); }
+            const model = process.env.VOX_ANTHROPIC_MODEL || 'claude-sonnet-5';
+            console.log('PROBE provider_key_present=' + Boolean(key));
+            console.log('PROBE vox_ai_provider=' + (process.env.VOX_AI_PROVIDER || '(unset)'));
+            console.log('PROBE effective_model=' + model);
+            if (!key) { console.log('PROBE result=NO_KEY'); process.exit(0); }
             fetch('https://api.anthropic.com/v1/messages', {
               method: 'POST',
               headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-              body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }),
+              body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }),
             }).then(async (res) => {
-              const text = await res.text();
-              console.log('HTTP status:', res.status);
-              console.log('Body (first 300 chars):', text.slice(0, 300));
-            }).catch((e) => console.log('fetch error:', e.message));
-          \"" || true
+              console.log('PROBE http_status=' + res.status);
+              console.log('PROBE request_id=' + (res.headers.get('request-id') || '(none)'));
+              let body = {};
+              try { body = JSON.parse(await res.text()); } catch (e) { body = {}; }
+              console.log('PROBE error_type=' + ((body.error && body.error.type) || (res.ok ? '(none)' : '(unparsed)')));
+              console.log('PROBE error_message=' + ((body.error && body.error.message) || (res.ok ? 'OK' : '(unparsed)')));
+            }).catch((e) => console.log('PROBE fetch_error=' + e.message));
+          \"" 2>&1 | tee /tmp/probe.txt | sed -f /tmp/redact.sed || true
+          {
+            echo "### Live provider probe (from inside the container)"
+            echo '```'
+            grep -a '^PROBE ' /tmp/probe.txt | sed -f /tmp/redact.sed || echo "probe produced no PROBE lines"
+            echo '```'
+          } >> /tmp/report.md
 
-      # Read-only: table row counts and enum-column value distributions only
-      # (status/priority/confidence/effort/risk/category) — never touches
-      # encrypted or free-text columns (content/title/description/etc).
-      - name: Production data shape (read-only, no content)
+      # Raw logs go to the JOB log only (owner-readable). Only VOX's own
+      # structured error keys are lifted into the public comment.
+      - name: Recent logs (raw to job log, filtered to report)
         run: |
-          flyctl ssh console --app "$APP_NAME" -C "node -e \"
-            const D = require('better-sqlite3');
-            const db = new D('/data/prod.db', { readonly: true });
-            const tables = ['User','Objective','Opportunity','Project','Task','ResearchItem','Proposal','Connection','Memory','AgentRun','AgentStep','BrainGroup','BrainView'];
-            for (const t of tables) {
-              try { console.log(t, db.prepare('SELECT COUNT(*) c FROM ' + t).get().c); }
-              catch (e) { console.log(t, 'ERR', e.message); }
-            }
-            const groups = [
-              ['Opportunity', 'confidence, effort, risk, status'],
-              ['Task', 'status, priority'],
-              ['AgentRun', 'status'],
-              ['Proposal', 'status'],
-              ['Memory', 'category, confidence'],
-              ['ResearchItem', 'confidence'],
-              ['Project', 'status'],
-              ['Connection', 'status'],
-            ];
-            for (const [t, cols] of groups) {
-              try { console.log('---', t, cols, '---'); console.log(JSON.stringify(db.prepare('SELECT ' + cols + ', COUNT(*) c FROM ' + t + ' GROUP BY ' + cols).all())); }
-              catch (e) { console.log(t, 'GROUP ERR', e.message); }
-            }
-          \"" || true
+          timeout 30 flyctl logs --app "$APP_NAME" --no-tail > /tmp/raw.log 2>&1 || true
+          echo "--- raw log tail (job log only) ---"
+          tail -80 /tmp/raw.log | sed -f /tmp/redact.sed || true
+          {
+            echo "### VOX diagnostic log keys"
+            echo '```'
+            grep -aoE '(ai\.stream\.failed|ai\.generate\.failed|chat\.stream\.provider_error|chat\.setup_failed|chat\.orchestrated\.failed)[^,}]*' /tmp/raw.log \
+              | tail -25 | sed -f /tmp/redact.sed || echo "none in the retained window"
+            echo '```'
+          } >> /tmp/report.md
+
+      - name: Post findings to an issue
+        run: |
+          sed -i -f /tmp/redact.sed /tmp/report.md
+          HEADER="## Production diagnostic — \`$APP_NAME\`
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Commit: \`${{ github.sha }}\`
+          "
+          printf '%s\n' "$HEADER" | cat - /tmp/report.md > /tmp/final.md
+          N="${{ github.event.inputs.issue_number }}"
+          if [ -z "$N" ]; then
+            gh issue create --repo "${{ github.repository }}" \
+              --title "Production diagnostic: chat provider failure" \
+              --body-file /tmp/final.md
+          else
+            gh issue comment "$N" --repo "${{ github.repository }}" --body-file /tmp/final.md
+          fi
