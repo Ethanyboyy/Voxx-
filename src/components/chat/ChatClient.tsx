@@ -139,8 +139,16 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
   async function ensureConversation(): Promise<string> {
     if (activeId) return activeId;
     const res = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    // Checked rather than assumed. Without this a 403/500 reaches
+    // `data.conversation.id` and throws a TypeError about reading a property
+    // of undefined — which tells the user nothing about what actually failed.
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `Could not start a conversation (HTTP ${res.status}).`);
+    }
     const data = await res.json();
-    const conversation = data.conversation as ConversationSummary;
+    const conversation = data.conversation as ConversationSummary | undefined;
+    if (!conversation?.id) throw new Error("The server did not return a conversation.");
     setConversations((prev) => [conversation, ...prev]);
     setActiveId(conversation.id);
     return conversation.id;
@@ -161,13 +169,18 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
     setError(null);
     setInput("");
 
-    const conversationId = await ensureConversation();
-    const userMessage: ChatMessage = { id: `local-${Date.now()}`, role: "USER", content: text };
+    // Inside the try, not before it. A failure here (offline, 403, 500) used to
+    // escape `handleSend` entirely as an unhandled rejection: `streaming` was
+    // never set, no error was shown, and the message simply vanished.
     const assistantMessage: ChatMessage = { id: `pending-${Date.now()}`, role: "ASSISTANT", content: "", pending: true };
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
-    setStreaming(true);
+    let fullText = "";
 
     try {
+      const conversationId = await ensureConversation();
+      const userMessage: ChatMessage = { id: `local-${Date.now()}`, role: "USER", content: text };
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setStreaming(true);
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -184,7 +197,6 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let fullText = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -195,7 +207,16 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          const event = JSON.parse(line);
+          // A truncated final line is what a connection dropped mid-stream
+          // actually looks like. Throwing here would discard every event
+          // already rendered; skipping the unparseable fragment keeps the
+          // reply that did arrive and lets the stream end on its own terms.
+          let event;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue;
+          }
           if (event.type === "text_delta") {
             fullText += event.text;
             setMessages((prev) =>
@@ -222,6 +243,23 @@ export function ChatClient({ initialConversations }: { initialConversations: Con
           }
         }
       }
+    } catch (err) {
+      // THE CASE THAT USED TO BE SILENT. `fetch` rejecting (offline, DNS, TLS,
+      // the server dropping the connection) and `reader.read()` failing
+      // mid-stream both land here. Before this existed they escaped as an
+      // unhandled rejection: the pending bubble stopped animating and nothing
+      // ever said why, which reads as the app hanging rather than failing.
+      //
+      // Whatever text already arrived is KEPT. A reply cut off halfway is still
+      // the model's reply, and discarding it to show a clean error throws away
+      // the only thing the request produced.
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(
+        fullText
+          ? `The connection dropped partway through the reply (${detail}). What arrived is kept above.`
+          : `Could not reach the server (${detail}).`
+      );
+      if (!fullText) setMessages((prev) => prev.filter((m) => m.id !== assistantMessage.id));
     } finally {
       setStreaming(false);
       setMessages((prev) => prev.map((m) => (m.pending ? { ...m, pending: false } : m)));

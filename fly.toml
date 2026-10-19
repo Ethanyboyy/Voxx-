@@ -1,10 +1,32 @@
-# fly.toml app configuration file generated for voxmoney1 on 2026-10-08T10:34:04Z
+# Fly.io app config for VOX.
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+# IF `fly launch` OFFERS TO REGENERATE THIS FILE, DECLINE. It has done real
+# damage once already: on 2026-10-08 the Launch wizard rewrote this file and
+# changed two values that must not change —
 #
+#   app:            vox-ethansly04 -> voxmoney1
+#   primary_region: iad            -> ord
+#
+# The first points the config at a different, empty app. The second is worse
+# and quieter: the production volume `vox_data` was created in **iad** (see
+# .github/workflows/fly-deploy.yml, which creates it with `--region iad`), so a
+# deploy with primary_region = ord asks Fly to place the machine in a region
+# where no volume exists. The workflow's volume check finds the iad volume by
+# name and creates nothing, so the failure surfaces as a machine that cannot
+# start or one running without /data — i.e. without the production database.
+#
+# Both values are restored below. The quote style and `auto_stop_machines =
+# 'off'` from that regeneration are kept: 'off' is the current flyctl spelling
+# of the old `false`, and is correct.
+#
+# See DEPLOYMENT.md before the first deploy.
 
-app = 'voxmoney1'
-primary_region = 'ord'
+# Must be globally unique on Fly, and must match the app the volume and the
+# secrets (VOX_ENCRYPTION_KEY, VOX_SESSION_SECRET) already live on.
+app = 'vox-ethansly04'
+# Must be the region holding the vox_data volume. Do not change without
+# migrating the volume first — the database lives on it.
+primary_region = 'iad'
 
 [build]
 
