@@ -55,6 +55,10 @@ on:
         description: "Issue to post findings to. Blank creates one."
         required: false
         default: ""
+      app_name:
+        description: "Fly app to inspect. Defaults to vox-ethansly04."
+        required: false
+        default: "vox-ethansly04"
 
 permissions:
   contents: read
@@ -66,7 +70,7 @@ jobs:
     timeout-minutes: 10
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      APP_NAME: vox-ethansly04
+      APP_NAME: ${{ github.event.inputs.app_name || 'vox-ethansly04' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -151,6 +155,12 @@ jobs:
             console.log('D auth_token_set=' + Boolean(process.env.ANTHROPIC_AUTH_TOKEN));
             console.log('D vox_ai_provider=' + (process.env.VOX_AI_PROVIDER || '(unset)'));
             console.log('D vox_model=' + (process.env.VOX_ANTHROPIC_MODEL || '(unset -> claude-sonnet-5)'));
+            // Sign-in prerequisites. Booleans only — never the values. A
+            // missing VOX_SESSION_SECRET makes hashToken() throw, which
+            // apiErrorResponse turns into a bare 500 'Internal server error'.
+            console.log('D session_secret_set=' + Boolean(process.env.VOX_SESSION_SECRET));
+            console.log('D encryption_key_set=' + Boolean(process.env.VOX_ENCRYPTION_KEY));
+            console.log('D database_url=' + (process.env.DATABASE_URL || '(unset)'));
             const probe = (label, key) => fetch('https://api.anthropic.com/v1/models?limit=1', {
               headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
             }).then(async (res) => {
@@ -170,6 +180,46 @@ jobs:
             echo '```'
           } >> /tmp/report.md
 
+      # THE SIGN-IN DISCRIMINATOR. The login page is a server component that
+      # calls hasAnyUser() -> db.user.count() BEFORE rendering, so a database
+      # with no tables renders a 500 while /api/health still passes (its
+      # `SELECT 1` touches no table and happily opens an empty file). This asks
+      # the one question that separates that from a missing session secret:
+      # does the schema actually exist on this machine's volume?
+      #
+      # Reads sqlite_master for table NAMES and a row count. No column values,
+      # no user content, nothing encrypted — and it opens the file readonly.
+      - name: Schema presence on the mounted volume (read-only)
+        run: |
+          flyctl ssh console --app "$APP_NAME" -C "node -e \"
+            const path = (process.env.DATABASE_URL || '').replace(/^file:/, '') || '/data/prod.db';
+            const fs = require('fs');
+            console.log('S db_path=' + path);
+            console.log('S db_file_exists=' + fs.existsSync(path));
+            try { console.log('S db_size_bytes=' + fs.statSync(path).size); } catch (e) { console.log('S db_size_bytes=(none)'); }
+            try {
+              const D = require('better-sqlite3');
+              const db = new D(path, { readonly: true, fileMustExist: true });
+              const names = db.prepare(\\\"SELECT name FROM sqlite_master WHERE type='table'\\\").all().map(r => r.name);
+              console.log('S table_count=' + names.length);
+              console.log('S has_User_table=' + names.includes('User'));
+              console.log('S has_Session_table=' + names.includes('Session'));
+              console.log('S has_migrations_table=' + names.includes('_prisma_migrations'));
+              if (names.includes('User')) {
+                console.log('S user_row_count=' + db.prepare('SELECT COUNT(*) c FROM User').get().c);
+              }
+              if (names.includes('_prisma_migrations')) {
+                console.log('S migrations_applied=' + db.prepare('SELECT COUNT(*) c FROM _prisma_migrations').get().c);
+              }
+            } catch (e) { console.log('S open_error=' + e.message); }
+          \"" 2>&1 | tee /tmp/schema.txt | sed -f /tmp/redact.sed || true
+          {
+            echo "### Schema presence on the volume"
+            echo '```'
+            grep -a '^S ' /tmp/schema.txt | sed -f /tmp/redact.sed || echo "probe produced no S lines"
+            echo '```'
+          } >> /tmp/report.md
+
       # Raw logs stay in the job log (owner-readable). Only VOX's own
       # structured error keys reach the public comment.
       - name: Logs — raw to job log, filtered to report
@@ -180,9 +230,8 @@ jobs:
           {
             echo "### VOX diagnostic log lines"
             echo '```'
-            grep -aoE '"(msg|message|event)":"(ai\.stream\.failed|ai\.generate\.failed|chat\.stream\.provider_error)"[^}]*' /tmp/raw.log \
-              | tail -15 | sed -f /tmp/redact.sed \
-              || grep -aoE '(ai\.stream\.failed|chat\.stream\.provider_error).{0,220}' /tmp/raw.log | tail -15 | sed -f /tmp/redact.sed \
+            grep -aoE '(api\.unhandled_error|auth\.|ai\.stream\.failed|ai\.generate\.failed|chat\.stream\.provider_error|no such table|VOX_SESSION_SECRET|VOX_ENCRYPTION_KEY|PrismaClient|Error:).{0,200}' /tmp/raw.log \
+              | tail -30 | sed -f /tmp/redact.sed \
               || echo "none in the retained window"
             echo '```'
           } >> /tmp/report.md
