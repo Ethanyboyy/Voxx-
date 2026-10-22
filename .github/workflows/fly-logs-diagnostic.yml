@@ -101,6 +101,23 @@ jobs:
             echo '```'
           } >> /tmp/report.md
 
+      # The decisive timeline. `flyctl secrets set` creates a RELEASE, so the
+      # release list answers "has anything at all been applied to this app
+      # since the last deploy" — which distinguishes a key that was replaced
+      # somewhere else from a key that was replaced here and still fails.
+      - name: Release history (did any change land on this app?)
+        run: |
+          {
+            echo "### Release history"
+            echo '```'
+            flyctl releases list --app "$APP_NAME" 2>&1 | sed -f /tmp/redact.sed | head -20
+            echo '```'
+            echo "### Machines"
+            echo '```'
+            flyctl machines list --app "$APP_NAME" 2>&1 | sed -f /tmp/redact.sed | head -15
+            echo '```'
+          } >> /tmp/report.md
+
       # Candidate 4: was the new key set on the other app by mistake?
       - name: Does another app hold a provider key?
         run: |
