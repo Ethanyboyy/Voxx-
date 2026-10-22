@@ -1,44 +1,58 @@
 name: VOX Fly.io logs (diagnostic)
 
-# Temporary, read-only diagnostic workflow — does not deploy or modify
-# anything on Fly. Dispatched manually to pull recent server logs when
-# something is broken in production and the error needs to be seen
-# directly rather than guessed at.
+# Temporary, READ-ONLY production diagnostic. It does not deploy, restart,
+# write a secret, touch the volume, or run any command that changes state.
+#
+# Findings are posted as an issue comment as well as printed, because an
+# Actions job log is served from *.blob.core.windows.net — a host an agent
+# sandbox's network policy commonly denies, which otherwise leaves a
+# diagnostic that can be RUN but not READ.
 #
 # ---------------------------------------------------------------------------
-# WHY IT REPORTS THROUGH THE REST API INSTEAD OF JUST PRINTING
+# WHAT THIS ROUND IS TESTING
 # ---------------------------------------------------------------------------
 #
-# An Actions job log is served from *.blob.core.windows.net, which an agent
-# sandbox's network policy commonly denies — so a diagnostic that only prints
-# to stdout can be RUN by an agent and never READ by one. The findings are
-# therefore also posted as an issue comment, which is retrievable through the
-# plain REST API.
+# The API key was replaced and the 401 did not change. Replacing a key and
+# getting the identical error back means the thing being tested is probably not
+# the key's VALUE. The differential below separates the candidates that all
+# present as `invalid x-api-key`:
 #
-# THIS REPOSITORY IS PUBLIC, and an issue is more durable and discoverable
-# than a job log, so what gets posted is built to be safe in public:
+#   1. SURROUNDING WHITESPACE. `new Anthropic({ apiKey })` receives
+#      process.env.ANTHROPIC_API_KEY verbatim — nothing trims it. A value
+#      pasted into a dashboard field can carry a trailing newline or space,
+#      which goes straight into the x-api-key header and is rejected as
+#      invalid. Indistinguishable from a wrong key from the outside. Tested by
+#      probing with the raw value and again with a trimmed copy.
+#   2. A REDIRECTED BASE URL. The constructor sets no baseURL, so the SDK
+#      honours ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN from the environment
+#      if either is set. A key sent to the wrong endpoint fails as invalid.
+#   3. THE SECRET NEVER REACHED THIS MACHINE. Compared by secret digest
+#      timestamp against the machine's own last-updated time.
+#   4. THE WRONG APP. fly.toml briefly named `voxmoney1`; if the new key was
+#      set there, vox-ethansly04 still holds the old one.
+#   5. WRONG CREDENTIAL CLASS. An admin key or OAuth token is not an API key.
 #
-#   * Secrets appear as PRESENT/ABSENT booleans only. No values, no digests,
-#     and no lengths — a length is a real if small disclosure about a
-#     credential, and it answers no question worth asking.
-#   * The provider probe posts the HTTP status and the Anthropic error `type`
-#     and `message`. Those are provider-side strings about the failure; they
-#     carry no credential and no user content.
-#   * Raw `flyctl logs` are NOT posted. They are printed to the job log (where
-#     the repository owner can read them) and only VOX's own structured error
-#     keys are extracted for the comment, because application logs can carry
-#     user content and an issue is forever.
-#   * Everything posted is passed through a redactor that masks sk-ant-* keys,
-#     bearer tokens and long base64 runs, as defence in depth.
+# ---------------------------------------------------------------------------
+# NO SECRET VALUE IS PRINTED, POSTED, OR TRANSMITTED
+# ---------------------------------------------------------------------------
 #
-# Delete this workflow once production is healthy. A standing production-log
-# reader with a Fly token is not something a repository should keep.
+# This repository is PUBLIC, so everything below is built to be safe in public.
+# The key is never echoed, and neither is its length. What IS reported about it
+# is only: whether it is set, whether trimming it changes it and by how many
+# characters, and whether it begins with the documented `sk-ant-` prefix. None
+# of those narrows the value. The probes send the key to Anthropic only — the
+# same destination the application itself uses — and report back nothing but
+# the HTTP status, the request id, and the provider's own error type and
+# message. Every posted line also passes through a redactor.
+#
+# Delete this workflow once production is healthy; a standing production-log
+# reader holding a Fly token does not belong in a repository.
 
 on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: "Issue to post the findings to. Leave blank to create one."
+        description: "Issue to post findings to. Blank creates one."
         required: false
         default: ""
 
@@ -66,7 +80,7 @@ jobs:
           SED
           : > /tmp/report.md
 
-      - name: App status and machines
+      - name: Machine state and release
         run: |
           {
             echo "### Machine state"
@@ -74,78 +88,102 @@ jobs:
             flyctl status --app "$APP_NAME" 2>&1 | sed -f /tmp/redact.sed | head -30
             echo '```'
           } >> /tmp/report.md
-          cat /tmp/report.md
 
-      - name: Secret presence (names only, no values or lengths)
+      # Digest + timestamp per secret. flyctl never prints values; the digest
+      # is a one-way fingerprint whose only use here is "did this change, and
+      # when" relative to the machine's last update.
+      - name: Secret inventory — names and change times only
         run: |
-          NAMES=$(flyctl secrets list --app "$APP_NAME" 2>/dev/null | awk '{print $1}')
           {
-            echo "### Configured secrets (presence only)"
-            for key in ANTHROPIC_API_KEY VOX_AI_PROVIDER VOX_ANTHROPIC_MODEL VOX_ENCRYPTION_KEY VOX_SESSION_SECRET VOYAGE_API_KEY; do
-              if echo "$NAMES" | grep -qx "$key"; then echo "- \`$key\`: **PRESENT**"; else echo "- \`$key\`: ABSENT"; fi
-            done
+            echo "### Secrets on \`$APP_NAME\` (names and change times; no values)"
+            echo '```'
+            flyctl secrets list --app "$APP_NAME" 2>&1 | sed -f /tmp/redact.sed
+            echo '```'
           } >> /tmp/report.md
-          tail -10 /tmp/report.md
 
-      # Exercises the ACTUAL configured credential from inside the running
-      # container. Prints the HTTP status and the provider's own error type and
-      # message — never the key, and nothing about its shape.
-      - name: Live provider probe
+      # Candidate 4: was the new key set on the other app by mistake?
+      - name: Does another app hold a provider key?
+        run: |
+          {
+            echo "### Other apps on this account"
+            echo '```'
+            flyctl apps list 2>&1 | sed -f /tmp/redact.sed | head -20
+            echo '```'
+            echo "Secret names on \`voxmoney1\` (if it exists):"
+            echo '```'
+            flyctl secrets list --app voxmoney1 2>&1 | awk '{print $1}' | sed -f /tmp/redact.sed | head -15 \
+              || echo "(no such app, or not accessible)"
+            echo '```'
+          } >> /tmp/report.md
+
+      # The differential. Runs inside the live container against the real
+      # environment the application reads.
+      - name: Credential differential (no value printed)
         run: |
           flyctl ssh console --app "$APP_NAME" -C "node -e \"
-            const key = process.env.ANTHROPIC_API_KEY;
-            const model = process.env.VOX_ANTHROPIC_MODEL || 'claude-sonnet-5';
-            console.log('PROBE provider_key_present=' + Boolean(key));
-            console.log('PROBE vox_ai_provider=' + (process.env.VOX_AI_PROVIDER || '(unset)'));
-            console.log('PROBE effective_model=' + model);
-            if (!key) { console.log('PROBE result=NO_KEY'); process.exit(0); }
-            fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-              body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }),
+            const raw = process.env.ANTHROPIC_API_KEY;
+            console.log('D set=' + Boolean(raw));
+            if (!raw) { console.log('D result=NOT_SET'); process.exit(0); }
+            const trimmed = raw.trim();
+            console.log('D needs_trim=' + (trimmed !== raw));
+            console.log('D trim_delta_chars=' + (raw.length - trimmed.length));
+            console.log('D has_sk_ant_prefix=' + trimmed.startsWith('sk-ant-'));
+            console.log('D has_inner_whitespace=' + /\\\\s/.test(trimmed));
+            console.log('D base_url_set=' + Boolean(process.env.ANTHROPIC_BASE_URL));
+            console.log('D base_url=' + (process.env.ANTHROPIC_BASE_URL || '(unset)'));
+            console.log('D auth_token_set=' + Boolean(process.env.ANTHROPIC_AUTH_TOKEN));
+            console.log('D vox_ai_provider=' + (process.env.VOX_AI_PROVIDER || '(unset)'));
+            console.log('D vox_model=' + (process.env.VOX_ANTHROPIC_MODEL || '(unset -> claude-sonnet-5)'));
+            const probe = (label, key) => fetch('https://api.anthropic.com/v1/models?limit=1', {
+              headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
             }).then(async (res) => {
-              console.log('PROBE http_status=' + res.status);
-              console.log('PROBE request_id=' + (res.headers.get('request-id') || '(none)'));
               let body = {};
-              try { body = JSON.parse(await res.text()); } catch (e) { body = {}; }
-              console.log('PROBE error_type=' + ((body.error && body.error.type) || (res.ok ? '(none)' : '(unparsed)')));
-              console.log('PROBE error_message=' + ((body.error && body.error.message) || (res.ok ? 'OK' : '(unparsed)')));
-            }).catch((e) => console.log('PROBE fetch_error=' + e.message));
-          \"" 2>&1 | tee /tmp/probe.txt | sed -f /tmp/redact.sed || true
+              try { body = JSON.parse(await res.text()); } catch (e) {}
+              console.log('D ' + label + '_status=' + res.status);
+              console.log('D ' + label + '_request_id=' + (res.headers.get('request-id') || '(none)'));
+              console.log('D ' + label + '_error_type=' + ((body.error && body.error.type) || (res.ok ? '(none)' : '(unparsed)')));
+              console.log('D ' + label + '_error_message=' + ((body.error && body.error.message) || (res.ok ? 'OK' : '(unparsed)')));
+            }).catch((e) => console.log('D ' + label + '_fetch_error=' + e.message));
+            probe('raw', raw).then(() => (trimmed !== raw ? probe('trimmed', trimmed) : null));
+          \"" 2>&1 | tee /tmp/diff.txt | sed -f /tmp/redact.sed || true
           {
-            echo "### Live provider probe (from inside the container)"
+            echo "### Credential differential (inside the running container)"
             echo '```'
-            grep -a '^PROBE ' /tmp/probe.txt | sed -f /tmp/redact.sed || echo "probe produced no PROBE lines"
+            grep -a '^D ' /tmp/diff.txt | sed -f /tmp/redact.sed || echo "probe produced no D lines"
             echo '```'
           } >> /tmp/report.md
 
-      # Raw logs go to the JOB log only (owner-readable). Only VOX's own
-      # structured error keys are lifted into the public comment.
-      - name: Recent logs (raw to job log, filtered to report)
+      # Raw logs stay in the job log (owner-readable). Only VOX's own
+      # structured error keys reach the public comment.
+      - name: Logs — raw to job log, filtered to report
         run: |
           timeout 30 flyctl logs --app "$APP_NAME" --no-tail > /tmp/raw.log 2>&1 || true
-          echo "--- raw log tail (job log only) ---"
+          echo "--- raw tail (job log only) ---"
           tail -80 /tmp/raw.log | sed -f /tmp/redact.sed || true
           {
-            echo "### VOX diagnostic log keys"
+            echo "### VOX diagnostic log lines"
             echo '```'
-            grep -aoE '(ai\.stream\.failed|ai\.generate\.failed|chat\.stream\.provider_error|chat\.setup_failed|chat\.orchestrated\.failed)[^,}]*' /tmp/raw.log \
-              | tail -25 | sed -f /tmp/redact.sed || echo "none in the retained window"
+            grep -aoE '"(msg|message|event)":"(ai\.stream\.failed|ai\.generate\.failed|chat\.stream\.provider_error)"[^}]*' /tmp/raw.log \
+              | tail -15 | sed -f /tmp/redact.sed \
+              || grep -aoE '(ai\.stream\.failed|chat\.stream\.provider_error).{0,220}' /tmp/raw.log | tail -15 | sed -f /tmp/redact.sed \
+              || echo "none in the retained window"
             echo '```'
           } >> /tmp/report.md
 
-      - name: Post findings to an issue
+      - name: Post findings
         run: |
           sed -i -f /tmp/redact.sed /tmp/report.md
-          HEADER="## Production diagnostic — \`$APP_NAME\`
-          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          Commit: \`${{ github.sha }}\`
-          "
-          printf '%s\n' "$HEADER" | cat - /tmp/report.md > /tmp/final.md
+          {
+            echo "## Production diagnostic — \`$APP_NAME\`"
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "Commit: \`${{ github.sha }}\`"
+            echo
+          } > /tmp/final.md
+          cat /tmp/report.md >> /tmp/final.md
           N="${{ github.event.inputs.issue_number }}"
           if [ -z "$N" ]; then
             gh issue create --repo "${{ github.repository }}" \
-              --title "Production diagnostic: chat provider failure" \
+              --title "Production diagnostic: provider 401 persists after key rotation" \
               --body-file /tmp/final.md
           else
             gh issue comment "$N" --repo "${{ github.repository }}" --body-file /tmp/final.md
